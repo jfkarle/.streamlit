@@ -1,0 +1,4 @@
+streamlit
+streamlit-gsheets
+gspread
+pandas
