@@ -1,4 +1,2 @@
-streamlit==1.34.0  # Or a slightly older recent version
-streamlit-gsheet   # Current latest as of now
-gspread==5.12.4       # Current latest as of now
-pandas==2.0.3         # A widely used version
+streamlit
+pandas
