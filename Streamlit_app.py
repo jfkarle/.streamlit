@@ -257,6 +257,7 @@ def streamlit_main():
                     cols[0].markdown(f"**Email:** {customer.email if customer.email else 'N/A'}")
                     cols[0].markdown(f"**Address:** {customer.address if customer.address else 'N/A'}")
                     cols[1].markdown(f"**Boat Type:** {customer.boat_type}")
+                    cols[1].markdown(f"**Preferred Truck:** {customer.preferred_truck if customer.preferred_truck else 'N/A'}") # Display new field
                     cols[1].markdown(f"**Boat Length:** {customer.boat_length} ft")
                     cols[1].markdown(f"**Boat Draft:** {customer.boat_draft} ft")
                     cols[0].markdown(f"**Home Latitude:** {customer.home_latitude}")
@@ -272,6 +273,7 @@ def streamlit_main():
                         edit_email = st.text_input("Email", value=customer.email, key=f"email_{customer.customer_id}")
                         edit_address = st.text_area("Address", value=customer.address, key=f"addr_{customer.customer_id}")
                         edit_boat_type = st.text_input("Boat Type", value=customer.boat_type, key=f"btype_{customer.customer_id}")
+                        edit_preferred_truck = st.text_input("Preferred Truck", value=customer.preferred_truck, key=f"ptruck_{customer.customer_id}")
                         edit_boat_length = st.number_input("Length", value=float(customer.boat_length), min_value=0.0, format="%.1f", key=f"blen_{customer.customer_id}")
                         edit_boat_draft = st.number_input("Draft", value=float(customer.boat_draft), min_value=0.0, format="%.1f", key=f"bdr_{customer.customer_id}")
                         edit_lat = st.number_input("Latitude", value=float(customer.home_latitude), format="%.6f", key=f"lat_{customer.customer_id}")
@@ -283,6 +285,7 @@ def streamlit_main():
                             updated_cust_obj = Customer(
                                 customer_name=edit_name, phone=edit_phone, email=edit_email, address=edit_address,
                                 boat_type=edit_boat_type, boat_length=edit_boat_length, boat_draft=edit_boat_draft,
+                                preferred_truck=edit_preferred_truck,
                                 home_latitude=edit_lat, home_longitude=edit_lon, is_ecm_boat=edit_ecm,
                                 customer_id=customer.customer_id # CRITICAL: Pass existing ID
                             )
