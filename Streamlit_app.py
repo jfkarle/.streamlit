@@ -10,20 +10,17 @@ CUSTOMER_CSV_FILE = "ECM Sample Cust.csv" # Your primary CSV data file
 
 # --- Customer Class ---
 class Customer:
-    # Headers from your "ECM Sample Cust.csv":
-    # customer_id, Customer Name, Boat Type, Boat Length, Phone, Email, Address,
-    # Boat Draft, Home Latitude, Home Longitude, Is ECM Boat
     def __init__(self, customer_name, boat_type, boat_length, phone, email, address,
-                 boat_draft, home_latitude, home_longitude, is_ecm_boat, customer_id=None):
+                 boat_draft, home_latitude, home_longitude, is_ecm_boat,
+                 preferred_truck="", customer_id=None): # Added preferred_truck
 
-        # If customer_id is None, empty, or NaN, generate a new one
-        if pd.isna(customer_id) or str(customer_id).strip() == "":
-            self.customer_id = str(uuid.uuid4())
-        else:
-            self.customer_id = str(customer_id)
-
+        # ... (other initializations remain the same) ...
+        self.customer_id = str(customer_id) if customer_id and str(customer_id).strip() else str(uuid.uuid4())
         self.customer_name = str(customer_name if pd.notna(customer_name) else "")
+        # ... (other attributes) ...
         self.boat_type = str(boat_type if pd.notna(boat_type) else "")
+        self.preferred_truck = str(preferred_truck if pd.notna(preferred_truck) else "") # Initialize new attribute
+        # ... (rest of the attributes like boat_length, boat_draft, etc.) ...
         try:
             self.boat_length = float(boat_length) if pd.notna(boat_length) else 0.0
         except (ValueError, TypeError):
@@ -51,19 +48,21 @@ class Customer:
         else:
             self.is_ecm_boat = bool(is_ecm_boat)
 
+
     def to_dict(self): # To convert Customer object to a dictionary for DataFrame
         return {
             'customer_id': self.customer_id,
-            'Customer Name': self.customer_name, # Matches CSV header
-            'Boat Type': self.boat_type,         # Matches CSV header
-            'Boat Length': self.boat_length,     # Matches CSV header
-            'Phone': self.phone,                 # Matches CSV header
-            'Email': self.email,                 # Matches CSV header
-            'Address': self.address,             # Matches CSV header
-            'Boat Draft': self.boat_draft,       # Matches CSV header
-            'Home Latitude': self.home_latitude, # Matches CSV header
-            'Home Longitude': self.home_longitude, # Matches CSV header
-            'Is ECM Boat': self.is_ecm_boat      # Matches CSV header
+            'Customer Name': self.customer_name,
+            'Boat Type': self.boat_type,
+            'PREFERRED TRUCK': self.preferred_truck, # Added new field
+            'Boat Length': self.boat_length,
+            'Phone': self.phone,
+            'Email': self.email,
+            'Address': self.address,
+            'Boat Draft': self.boat_draft,
+            'Home Latitude': self.home_latitude,
+            'Home Longitude': self.home_longitude,
+            'Is ECM Boat': self.is_ecm_boat
         }
 
     @staticmethod
@@ -72,6 +71,7 @@ class Customer:
             customer_id=data_dict.get('customer_id'),
             customer_name=data_dict.get('Customer Name'),
             boat_type=data_dict.get('Boat Type'),
+            preferred_truck=data_dict.get('PREFERRED TRUCK'), # Added new field
             boat_length=data_dict.get('Boat Length'),
             phone=data_dict.get('Phone'),
             email=data_dict.get('Email'),
@@ -84,9 +84,8 @@ class Customer:
 
 # --- CSV Data Manager for Customers ---
 class CustomerCsvManager:
-    # Columns expected in the CSV, matching "ECM Sample Cust.csv"
     EXPECTED_HEADERS = [
-        'customer_id', 'Customer Name', 'Boat Type', 'Boat Length', 'Phone',
+        'customer_id', 'Customer Name', 'Boat Type', 'PREFERRED TRUCK', 'Boat Length', 'Phone',
         'Email', 'Address', 'Boat Draft', 'Home Latitude', 'Home Longitude', 'Is ECM Boat'
     ]
 
@@ -216,6 +215,7 @@ def streamlit_main():
 
             st.subheader("Boat Info")
             boat_type = st.text_input("Boat Type*", help="e.g., Powerboat, Sailboat MD")
+            preferred_truck = st.text_input("Preferred Truck", help="e.g., S20, S21, S23") # New field
             boat_length = st.number_input("Boat Length (ft)*", min_value=1.0, value=25.0, format="%.1f")
             boat_draft = st.number_input("Boat Draft (ft)", min_value=0.0, value=3.0, format="%.1f")
             
@@ -234,6 +234,7 @@ def streamlit_main():
                     new_customer = Customer(
                         customer_name=customer_name, phone=phone, email=email, address=address,
                         boat_type=boat_type, boat_length=boat_length, boat_draft=boat_draft,
+                        preferred_truck=preferred_truck,
                         home_latitude=home_latitude, home_longitude=home_longitude,
                         is_ecm_boat=is_ecm_boat
                         # customer_id will be auto-generated
