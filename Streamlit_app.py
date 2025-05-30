@@ -14,11 +14,8 @@ JOB_CSV_FILE = "boat_jobs.csv"
 class Customer:
     def __init__(self, customer_name, boat_type, boat_length, phone, email, address,
                  boat_draft, home_latitude, home_longitude, is_ecm_boat,
-                 preferred_truck="", customer_id=None): # preferred_truck is a parameter here
+                 preferred_truck="", customer_id=None):
 
-        # --- This is where you assign the parameters to instance attributes ---
-
-        # Handle customer_id (generate if None or empty)
         if pd.isna(customer_id) or str(customer_id).strip() == "":
             self.customer_id = str(uuid.uuid4())
         else:
@@ -29,11 +26,9 @@ class Customer:
         self.email = str(email if pd.notna(email) else "")
         self.address = str(address if pd.notna(address) else "")
         self.boat_type = str(boat_type if pd.notna(boat_type) else "")
-
-        # ===> ADD THE LINE HERE <===
+        self.preferred_truck = str(preferred_truck if pd.notna(preferred_truck) else "")
         self.preferred_truck = str(preferred_truck if pd.notna(preferred_truck) else "")
 
-        # Continue with other attributes
         try:
             self.boat_length = float(boat_length) if pd.notna(boat_length) else 0.0
         except (ValueError, TypeError):
@@ -88,39 +83,37 @@ class Job:
         self.preferred_truck_snapshot = str(preferred_truck_snapshot)
 
 
-    def to_dict(self): # To convert Job object to a dictionary for DataFrame
+    def to_dict(self): # To convert Customer object to a dictionary for DataFrame
         return {
-            'job_id': self.job_id,
             'customer_id': self.customer_id,
-            'service_type': self.service_type,
-            'requested_date': self.requested_date,
-            'scheduled_date_time': self.scheduled_date_time,
-            'origin_is_ecm_storage': self.origin_is_ecm_storage,
-            'origin_address': self.origin_address,
-            'destination_is_ecm_storage': self.destination_is_ecm_storage,
-            'destination_address': self.destination_address,
-            'boat_details_snapshot': self.boat_details_snapshot,
-            'job_status': self.job_status,
-            'notes': self.notes,
-            'preferred_truck_snapshot': self.preferred_truck_snapshot
+            'Customer Name': self.customer_name, # Matches CSV header
+            'Boat Type': self.boat_type,         # Matches CSV header
+            'PREFERRED TRUCK': self.preferred_truck, # Matches CSV header
+            'Boat Length': self.boat_length,     # Matches CSV header
+            'Phone': self.phone,                 # Matches CSV header
+            'Email': self.email,                 # Matches CSV header
+            'Address': self.address,             # Matches CSV header
+            'Boat Draft': self.boat_draft,       # Matches CSV header
+            'Home Latitude': self.home_latitude, # Matches CSV header
+            'Home Longitude': self.home_longitude, # Matches CSV header
+            'Is ECM Boat': self.is_ecm_boat      # Matches CSV header
         }
 
     @staticmethod
-    def from_dict(data_dict): # Create Job object from a dictionary (e.g., a DataFrame row)
-        return Job(
-            job_id=data_dict.get('job_id'),
+    def from_dict(data_dict): # Create Customer object from a dictionary (e.g., a DataFrame row)
+        return Customer(
             customer_id=data_dict.get('customer_id'),
-            service_type=data_dict.get('service_type'),
-            requested_date=data_dict.get('requested_date'),
-            scheduled_date_time=data_dict.get('scheduled_date_time', ""),
-            origin_is_ecm_storage=data_dict.get('origin_is_ecm_storage', False),
-            origin_address=data_dict.get('origin_address', ""),
-            destination_is_ecm_storage=data_dict.get('destination_is_ecm_storage', False),
-            destination_address=data_dict.get('destination_address', ""),
-            boat_details_snapshot=data_dict.get('boat_details_snapshot', ""),
-            job_status=data_dict.get('job_status', "Requested"),
-            notes=data_dict.get('notes', ""),
-            preferred_truck_snapshot=data_dict.get('preferred_truck_snapshot', "")
+            customer_name=data_dict.get('Customer Name'),
+            boat_type=data_dict.get('Boat Type'),
+            preferred_truck=data_dict.get('PREFERRED TRUCK'),
+            boat_length=data_dict.get('Boat Length'),
+            phone=data_dict.get('Phone'),
+            email=data_dict.get('Email'),
+            address=data_dict.get('Address'),
+            boat_draft=data_dict.get('Boat Draft'),
+            home_latitude=data_dict.get('Home Latitude'),
+            home_longitude=data_dict.get('Home Longitude'),
+            is_ecm_boat=data_dict.get('Is ECM Boat')
         )
     
 # --- CSV Data Manager for Customers ---
