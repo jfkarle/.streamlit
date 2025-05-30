@@ -12,22 +12,30 @@ CUSTOMER_CSV_FILE = "ECM Sample Cust.csv" # Your primary CSV data file
 class Customer:
     def __init__(self, customer_name, boat_type, boat_length, phone, email, address,
                  boat_draft, home_latitude, home_longitude, is_ecm_boat,
-                 preferred_truck="", customer_id=None): # Added preferred_truck
+                 preferred_truck="", customer_id=None): # preferred_truck is a parameter here
 
-        # ... (other initializations remain the same) ...
-        self.customer_id = str(customer_id) if customer_id and str(customer_id).strip() else str(uuid.uuid4())
+        # --- This is where you assign the parameters to instance attributes ---
+
+        # Handle customer_id (generate if None or empty)
+        if pd.isna(customer_id) or str(customer_id).strip() == "":
+            self.customer_id = str(uuid.uuid4())
+        else:
+            self.customer_id = str(customer_id)
+
         self.customer_name = str(customer_name if pd.notna(customer_name) else "")
-        # ... (other attributes) ...
+        self.phone = str(phone if pd.notna(phone) else "")
+        self.email = str(email if pd.notna(email) else "")
+        self.address = str(address if pd.notna(address) else "")
         self.boat_type = str(boat_type if pd.notna(boat_type) else "")
-        self.preferred_truck = str(preferred_truck if pd.notna(preferred_truck) else "") # Initialize new attribute
-        # ... (rest of the attributes like boat_length, boat_draft, etc.) ...
+
+        # ===> ADD THE LINE HERE <===
+        self.preferred_truck = str(preferred_truck if pd.notna(preferred_truck) else "")
+
+        # Continue with other attributes
         try:
             self.boat_length = float(boat_length) if pd.notna(boat_length) else 0.0
         except (ValueError, TypeError):
             self.boat_length = 0.0
-        self.phone = str(phone if pd.notna(phone) else "")
-        self.email = str(email if pd.notna(email) else "")
-        self.address = str(address if pd.notna(address) else "")
         try:
             self.boat_draft = float(boat_draft) if pd.notna(boat_draft) else 0.0
         except (ValueError, TypeError):
