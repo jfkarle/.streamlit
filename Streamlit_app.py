@@ -237,14 +237,14 @@ class JobCsvManager:
                             df[col] = ""
                 df = df[self.EXPECTED_HEADERS] # Ensure correct order and drop unexpected
                 if not df.empty: # Only apply if df has rows, otherwise dtypes are set for empty df
-        for col in ['Boat Length', 'Boat Draft', 'Home Latitude', 'Home Longitude']:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-    if 'Is ECM Boat' in df.columns:
-            df['Is ECM Boat'] = df['Is ECM Boat'].apply(
-                lambda x: str(x).strip().upper() == 'TRUE' if pd.notna(x) else False
-            ).astype(bool)
-    return df
+                    for col in ['Boat Length', 'Boat Draft', 'Home Latitude', 'Home Longitude']:
+                        if col in df.columns:
+                            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+                    if 'Is ECM Boat' in df.columns:
+                        df['Is ECM Boat'] = df['Is ECM Boat'].apply(
+                            lambda x: str(x).strip().upper() == 'TRUE' if pd.notna(x) else False
+                        ).astype(bool)
+                return df
     
             else:
                 st.warning(f"Jobs CSV file '{self.filepath}' not found. Creating a new one.")
