@@ -7,6 +7,7 @@ import pandas as pd
 # --- Configuration ---
 DATETIME_FORMAT = "%Y-%m-%d %H:%M"
 CUSTOMER_CSV_FILE = "ECM Sample Cust.csv" # Your primary CSV data file
+ECM_HOME_ADDRESS = "43 Mattakeeset Street, Pembroke, MA 02359"
 
 # --- Customer Class ---
 class Customer:
@@ -56,40 +57,71 @@ class Customer:
         else:
             self.is_ecm_boat = bool(is_ecm_boat)
 
+class Job:
+    # Headers for boat_jobs.csv
+    # job_id, customer_id, service_type, requested_date, scheduled_date_time,
+    # origin_is_ecm_storage, origin_address, destination_is_ecm_storage, destination_address,
+    # boat_details_snapshot, job_status, notes, preferred_truck_snapshot
+    def __init__(self, customer_id, service_type, requested_date,
+                 origin_is_ecm_storage=False, origin_address="",
+                 destination_is_ecm_storage=False, destination_address="",
+                 boat_details_snapshot="", job_status="Requested", notes="",
+                 preferred_truck_snapshot="", scheduled_date_time="", job_id=None):
 
-    def to_dict(self): # To convert Customer object to a dictionary for DataFrame
+        self.job_id = str(job_id) if job_id and str(job_id).strip() else str(uuid.uuid4())
+        self.customer_id = str(customer_id)
+        self.service_type = str(service_type) # "Launch", "Haul-out", "Transport"
+        self.requested_date = str(requested_date) # Store as string e.g., "YYYY-MM-DD"
+
+        # Storing scheduled_date_time as string, can be parsed later if needed
+        self.scheduled_date_time = str(scheduled_date_time) # e.g., "YYYY-MM-DD HH:MM" or blank
+
+        self.origin_is_ecm_storage = bool(origin_is_ecm_storage)
+        self.origin_address = str(origin_address)
+        self.destination_is_ecm_storage = bool(destination_is_ecm_storage)
+        self.destination_address = str(destination_address)
+
+        self.boat_details_snapshot = str(boat_details_snapshot) # e.g., "Customer Name - 35ft Powerboat, S23"
+        self.job_status = str(job_status)
+        self.notes = str(notes)
+        self.preferred_truck_snapshot = str(preferred_truck_snapshot)
+
+
+    def to_dict(self): # To convert Job object to a dictionary for DataFrame
         return {
+            'job_id': self.job_id,
             'customer_id': self.customer_id,
-            'Customer Name': self.customer_name,
-            'Boat Type': self.boat_type,
-            'PREFERRED TRUCK': self.preferred_truck, # Added new field
-            'Boat Length': self.boat_length,
-            'Phone': self.phone,
-            'Email': self.email,
-            'Address': self.address,
-            'Boat Draft': self.boat_draft,
-            'Home Latitude': self.home_latitude,
-            'Home Longitude': self.home_longitude,
-            'Is ECM Boat': self.is_ecm_boat
+            'service_type': self.service_type,
+            'requested_date': self.requested_date,
+            'scheduled_date_time': self.scheduled_date_time,
+            'origin_is_ecm_storage': self.origin_is_ecm_storage,
+            'origin_address': self.origin_address,
+            'destination_is_ecm_storage': self.destination_is_ecm_storage,
+            'destination_address': self.destination_address,
+            'boat_details_snapshot': self.boat_details_snapshot,
+            'job_status': self.job_status,
+            'notes': self.notes,
+            'preferred_truck_snapshot': self.preferred_truck_snapshot
         }
 
     @staticmethod
-    def from_dict(data_dict): # Create Customer object from a dictionary (e.g., a DataFrame row)
-        return Customer(
+    def from_dict(data_dict): # Create Job object from a dictionary (e.g., a DataFrame row)
+        return Job(
+            job_id=data_dict.get('job_id'),
             customer_id=data_dict.get('customer_id'),
-            customer_name=data_dict.get('Customer Name'),
-            boat_type=data_dict.get('Boat Type'),
-            preferred_truck=data_dict.get('PREFERRED TRUCK'), # Added new field
-            boat_length=data_dict.get('Boat Length'),
-            phone=data_dict.get('Phone'),
-            email=data_dict.get('Email'),
-            address=data_dict.get('Address'),
-            boat_draft=data_dict.get('Boat Draft'),
-            home_latitude=data_dict.get('Home Latitude'),
-            home_longitude=data_dict.get('Home Longitude'),
-            is_ecm_boat=data_dict.get('Is ECM Boat')
+            service_type=data_dict.get('service_type'),
+            requested_date=data_dict.get('requested_date'),
+            scheduled_date_time=data_dict.get('scheduled_date_time', ""),
+            origin_is_ecm_storage=data_dict.get('origin_is_ecm_storage', False),
+            origin_address=data_dict.get('origin_address', ""),
+            destination_is_ecm_storage=data_dict.get('destination_is_ecm_storage', False),
+            destination_address=data_dict.get('destination_address', ""),
+            boat_details_snapshot=data_dict.get('boat_details_snapshot', ""),
+            job_status=data_dict.get('job_status', "Requested"),
+            notes=data_dict.get('notes', ""),
+            preferred_truck_snapshot=data_dict.get('preferred_truck_snapshot', "")
         )
-
+    
 # --- CSV Data Manager for Customers ---
 class CustomerCsvManager:
     EXPECTED_HEADERS = [
@@ -179,145 +211,259 @@ class CustomerCsvManager:
             st.error(f"Customer with ID '{customer_id_to_update}' not found for update.")
             return False
 
+class JobCsvManager:
+    EXPECTED_HEADERS = [
+        'job_id', 'customer_id', 'service_type', 'requested_date', 'scheduled_date_time',
+        'origin_is_ecm_storage', 'origin_address', 'destination_is_ecm_storage', 'destination_address',
+        'boat_details_snapshot', 'job_status', 'notes', 'preferred_truck_snapshot'
+    ]
+
+    def __init__(self, csv_filepath):
+        self.filepath = csv_filepath
+        self.df = self._load_csv()
+
+    def _load_csv(self):
+        try:
+            if os.path.exists(self.filepath):
+                df = pd.read_csv(self.filepath, dtype={'job_id': str, 'customer_id': str}) # Or your relevant dtype map
+                # Ensure all expected columns exist
+                for col in self.EXPECTED_HEADERS:
+                    if col not in df.columns:
+                        if col.endswith('_is_ecm_storage') or col == 'Is ECM Boat': # Boolean columns
+                            df[col] = False
+                        elif col in ['Boat Length', 'Boat Draft', 'Home Latitude', 'Home Longitude']: # Numeric columns
+                            df[col] = 0.0 # Or pd.NA
+                        else: # String columns
+                            df[col] = ""
+                df = df[self.EXPECTED_HEADERS] # Ensure correct order and drop unexpected
+                if not df.empty: # Only apply if df has rows, otherwise dtypes are set for empty df
+        for col in ['Boat Length', 'Boat Draft', 'Home Latitude', 'Home Longitude']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+    if 'Is ECM Boat' in df.columns:
+            df['Is ECM Boat'] = df['Is ECM Boat'].apply(
+                lambda x: str(x).strip().upper() == 'TRUE' if pd.notna(x) else False
+            ).astype(bool)
+    return df
+    
+            else:
+                st.warning(f"Jobs CSV file '{self.filepath}' not found. Creating a new one.")
+                df = pd.DataFrame(columns=self.EXPECTED_HEADERS)
+                df.to_csv(self.filepath, index=False)
+            return df
+        except pd.errors.EmptyDataError:
+            st.warning(f"Jobs CSV file '{self.filepath}' is empty. Initializing with headers.")
+            df = pd.DataFrame(columns=self.EXPECTED_HEADERS)
+            df.to_csv(self.filepath, index=False)
+            return df
+        except Exception as e:
+            st.error(f"Error loading or creating Jobs CSV '{self.filepath}': {e}")
+            return pd.DataFrame(columns=self.EXPECTED_HEADERS)
+
+    def _save_csv(self):
+        try:
+            self.df.to_csv(self.filepath, index=False)
+        except Exception as e:
+            st.error(f"Error saving data to Jobs CSV '{self.filepath}': {e}")
+
+    def get_all_jobs(self):
+        self.df = self._load_csv() # Reload data
+        jobs = []
+        for _, row in self.df.iterrows():
+            jobs.append(Job.from_dict(row.to_dict()))
+        return jobs
+
+    def add_job_obj(self, job_obj: Job):
+        new_job_dict = job_obj.to_dict()
+        new_df_row = pd.DataFrame([new_job_dict])
+        self.df = pd.concat([self.df, new_df_row], ignore_index=True)
+        self._save_csv()
+        st.success(f"New job for service '{job_obj.service_type}' requested. Job ID: {job_obj.job_id}")
+        return True
+
+    def update_job_by_id(self, job_id_to_update, updated_job_obj: Job):
+        # Ensure customer_id and job_id are treated as strings for matching
+        self.df['job_id'] = self.df['job_id'].astype(str)
+        job_id_to_update = str(job_id_to_update)
+
+        if self.df['job_id'].eq(job_id_to_update).any():
+            idx = self.df[self.df['job_id'] == job_id_to_update].index
+            if not idx.empty:
+                job_dict = updated_job_obj.to_dict()
+                for key, value in job_dict.items():
+                    if key in self.df.columns: # Ensure key exists before trying to update
+                        self.df.loc[idx, key] = value
+                self._save_csv()
+                st.success(f"Job ID '{job_id_to_update}' updated.")
+                return True
+        st.error(f"Job with ID '{job_id_to_update}' not found for update.")
+        return False
+
+    def get_job_by_id(self, job_id):
+        self.df = self._load_csv()
+        self.df['job_id'] = self.df['job_id'].astype(str)
+        job_id = str(job_id)
+        job_row = self.df[self.df['job_id'] == job_id]
+        if not job_row.empty:
+            return Job.from_dict(job_row.iloc[0].to_dict())
+        return None
+
 # --- Streamlit UI Application ---
 def streamlit_main():
     st.set_page_config(layout="wide", page_title="Boat Hauling Automator")
-    st.title("🚤 Boat Hauling Business Automator (CSV Mode)")
-    st.caption(f"Data file: {CUSTOMER_CSV_FILE}")
-    st.write(f"Current Time: {datetime.now().strftime(DATETIME_FORMAT)} (Location: Pembroke, MA)")
+    st.title("🚤 ECM Boat Hauling Business Automator (CSV Mode)")
+    st.caption(f"Customer Data: {CUSTOMER_CSV_FILE} | Job Data: {JOB_CSV_FILE}")
+    st.write(f"Current Time: {datetime.now().strftime(DATETIME_FORMAT)} (Pembroke, MA)")
 
-    # Initialize CSV manager for Customers
+    # Initialize Managers
     if 'customer_manager' not in st.session_state:
         st.session_state.customer_manager = CustomerCsvManager(CUSTOMER_CSV_FILE)
     customer_manager = st.session_state.customer_manager
+
+    if 'job_manager' not in st.session_state:
+        st.session_state.job_manager = JobCsvManager(JOB_CSV_FILE)
+    job_manager = st.session_state.job_manager
     
-    menu_options = ["Home", "Add New Customer", "List/View All Customers"]
+    menu_options = [
+        "Home", "Add New Customer", "List/View All Customers",
+        "Schedule New Service", "View All Jobs" # New Job Options
+    ]
     menu_choice = st.sidebar.selectbox("Navigation", menu_options)
 
-    if menu_choice == "Home":
-        st.header("Welcome!")
-        st.write("Select an option from the sidebar to manage customers using a CSV file.")
-        all_customers = customer_manager.get_all_customers()
-        st.metric("Total Customers (from CSV)", len(all_customers))
-        st.sidebar.info(f"""
-        **Note on Data Saving (CSV Mode):**
-        - When running locally, changes are saved directly to `{CUSTOMER_CSV_FILE}`.
-        - When deployed on Streamlit Cloud, saved changes update the CSV in the app's temporary session.
-        These changes on Streamlit Cloud may be lost if the app restarts.
-        To make changes permanent on Streamlit Cloud, you would typically download the updated CSV
-        and manually update it in your GitHub repository.
-        """)
+    # ... (Home, Add New Customer, List/View All Customers sections remain the same) ...
+    # Make sure the "Add New Customer" and "List/View All Customers" sections still use
+    # customer_manager correctly as per our last working version.
 
-
-    elif menu_choice == "Add New Customer":
-        st.header("➕ Add New Customer (to CSV)")
-        with st.form("add_customer_csv_form", clear_on_submit=True):
-            st.subheader("Customer Info")
-            # Column names from ECM Sample Cust.csv:
-            # customer_id, Customer Name, Boat Type, Boat Length, Phone, Email, Address,
-            # Boat Draft, Home Latitude, Home Longitude, Is ECM Boat
-            customer_name = st.text_input("Customer Name*", help="e.g., John Doe")
-            phone = st.text_input("Phone", help="e.g., 555-123-4567")
-            email = st.text_input("Email", help="e.g., john.doe@example.com")
-            address = st.text_area("Address", help="e.g., 123 Main St, Anytown, USA")
-
-            st.subheader("Boat Info")
-            boat_type_options = ["Powerboat", "Sailboat DT", "Sailboat MT"] # Define options for Boat Type
-            boat_type = st.selectbox("Boat Type*", options=boat_type_options, index=0, help="Select the type of boat") # Changed to selectbox
-            preferred_truck_options = ["S20", "S21", "S23"] # Define options for Preferred Truck
-            preferred_truck = st.selectbox("Preferred Truck", options=preferred_truck_options, index=0, help="Select the preferred truck") # Changed to selectbox
-            
-            boat_length = st.number_input("Boat Length (ft)*", min_value=1.0, value=25.0, format="%.1f")
-            boat_draft = st.number_input("Boat Draft (ft)", min_value=0.0, value=3.0, format="%.1f")
-            
-            st.subheader("Location & Other")
-            home_latitude = st.number_input("Home Latitude", format="%.6f", value=42.078000)
-            home_longitude = st.number_input("Home Longitude", format="%.6f", value=-70.710000)
-            is_ecm_boat = st.checkbox("Is ECM Boat?", value=False)
-            
-            # customer_id is auto-generated by the class if not provided
-            submitted = st.form_submit_button("Add Customer")
-
-            if submitted:
-                if not all([customer_name, boat_type]): # Basic validation
-                    st.error("Please fill in required fields: Customer Name, Boat Type.")
-                else:
-                    new_customer = Customer(
-                        customer_name=customer_name, phone=phone, email=email, address=address,
-                        boat_type=boat_type, boat_length=boat_length, boat_draft=boat_draft,
-                        preferred_truck=preferred_truck,
-                        home_latitude=home_latitude, home_longitude=home_longitude,
-                        is_ecm_boat=is_ecm_boat
-                        # customer_id will be auto-generated
-                    )
-                    customer_manager.add_customer_obj(new_customer)
-
-    elif menu_choice == "List/View All Customers":
-        st.header("👥 List of Customers (from CSV)")
+    if menu_choice == "Schedule New Service":
+        st.header("🗓️ Schedule New Service")
+        
         all_customers = customer_manager.get_all_customers()
         if not all_customers:
-            st.info(f"No customers found in '{CUSTOMER_CSV_FILE}'.")
+            st.warning("No customers found. Please add a customer first.")
+            return
+
+        customer_options_dict = {f"{c.customer_name} (ID: ...{c.customer_id[-6:]})": c for c in sorted(all_customers, key=lambda c: c.customer_name)}
+        selected_customer_display_name = st.selectbox("Select Customer*", list(customer_options_dict.keys()))
+        
+        selected_customer_obj = customer_options_dict.get(selected_customer_display_name)
+
+        if selected_customer_obj:
+            st.write(f"Selected Customer: {selected_customer_obj.customer_name}, Phone: {selected_customer_obj.phone}, Email: {selected_customer_obj.email}")
+            st.write(f"Boat: {selected_customer_obj.boat_type}, Length: {selected_customer_obj.boat_length}ft, Preferred Truck: {selected_customer_obj.preferred_truck}")
+
+            with st.form("schedule_job_form", clear_on_submit=True):
+                service_type_options = ["Launch", "Haul-out", "Transport"]
+                service_type = st.selectbox("Service Type*", options=service_type_options, index=0)
+                
+                requested_date = st.date_input("Requested Service Date*", value=datetime.now().date())
+
+                st.subheader("Origin Details")
+                origin_is_ecm = st.checkbox("Origin is ECM Storage (Pembroke)", key="origin_ecm")
+                if origin_is_ecm:
+                    origin_address_val = ECM_HOME_ADDRESS
+                    st.text_input("Origin Address", value=origin_address_val, disabled=True)
+                else:
+                    origin_address_val = st.text_input("Origin Address*", help="Customer home, ramp name, or other address")
+
+                st.subheader("Destination Details")
+                dest_is_ecm = st.checkbox("Destination is ECM Storage (Pembroke)", key="dest_ecm")
+                if dest_is_ecm:
+                    destination_address_val = ECM_HOME_ADDRESS
+                    st.text_input("Destination Address", value=destination_address_val, disabled=True)
+                else:
+                    destination_address_val = st.text_input("Destination Address*", help="Customer home, ramp name, or other address")
+
+                # Auto-populate based on service type (can be refined)
+                if service_type == "Launch" and not origin_is_ecm: # Assuming launch often from customer home
+                     if selected_customer_obj.address:
+                        origin_address_val = selected_customer_obj.address
+                        st.info(f"Origin auto-filled with customer address: {origin_address_val} (editable if ECM storage not checked)")
+                elif service_type == "Haul-out" and not dest_is_ecm: # Assuming haul-out often to customer home
+                     if selected_customer_obj.address:
+                        destination_address_val = selected_customer_obj.address
+                        st.info(f"Destination auto-filled with customer address: {destination_address_val} (editable if ECM storage not checked)")
+
+
+                boat_details_snapshot_val = f"{selected_customer_obj.customer_name} - {selected_customer_obj.boat_length}ft {selected_customer_obj.boat_type}, Truck: {selected_customer_obj.preferred_truck}"
+                st.text_area("Boat Details Snapshot (auto-generated)", value=boat_details_snapshot_val, disabled=True, height=100)
+                
+                preferred_truck_snapshot_val = selected_customer_obj.preferred_truck
+                # Allow override if needed, or just use customer's default
+                # preferred_truck_override = st.text_input("Assign Truck for this Job (override default)", value=preferred_truck_snapshot_val)
+
+
+                notes = st.text_area("Job Notes/Special Instructions")
+                
+                job_status_val = "Requested" # Default status for new requests
+
+                submit_job_button = st.form_submit_button("Request Service")
+
+                if submit_job_button:
+                    if not origin_address_val or not destination_address_val:
+                        st.error("Origin and Destination addresses are required.")
+                    else:
+                        new_job = Job(
+                            customer_id=selected_customer_obj.customer_id,
+                            service_type=service_type,
+                            requested_date=requested_date.strftime("%Y-%m-%d"),
+                            origin_is_ecm_storage=origin_is_ecm,
+                            origin_address=origin_address_val,
+                            destination_is_ecm_storage=dest_is_ecm,
+                            destination_address=destination_address_val,
+                            boat_details_snapshot=boat_details_snapshot_val,
+                            job_status=job_status_val,
+                            notes=notes,
+                            preferred_truck_snapshot=preferred_truck_snapshot_val # Using customer's default for now
+                        )
+                        if job_manager.add_job_obj(new_job):
+                            st.success(f"Service request for {selected_customer_obj.customer_name} submitted!")
+                        else:
+                            st.error("Failed to submit service request.")
         else:
-            st.write(f"Found {len(all_customers)} customer(s).")
-            for customer in sorted(all_customers, key=lambda c: c.customer_name):
-                exp_title = f"{customer.customer_name} ({customer.boat_type}, {customer.boat_length}ft)"
-                with st.expander(exp_title):
-                    st.markdown(f"**ID:** `{customer.customer_id}`")
-                    cols = st.columns(2)
-                    cols[0].markdown(f"**Phone:** {customer.phone if customer.phone else 'N/A'}")
-                    cols[0].markdown(f"**Email:** {customer.email if customer.email else 'N/A'}")
-                    cols[0].markdown(f"**Address:** {customer.address if customer.address else 'N/A'}")
-                    cols[1].markdown(f"**Boat Type:** {customer.boat_type}")
-                    cols[1].markdown(f"**Preferred Truck:** {customer.preferred_truck if customer.preferred_truck else 'N/A'}") # Display new field
-                    cols[1].markdown(f"**Boat Length:** {customer.boat_length} ft")
-                    cols[1].markdown(f"**Boat Draft:** {customer.boat_draft} ft")
-                    cols[0].markdown(f"**Home Latitude:** {customer.home_latitude}")
-                    cols[0].markdown(f"**Home Longitude:** {customer.home_longitude}")
-                    cols[1].markdown(f"**Is ECM Boat:** {'Yes' if customer.is_ecm_boat else 'No'}")
-                    
-                    st.markdown("---")
-                    st.subheader(f"Edit {customer.customer_name}")
-                    # Use customer_id for unique form key
-                    with st.form(key=f"edit_form_{customer.customer_id}"):
-                            edit_name = st.text_input("Cust. Name", value=customer.customer_name, key=f"name_{customer.customer_id}")
-                            edit_phone = st.text_input("Phone", value=customer.phone, key=f"phone_{customer.customer_id}")
-                            edit_email = st.text_input("Email", value=customer.email, key=f"email_{customer.customer_id}")
-                            edit_address = st.text_area("Address", value=customer.address, key=f"addr_{customer.customer_id}")
+            st.info("Please select a customer to schedule a service.")
 
-                            # Boat Type Dropdown
-                            boat_type_options = ["Powerboat", "Sailboat DT", "Sailboat MT"]
-                            try: # Set current boat type as default
-                                current_boat_type_index = boat_type_options.index(customer.boat_type)
-                            except ValueError:
-                                current_boat_type_index = 0 # Default to first option if current value not in list
-                            edit_boat_type = st.selectbox("Boat Type", options=boat_type_options, index=current_boat_type_index, key=f"btype_{customer.customer_id}")
+    elif menu_choice == "View All Jobs":
+        st.header(" JobList")
+        all_jobs = job_manager.get_all_jobs()
+        if not all_jobs:
+            st.info(f"No jobs found in '{JOB_CSV_FILE}'.")
+        else:
+            st.write(f"Found {len(all_jobs)} job(s).")
+            
+            # Convert jobs to DataFrame for better display/filtering later
+            jobs_data_for_df = [j.to_dict() for j in all_jobs]
+            jobs_df = pd.DataFrame(jobs_data_for_df)
 
-                            # Preferred Truck Dropdown
-                            preferred_truck_options = ["S20", "S21", "S23", ""] # Added "" for 'not set' or 'clear' option
-                            try: # Set current truck as default
-                                current_truck_index = preferred_truck_options.index(customer.preferred_truck)
-                            except ValueError:
-                                current_truck_index = len(preferred_truck_options) - 1 # Default to empty string if current value not in list
-                            edit_preferred_truck = st.selectbox("Preferred Truck", options=preferred_truck_options, index=current_truck_index, key=f"ptruck_{customer.customer_id}")
-                            
-                            edit_boat_length = st.number_input("Length", value=float(customer.boat_length), min_value=0.0, format="%.1f", key=f"blen_{customer.customer_id}")
-                            edit_boat_draft = st.number_input("Draft", value=float(customer.boat_draft), min_value=0.0, format="%.1f", key=f"bdr_{customer.customer_id}")
-                            edit_lat = st.number_input("Latitude", value=float(customer.home_latitude), format="%.6f", key=f"lat_{customer.customer_id}")
-                            edit_lon = st.number_input("Longitude", value=float(customer.home_longitude), format="%.6f", key=f"lon_{customer.customer_id}")
-                            edit_ecm = st.checkbox("ECM Boat", value=bool(customer.is_ecm_boat), key=f"ecm_{customer.customer_id}")
-                            
-                            update_submitted = st.form_submit_button("Save Changes")
-                            if update_submitted:
-                                updated_cust_obj = Customer(
-                                    customer_name=edit_name, phone=edit_phone, email=edit_email, address=edit_address,
-                                    boat_type=edit_boat_type, # Value from selectbox
-                                    preferred_truck=edit_preferred_truck, # Value from selectbox
-                                    boat_length=edit_boat_length, boat_draft=edit_boat_draft,
-                                    home_latitude=edit_lat, home_longitude=edit_lon, is_ecm_boat=edit_ecm,
-                                    customer_id=customer.customer_id 
-                                )
-                                if customer_manager.update_customer_by_id(customer.customer_id, updated_cust_obj):
-                                    st.experimental_rerun()
+            # Reorder and select columns for display
+            display_cols = [
+                'job_id', 'customer_id', 'service_type', 'requested_date', 'scheduled_date_time', 'job_status',
+                'origin_address', 'destination_address', 'boat_details_snapshot', 'preferred_truck_snapshot', 'notes'
+            ]
+            # Filter out columns not present in DataFrame to avoid errors
+            display_cols_present = [col for col in display_cols if col in jobs_df.columns]
+
+            if not jobs_df.empty:
+                st.dataframe(jobs_df[display_cols_present])
+            else:
+                st.info("No job data to display in table format yet.")
+
+            # Detailed view in expanders
+            for job in sorted(all_jobs, key=lambda j: j.requested_date, reverse=True): # Sort by requested date
+                customer = customer_manager.get_customer_by_id(job.customer_id)
+                customer_name_display = customer.customer_name if customer else "N/A"
+                
+                with st.expander(f"Job ID: ...{job.job_id[-6:]} - {job.service_type} for {customer_name_display} (Requested: {job.requested_date}) - Status: {job.job_status}"):
+                    st.markdown(f"**Customer:** {customer_name_display} (ID: `{job.customer_id}`)")
+                    st.markdown(f"**Service Type:** {job.service_type}")
+                    st.markdown(f"**Requested Date:** {job.requested_date}")
+                    st.markdown(f"**Scheduled Date/Time:** {job.scheduled_date_time if job.scheduled_date_time else 'Not Scheduled'}")
+                    st.markdown(f"**Origin:** {'ECM Storage' if job.origin_is_ecm_storage else job.origin_address}")
+                    st.markdown(f"**Destination:** {'ECM Storage' if job.destination_is_ecm_storage else job.destination_address}")
+                    st.markdown(f"**Boat Snapshot:** {job.boat_details_snapshot}")
+                    st.markdown(f"**Truck Snapshot:** {job.preferred_truck_snapshot}")
+                    st.markdown(f"**Notes:** {job.notes if job.notes else 'N/A'}")
+                    st.markdown(f"**Status:** {job.job_status}")
+                    # Add an "Edit Job" button/form here later if needed
 
 # --- Main Execution ---
 if __name__ == "__main__":
