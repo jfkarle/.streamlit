@@ -8,6 +8,7 @@ import pandas as pd
 DATETIME_FORMAT = "%Y-%m-%d %H:%M"
 CUSTOMER_CSV_FILE = "ECM Sample Cust.csv" # Your primary CSV data file
 ECM_HOME_ADDRESS = "43 Mattakeeset Street, Pembroke, MA 02359"
+JOB_CSV_FILE = "boat_jobs.csv"
 
 # --- Customer Class ---
 class Customer:
