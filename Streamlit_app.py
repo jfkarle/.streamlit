@@ -222,8 +222,11 @@ def streamlit_main():
             address = st.text_area("Address", help="e.g., 123 Main St, Anytown, USA")
 
             st.subheader("Boat Info")
-            boat_type = st.text_input("Boat Type*", help="e.g., Powerboat, Sailboat MD")
-            preferred_truck = st.text_input("Preferred Truck", help="e.g., S20, S21, S23") # New field
+            boat_type_options = ["Powerboat", "Sailboat DT", "Sailboat MT"] # Define options for Boat Type
+            boat_type = st.selectbox("Boat Type*", options=boat_type_options, index=0, help="Select the type of boat") # Changed to selectbox
+            preferred_truck_options = ["S20", "S21", "S23"] # Define options for Preferred Truck
+            preferred_truck = st.selectbox("Preferred Truck", options=preferred_truck_options, index=0, help="Select the preferred truck") # Changed to selectbox
+            
             boat_length = st.number_input("Boat Length (ft)*", min_value=1.0, value=25.0, format="%.1f")
             boat_draft = st.number_input("Boat Draft (ft)", min_value=0.0, value=3.0, format="%.1f")
             
@@ -276,29 +279,45 @@ def streamlit_main():
                     st.subheader(f"Edit {customer.customer_name}")
                     # Use customer_id for unique form key
                     with st.form(key=f"edit_form_{customer.customer_id}"):
-                        edit_name = st.text_input("Cust. Name", value=customer.customer_name, key=f"name_{customer.customer_id}")
-                        edit_phone = st.text_input("Phone", value=customer.phone, key=f"phone_{customer.customer_id}")
-                        edit_email = st.text_input("Email", value=customer.email, key=f"email_{customer.customer_id}")
-                        edit_address = st.text_area("Address", value=customer.address, key=f"addr_{customer.customer_id}")
-                        edit_boat_type = st.text_input("Boat Type", value=customer.boat_type, key=f"btype_{customer.customer_id}")
-                        edit_preferred_truck = st.text_input("Preferred Truck", value=customer.preferred_truck, key=f"ptruck_{customer.customer_id}")
-                        edit_boat_length = st.number_input("Length", value=float(customer.boat_length), min_value=0.0, format="%.1f", key=f"blen_{customer.customer_id}")
-                        edit_boat_draft = st.number_input("Draft", value=float(customer.boat_draft), min_value=0.0, format="%.1f", key=f"bdr_{customer.customer_id}")
-                        edit_lat = st.number_input("Latitude", value=float(customer.home_latitude), format="%.6f", key=f"lat_{customer.customer_id}")
-                        edit_lon = st.number_input("Longitude", value=float(customer.home_longitude), format="%.6f", key=f"lon_{customer.customer_id}")
-                        edit_ecm = st.checkbox("ECM Boat", value=bool(customer.is_ecm_boat), key=f"ecm_{customer.customer_id}")
-                        
-                        update_submitted = st.form_submit_button("Save Changes")
-                        if update_submitted:
-                            updated_cust_obj = Customer(
-                                customer_name=edit_name, phone=edit_phone, email=edit_email, address=edit_address,
-                                boat_type=edit_boat_type, boat_length=edit_boat_length, boat_draft=edit_boat_draft,
-                                preferred_truck=edit_preferred_truck,
-                                home_latitude=edit_lat, home_longitude=edit_lon, is_ecm_boat=edit_ecm,
-                                customer_id=customer.customer_id # CRITICAL: Pass existing ID
-                            )
-                            if customer_manager.update_customer_by_id(customer.customer_id, updated_cust_obj):
-                                st.experimental_rerun() # Refresh the list to show updated data
+                            edit_name = st.text_input("Cust. Name", value=customer.customer_name, key=f"name_{customer.customer_id}")
+                            edit_phone = st.text_input("Phone", value=customer.phone, key=f"phone_{customer.customer_id}")
+                            edit_email = st.text_input("Email", value=customer.email, key=f"email_{customer.customer_id}")
+                            edit_address = st.text_area("Address", value=customer.address, key=f"addr_{customer.customer_id}")
+
+                            # Boat Type Dropdown
+                            boat_type_options = ["Powerboat", "Sailboat DT", "Sailboat MT"]
+                            try: # Set current boat type as default
+                                current_boat_type_index = boat_type_options.index(customer.boat_type)
+                            except ValueError:
+                                current_boat_type_index = 0 # Default to first option if current value not in list
+                            edit_boat_type = st.selectbox("Boat Type", options=boat_type_options, index=current_boat_type_index, key=f"btype_{customer.customer_id}")
+
+                            # Preferred Truck Dropdown
+                            preferred_truck_options = ["S20", "S21", "S23", ""] # Added "" for 'not set' or 'clear' option
+                            try: # Set current truck as default
+                                current_truck_index = preferred_truck_options.index(customer.preferred_truck)
+                            except ValueError:
+                                current_truck_index = len(preferred_truck_options) - 1 # Default to empty string if current value not in list
+                            edit_preferred_truck = st.selectbox("Preferred Truck", options=preferred_truck_options, index=current_truck_index, key=f"ptruck_{customer.customer_id}")
+                            
+                            edit_boat_length = st.number_input("Length", value=float(customer.boat_length), min_value=0.0, format="%.1f", key=f"blen_{customer.customer_id}")
+                            edit_boat_draft = st.number_input("Draft", value=float(customer.boat_draft), min_value=0.0, format="%.1f", key=f"bdr_{customer.customer_id}")
+                            edit_lat = st.number_input("Latitude", value=float(customer.home_latitude), format="%.6f", key=f"lat_{customer.customer_id}")
+                            edit_lon = st.number_input("Longitude", value=float(customer.home_longitude), format="%.6f", key=f"lon_{customer.customer_id}")
+                            edit_ecm = st.checkbox("ECM Boat", value=bool(customer.is_ecm_boat), key=f"ecm_{customer.customer_id}")
+                            
+                            update_submitted = st.form_submit_button("Save Changes")
+                            if update_submitted:
+                                updated_cust_obj = Customer(
+                                    customer_name=edit_name, phone=edit_phone, email=edit_email, address=edit_address,
+                                    boat_type=edit_boat_type, # Value from selectbox
+                                    preferred_truck=edit_preferred_truck, # Value from selectbox
+                                    boat_length=edit_boat_length, boat_draft=edit_boat_draft,
+                                    home_latitude=edit_lat, home_longitude=edit_lon, is_ecm_boat=edit_ecm,
+                                    customer_id=customer.customer_id 
+                                )
+                                if customer_manager.update_customer_by_id(customer.customer_id, updated_cust_obj):
+                                    st.experimental_rerun()
 
 # --- Main Execution ---
 if __name__ == "__main__":
