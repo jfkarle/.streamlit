@@ -11,6 +11,84 @@ ECM_HOME_ADDRESS = "43 Mattakeeset Street, Pembroke, MA 02359"
 JOB_CSV_FILE = "boat_jobs.csv"
 
 # --- Customer Class ---
+It looks like you've pasted the Job class definition again, but the to_dict and from_dict methods inside it are still structured to handle Customer attributes and create Customer objects, not Job objects.
+
+This is the core issue causing the AttributeError when you call Customer.from_dict(...) because the Customer class itself is missing these methods.
+
+You need to:
+
+Define to_dict(self) and @staticmethod from_dict(data_dict) inside your Customer class to handle Customer attributes.
+Ensure the to_dict(self) and @staticmethod from_dict(data_dict) methods inside your Job class handle Job attributes and create Job objects.
+Let's correct this.
+
+Here's what your Job class's to_dict and from_dict methods should look like (they were correct in a previous version I provided):
+
+Python
+
+class Job:
+    # ... (your __init__ method for Job is here and looks correct) ...
+    def __init__(self, customer_id, service_type, requested_date,
+                 origin_is_ecm_storage=False, origin_address="",
+                 destination_is_ecm_storage=False, destination_address="",
+                 boat_details_snapshot="", job_status="Requested", notes="",
+                 preferred_truck_snapshot="", scheduled_date_time="", job_id=None):
+
+        self.job_id = str(job_id) if job_id and str(job_id).strip() else str(uuid.uuid4())
+        self.customer_id = str(customer_id)
+        self.service_type = str(service_type)
+        self.requested_date = str(requested_date)
+        self.scheduled_date_time = str(scheduled_date_time)
+        self.origin_is_ecm_storage = bool(origin_is_ecm_storage)
+        self.origin_address = str(origin_address)
+        self.destination_is_ecm_storage = bool(destination_is_ecm_storage)
+        self.destination_address = str(destination_address)
+        self.boat_details_snapshot = str(boat_details_snapshot)
+        self.job_status = str(job_status)
+        self.notes = str(notes)
+        self.preferred_truck_snapshot = str(preferred_truck_snapshot)
+
+    def to_dict(self): # To convert JOB object to a dictionary
+        return {
+            'job_id': self.job_id,
+            'customer_id': self.customer_id,
+            'service_type': self.service_type,
+            'requested_date': self.requested_date,
+            'scheduled_date_time': self.scheduled_date_time,
+            'origin_is_ecm_storage': self.origin_is_ecm_storage,
+            'origin_address': self.origin_address,
+            'destination_is_ecm_storage': self.destination_is_ecm_storage,
+            'destination_address': self.destination_address,
+            'boat_details_snapshot': self.boat_details_snapshot,
+            'job_status': self.job_status,
+            'notes': self.notes,
+            'preferred_truck_snapshot': self.preferred_truck_snapshot
+        }
+
+    @staticmethod
+    def from_dict(data_dict): # Create JOB object from a dictionary
+        return Job( # <--- Should return a Job object
+            job_id=data_dict.get('job_id'),
+            customer_id=data_dict.get('customer_id'),
+            service_type=data_dict.get('service_type'),
+            requested_date=data_dict.get('requested_date'),
+            scheduled_date_time=data_dict.get('scheduled_date_time', ""),
+            origin_is_ecm_storage=data_dict.get('origin_is_ecm_storage', False),
+            origin_address=data_dict.get('origin_address', ""),
+            destination_is_ecm_storage=data_dict.get('destination_is_ecm_storage', False),
+            destination_address=data_dict.get('destination_address', ""),
+            boat_details_snapshot=data_dict.get('boat_details_snapshot', ""),
+            job_status=data_dict.get('job_status', "Requested"),
+            notes=data_dict.get('notes', ""),
+            preferred_truck_snapshot=data_dict.get('preferred_truck_snapshot', "")
+        )
+And, crucially, here is what your Customer class needs for its own to_dict and from_dict methods. These must be part of the Customer class, not the Job class.
+
+Python
+
+# Ensure pandas and uuid are imported at the top of your file
+# import pandas as pd
+# import uuid
+
 class Customer:
     def __init__(self, customer_name, boat_type, boat_length, phone, email, address,
                  boat_draft, home_latitude, home_longitude, is_ecm_boat,
@@ -26,7 +104,6 @@ class Customer:
         self.email = str(email if pd.notna(email) else "")
         self.address = str(address if pd.notna(address) else "")
         self.boat_type = str(boat_type if pd.notna(boat_type) else "")
-        self.preferred_truck = str(preferred_truck if pd.notna(preferred_truck) else "")
         self.preferred_truck = str(preferred_truck if pd.notna(preferred_truck) else "")
 
         try:
@@ -53,55 +130,26 @@ class Customer:
         else:
             self.is_ecm_boat = bool(is_ecm_boat)
 
-class Job:
-    # Headers for boat_jobs.csv
-    # job_id, customer_id, service_type, requested_date, scheduled_date_time,
-    # origin_is_ecm_storage, origin_address, destination_is_ecm_storage, destination_address,
-    # boat_details_snapshot, job_status, notes, preferred_truck_snapshot
-    def __init__(self, customer_id, service_type, requested_date,
-                 origin_is_ecm_storage=False, origin_address="",
-                 destination_is_ecm_storage=False, destination_address="",
-                 boat_details_snapshot="", job_status="Requested", notes="",
-                 preferred_truck_snapshot="", scheduled_date_time="", job_id=None):
-
-        self.job_id = str(job_id) if job_id and str(job_id).strip() else str(uuid.uuid4())
-        self.customer_id = str(customer_id)
-        self.service_type = str(service_type) # "Launch", "Haul-out", "Transport"
-        self.requested_date = str(requested_date) # Store as string e.g., "YYYY-MM-DD"
-
-        # Storing scheduled_date_time as string, can be parsed later if needed
-        self.scheduled_date_time = str(scheduled_date_time) # e.g., "YYYY-MM-DD HH:MM" or blank
-
-        self.origin_is_ecm_storage = bool(origin_is_ecm_storage)
-        self.origin_address = str(origin_address)
-        self.destination_is_ecm_storage = bool(destination_is_ecm_storage)
-        self.destination_address = str(destination_address)
-
-        self.boat_details_snapshot = str(boat_details_snapshot) # e.g., "Customer Name - 35ft Powerboat, S23"
-        self.job_status = str(job_status)
-        self.notes = str(notes)
-        self.preferred_truck_snapshot = str(preferred_truck_snapshot)
-
-
-    def to_dict(self): # To convert Customer object to a dictionary for DataFrame
+    # --- Methods for the Customer Class ---
+    def to_dict(self): # To convert CUSTOMER object to a dictionary for DataFrame
         return {
             'customer_id': self.customer_id,
-            'Customer Name': self.customer_name, # Matches CSV header
-            'Boat Type': self.boat_type,         # Matches CSV header
-            'PREFERRED TRUCK': self.preferred_truck, # Matches CSV header
-            'Boat Length': self.boat_length,     # Matches CSV header
-            'Phone': self.phone,                 # Matches CSV header
-            'Email': self.email,                 # Matches CSV header
-            'Address': self.address,             # Matches CSV header
-            'Boat Draft': self.boat_draft,       # Matches CSV header
-            'Home Latitude': self.home_latitude, # Matches CSV header
-            'Home Longitude': self.home_longitude, # Matches CSV header
-            'Is ECM Boat': self.is_ecm_boat      # Matches CSV header
+            'Customer Name': self.customer_name,
+            'Boat Type': self.boat_type,
+            'PREFERRED TRUCK': self.preferred_truck,
+            'Boat Length': self.boat_length,
+            'Phone': self.phone,
+            'Email': self.email,
+            'Address': self.address,
+            'Boat Draft': self.boat_draft,
+            'Home Latitude': self.home_latitude,
+            'Home Longitude': self.home_longitude,
+            'Is ECM Boat': self.is_ecm_boat
         }
 
-    @staticmethod
-    def from_dict(data_dict): # Create Customer object from a dictionary (e.g., a DataFrame row)
-        return Customer(
+    @staticmethod  # <--- THIS DECORATOR IS CRUCIAL for Customer.from_dict
+    def from_dict(data_dict): # Create CUSTOMER object from a dictionary
+        return Customer( # <--- Should return a Customer object
             customer_id=data_dict.get('customer_id'),
             customer_name=data_dict.get('Customer Name'),
             boat_type=data_dict.get('Boat Type'),
