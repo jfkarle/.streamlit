@@ -609,7 +609,7 @@ def streamlit_main():
             jobs_df = pd.DataFrame(jobs_data_for_df)
 
             display_cols = [
-                'job_id', 'customer_id', 'service_type', 'requested_date', 'scheduled_date_time', 'job_status',
+                'scheduled_date_time', 'service_type', 'requested_date', 'job_status',
                 'origin_is_ecm_storage', 'origin_address', 'destination_is_ecm_storage', 'destination_address', 
                 'boat_details_snapshot', 'preferred_truck_snapshot', 'notes'
             ]
