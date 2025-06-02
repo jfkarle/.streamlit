@@ -199,28 +199,6 @@ ALL_BOATS = {
     104: Boat(104, 4, "Powerboat", 25, draft_ft=2.5, height_ft_keel_to_highest=9.0)
 }
 
-def get_customer_details(customer_id):
-    """Fetches customer details from the global ALL_CUSTOMERS dictionary."""
-    customer = ALL_CUSTOMERS.get(customer_id)
-    if not customer:
-        print(f"Warning: Customer ID {customer_id} not found in ALL_CUSTOMERS.")
-    return customer
-
-def get_boat_details(boat_id):
-    """Fetches boat details from the global ALL_BOATS dictionary."""
-    boat = ALL_BOATS.get(boat_id)
-    if not boat:
-        print(f"Warning: Boat ID {boat_id} not found in ALL_BOATS.")
-    return boat
-
-def get_ramp_details(ramp_id_or_name):
-    """Fetches ramp details from the global ECM_RAMPS dictionary."""
-    # Assuming ECM_RAMPS is keyed by a unique ramp_id string like "PlymouthHarbor"
-    ramp = ECM_RAMPS.get(ramp_id_or_name)
-    if not ramp:
-        print(f"Warning: Ramp ID/Name '{ramp_id_or_name}' not found in ECM_RAMPS.")
-    return ramp
-
 # --- Section 3: Date & Time Utilities ---
 def format_time_for_display(time_obj):
     if not isinstance(time_obj, datetime.time): return "InvalidTime"
