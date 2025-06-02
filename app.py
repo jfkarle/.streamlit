@@ -193,3 +193,26 @@ if st.session_state.slot_for_confirmation_preview:
     if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
         new_job_id, message = ecm.confirm_and_schedule_job(
             original_job_request_details=original_request,
+            selected_slot_info=selected_for_preview
+        )
+        if new_job_id:
+            st.success(f"Job Confirmed! {message}")
+            st.session_state.suggested_slot_history = [] # Clear history
+            st.session_state.current_batch_index = -1    # Reset index
+            st.session_state.slot_for_confirmation_preview = None # Clear preview
+            st.session_state.no_more_slots_forward = False # Reset this flag
+            st.rerun()
+        else:
+            st.error(f"Failed to confirm job: {message}")
+    if st.button("Cancel / Choose Another Slot", key="cancel_selection"):
+        st.session_state.slot_for_confirmation_preview = None
+        st.rerun()
+
+# --- Optionally display all scheduled jobs (for testing) ---
+if st.checkbox("Show All Currently Scheduled Jobs (In-Memory List for this Session)"):
+    st.subheader("All Scheduled Jobs (Current Session):")
+    if ecm.SCHEDULED_JOBS: # Assuming SCHEDULED_JOBS is accessible via ecm module
+        for job_item in ecm.SCHEDULED_JOBS:
+            st.text(str(job_item))
+    else:
+        st.write("No jobs scheduled in the current session yet.")
