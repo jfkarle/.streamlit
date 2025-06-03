@@ -272,15 +272,6 @@ if st.session_state.current_batch_index != -1 and st.session_state.suggested_slo
         st.subheader("Suggested Slots:")
         st.write("No further slots available with the current criteria.")
 
-
-You're right, I gave you a general idea of where to put the debug lines, but let's be very specific with your app.py code snippet.
-
-You want to add the debug prints for original_request and selected_for_preview before these variables are passed to ecm.prepare_daily_schedule_data.
-
-Here's your code starting from line 276, with the new debug lines inserted:
-
-Python
-
 # --- Section to Display Schedule Preview and Confirm Job ---
 if st.session_state.slot_for_confirmation_preview:
     selected_for_preview = st.session_state.slot_for_confirmation_preview
