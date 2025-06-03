@@ -1,4 +1,4 @@
-# ecm_scheduler_logic.py
+    # ecm_scheduler_logic.py
 # Consolidated Python script for ECM Boat Hauling Scheduler
 
 import csv
@@ -1145,16 +1145,159 @@ if __name__ == '__main__':
     # --- Minimal Mocks for standalone execution of this section ---
     # (Normally, these would be fully defined and imported from previous sections)
     if 'Truck' not in globals(): # Define if not defined in a combined script
-        class Truck: def __init__(self, truck_id, truck_name, max_boat_length_ft, is_crane=False, home_base_address=""): self.truck_id, self.truck_name, self.max_boat_length_ft, self.is_crane, self.home_base_address = truck_id, truck_name, max_boat_length_ft, is_crane, home_base_address
-        class Ramp: def __init__(self, ramp_id, ramp_name, town, **kwargs): self.ramp_id,self.ramp_name,self.town,self.noaa_station_id = ramp_id,ramp_name,town,kwargs.get("noaa_station_id", "DefaultStation")
-        class Customer: def __init__(self, customer_id, customer_name, **kwargs): self.customer_id, self.customer_name, self.is_ecm_customer = customer_id, customer_name, kwargs.get("is_ecm_customer", False)
-        class Boat: def __init__(self, boat_id, customer_id, boat_type, length_ft, **kwargs): self.boat_id, self.customer_id, self.boat_type, self.length_ft, self.draft_ft = boat_id, customer_id, boat_type, length_ft, kwargs.get("draft_ft")
-        # Job class should be fully defined as in Section 1 (Revised)
-        class Job:
-            def __init__(self, job_id, customer_id, boat_id, service_type, requested_date, scheduled_start_datetime=None, calculated_job_duration_hours=None, scheduled_end_datetime=None, assigned_hauling_truck_id=None, assigned_crane_truck_id=None, j17_busy_end_datetime=None, **kwargs):
-                self.job_id, self.customer_id, self.boat_id, self.service_type, self.requested_date, self.scheduled_start_datetime, self.calculated_job_duration_hours, self.scheduled_end_datetime, self.assigned_hauling_truck_id, self.assigned_crane_truck_id, self.j17_busy_end_datetime, self.job_status = job_id, customer_id, boat_id, service_type, requested_date, scheduled_start_datetime, calculated_job_duration_hours, scheduled_end_datetime, assigned_hauling_truck_id, assigned_crane_truck_id, j17_busy_end_datetime, kwargs.get("job_status", "Scheduled")
-        class OperatingHoursEntry: def __init__(self, rule_id, season, day_of_week, open_time, close_time, notes=None): self.rule_id, self.season, self.day_of_week, self.open_time, self.close_time, self.notes = rule_id, season, day_of_week, open_time, close_time, notes
+        class Truck:
+            def __init__(self, truck_id, truck_name, max_boat_length_ft, is_crane=False, home_base_address="43 Mattakeeset St, Pembroke MA"):
+                self.truck_id = truck_id
+                self.truck_name = truck_name
+                self.max_boat_length_ft = max_boat_length_ft
+                self.is_crane = is_crane
+                self.home_base_address = home_base_address
 
+            def __repr__(self): # <--- CORRECTED INDENTATION FOR __repr__
+                return f"Truck(ID: {self.truck_id}, Name: {self.truck_name}, MaxLen: {self.max_boat_length_ft}, Crane: {self.is_crane})"
+
+    # CORRECTED INDENTATION: These class definitions should NOT be inside the 'if Truck not in globals()' block.
+    # They should be at the same level if they are also meant to be potentially re-defined mocks
+    # for this specific testing block.
+    # However, it's better if the __main__ block assumes the main classes at the top of the file are already defined.
+
+    # For the purpose of THIS __main__ block, if you need to ensure these classes exist
+    # because you might be running this snippet in isolation, then they should be defined
+    # at this level of indentation, similar to Truck. But it's usually cleaner if __main__
+    # assumes the main script's classes are available.
+
+    # Let's assume for this block, if Truck wasn't defined, these others probably weren't either.
+    # This is purely for making the __main__ block self-sufficient if run in isolation.
+    # In your main ecm_scheduler_logic.py, these classes are defined ONCE at the top.
+
+    if 'Ramp' not in globals(): # Example of how you might do it for all
+        class Ramp:
+            def __init__(self, ramp_id, ramp_name, town, tide_rule_description,
+                         tide_calculation_method, noaa_station_id,
+                         tide_offset_hours1=None, tide_offset_hours2=None,
+                         draft_restriction_ft=None, draft_restriction_tide_rule=None,
+                         allowed_boat_types="Power and Sail", ramp_fee=None, operating_notes=None,
+                         latitude=None, longitude=None):
+                self.ramp_id = ramp_id
+                self.ramp_name = ramp_name
+                # ... (rest of Ramp __init__ attributes) ...
+                self.town = town
+                self.tide_rule_description = tide_rule_description
+                self.tide_calculation_method = tide_calculation_method
+                self.noaa_station_id = noaa_station_id
+                self.tide_offset_hours1 = tide_offset_hours1
+                self.tide_offset_hours2 = tide_offset_hours2 if tide_offset_hours2 is not None else self.tide_offset_hours1
+                self.draft_restriction_ft = draft_restriction_ft
+                self.draft_restriction_tide_rule = draft_restriction_tide_rule
+                self.allowed_boat_types = allowed_boat_types
+                self.ramp_fee = ramp_fee
+                self.operating_notes = operating_notes
+                self.latitude = latitude
+                self.longitude = longitude
+
+
+    if 'Customer' not in globals():
+        class Customer:
+            def __init__(self, customer_id, customer_name,
+                         home_latitude=None, home_longitude=None,
+                         preferred_truck_id=None, is_ecm_customer=False, is_safe_harbor_customer=False):
+                self.customer_id = customer_id
+                # ... (rest of Customer __init__ attributes) ...
+                self.customer_name = customer_name
+                self.home_latitude = home_latitude
+                self.home_longitude = home_longitude
+                self.preferred_truck_id = preferred_truck_id
+                self.is_ecm_customer = is_ecm_customer
+                self.is_safe_harbor_customer = is_safe_harbor_customer
+
+
+    if 'Boat' not in globals():
+        class Boat:
+            def __init__(self, boat_id, customer_id, boat_type, length_ft,
+                         draft_ft=None, height_ft_keel_to_highest=None, keel_type=None, is_ecm_boat=None):
+                self.boat_id = boat_id
+                # ... (rest of Boat __init__ attributes) ...
+                self.customer_id = customer_id
+                self.boat_type = boat_type
+                self.length_ft = length_ft
+                self.draft_ft = draft_ft
+                self.height_ft_keel_to_highest = height_ft_keel_to_highest
+                self.keel_type = keel_type
+                self._is_ecm_boat_direct = is_ecm_boat
+
+            @property
+            def is_ecm_boat(self):
+                if self._is_ecm_boat_direct is not None:
+                    return self._is_ecm_boat_direct
+                # This get_customer_details inside the mock __main__ would need a mock version too
+                # or rely on a globally defined one if this __main__ is part of the larger script.
+                # For simplicity, if this is a truly isolated __main__ test for just one function,
+                # you might hardcode this property or mock get_customer_details here too.
+                # customer = get_customer_details(self.customer_id) 
+                # return customer.is_ecm_customer if customer else False
+                return False # Simplified for isolated mock
+
+    if 'Job' not in globals():
+        class Job:
+            def __init__(self, job_id, customer_id, boat_id, service_type, requested_date,
+                         scheduled_start_datetime=None, calculated_job_duration_hours=None,
+                         scheduled_end_datetime=None, 
+                         assigned_hauling_truck_id=None,
+                         assigned_crane_truck_id=None, 
+                         j17_busy_end_datetime=None,   
+                         # ... (rest of Job __init__ parameters and assignments) ...
+                         pickup_ramp_id=None, pickup_street_address=None,
+                         dropoff_ramp_id=None, dropoff_street_address=None,
+                         job_status="Pending", notes=None,
+                         pickup_loc_coords=None, dropoff_loc_coords=None): 
+                self.job_id = job_id
+                self.customer_id = customer_id
+                self.boat_id = boat_id
+                self.service_type = service_type
+                # ... (all other assignments) ...
+                self.requested_date = requested_date
+                self.scheduled_start_datetime = scheduled_start_datetime
+                self.calculated_job_duration_hours = calculated_job_duration_hours
+                self.scheduled_end_datetime = scheduled_end_datetime
+                self.assigned_hauling_truck_id = assigned_hauling_truck_id
+                self.assigned_crane_truck_id = assigned_crane_truck_id
+                self.j17_busy_end_datetime = j17_busy_end_datetime
+                self.pickup_ramp_id = pickup_ramp_id
+                self.pickup_street_address = pickup_street_address
+                self.dropoff_ramp_id = dropoff_ramp_id
+                self.dropoff_street_address = dropoff_street_address
+                self.job_status = job_status
+                self.notes = notes
+                self.is_ecm_priority_job = False 
+                self.was_bumped = False
+                self.bumped_from_job_id = None
+                self.pickup_loc_coords = pickup_loc_coords
+                self.dropoff_loc_coords = dropoff_loc_coords
+
+
+            def __repr__(self):
+                # ... (as defined previously, ensure format_time_for_display is available or mock it) ...
+                # For this mock, let's simplify the __repr__ to avoid external dependencies
+                return f"Job(ID: {self.job_id}, Cust: {self.customer_id}, Svc: {self.service_type}, Status: {self.job_status})"
+
+    if 'OperatingHoursEntry' not in globals():
+        class OperatingHoursEntry:
+            def __init__(self, rule_id, season, day_of_week, open_time, close_time, notes=None):
+                self.rule_id = rule_id
+                # ... (rest of OperatingHoursEntry __init__ assignments) ...
+                self.season = season
+                self.day_of_week = day_of_week
+                self.open_time = open_time
+                self.close_time = close_time
+                self.notes = notes
+
+            # def __repr__(self): ... (simplified or ensure format_time_for_display)
+
+            def __repr__(self):
+                # ... (as defined previously) ...
+                return (f"OpHours(Season: {self.season}, Day: {self.day_of_week}, "
+                        f"Open: {format_time_for_display(self.open_time)}, Close: {format_time_for_display(self.close_time)})") # Assumes format_time_for_display is available
+        
     SCHEDULED_JOBS = [] # Reset for test
     ECM_TRUCKS = { "S20/33": Truck("S20/33", "S20", 60), "S21/77": Truck("S21/77", "S21", 50), "S23/55": Truck("S23/55","S23",30), "J17": Truck("J17", "J17", None, True) }
     ALL_CUSTOMERS = { 1: Customer(1, "Test Customer 1"), 2: Customer(2, "Sailboat Customer") }
