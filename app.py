@@ -26,31 +26,144 @@ st.sidebar.write(f"DEBUG Initial: Index: {st.session_state.current_batch_index},
 st.sidebar.markdown("---")
 # --- END DEBUG LINES SET #1 ---
 
-st.title("ECM Boat Hauling - Availability Scheduler")
+# ... (st.set_page_config, session state initializations as before) ...
 
-# --- Sidebar for Inputs ---
+st.title("ECM Boat Hauling - Availability Scheduler")
 st.sidebar.header("New Job Request")
-customer_id_input = st.sidebar.number_input("Enter Customer ID:", min_value=1, value=1, step=1, help="e.g., 1 for Olivia, 2 for James")
-boat_id_input = st.sidebar.number_input("Enter Boat ID:", min_value=101, value=101, step=1, help="e.g., 101 for Olivia's boat, 102 for James's")
+
+# --- 1. Customer Name Search ---
+customer_name_search_input = st.sidebar.text_input("Enter Customer Name (or part of it):", 
+                                                   help="e.g., Olivia, James, Tho")
+
+selected_customer_id = None
+selected_customer_obj = None
+customer_search_results = []
+
+if customer_name_search_input:
+    # Search for customers (case-insensitive)
+    for cust_id, cust_obj in ecm.ALL_CUSTOMERS.items(): # Assuming ALL_CUSTOMERS is accessible
+        if customer_name_search_input.lower() in cust_obj.customer_name.lower():
+            customer_search_results.append(cust_obj)
+    
+    if customer_search_results:
+        if len(customer_search_results) == 1:
+            selected_customer_obj = customer_search_results[0]
+            selected_customer_id = selected_customer_obj.customer_id
+            st.sidebar.success(f"Selected: {selected_customer_obj.customer_name}")
+        else:
+            # If multiple matches, provide a way to select one
+            customer_options = {cust.customer_name: cust.customer_id for cust in customer_search_results}
+            chosen_customer_name = st.sidebar.selectbox("Multiple matches found, please select:", 
+                                                        options=list(customer_options.keys()))
+            if chosen_customer_name:
+                selected_customer_id = customer_options[chosen_customer_name]
+                selected_customer_obj = ecm.get_customer_details(selected_customer_id) # Get the full object
+    elif customer_name_search_input: # Input was typed but no results
+        st.sidebar.warning("No customer found matching that name.")
+
+# --- 2. Automatically Get Boat & Display Details (if customer is selected) ---
+selected_boat_id = None
+selected_boat_obj = None
+
+if selected_customer_id:
+    # Find boat(s) associated with this customer
+    # For simplicity, assume first boat found for the customer.
+    # A more robust system would handle customers with multiple boats (e.g., another selectbox).
+    customer_boats = [boat for boat_id, boat in ecm.ALL_BOATS.items() if boat.customer_id == selected_customer_id] # Assuming ALL_BOATS is accessible
+    if customer_boats:
+        selected_boat_obj = customer_boats[0] # Take the first boat
+        selected_boat_id = selected_boat_obj.boat_id
+        
+        # --- 3. Display Customer/Boat Details ---
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Selected Customer & Boat:")
+        st.sidebar.write(f"**Customer:** {selected_customer_obj.customer_name}")
+        if selected_boat_obj:
+            st.sidebar.write(f"**Boat Type:** {selected_boat_obj.boat_type}")
+            st.sidebar.write(f"**Boat Length:** {selected_boat_obj.length_ft}ft")
+            preferred_truck_id = selected_customer_obj.preferred_truck_id
+            preferred_truck_name = ecm.ECM_TRUCKS.get(preferred_truck_id, {}).get('truck_name', preferred_truck_id) if preferred_truck_id else "N/A"
+            st.sidebar.write(f"**Preferred Truck:** {preferred_truck_name}")
+        else:
+            st.sidebar.error("This customer has no boat on record.")
+        st.sidebar.markdown("---")
+    else:
+        st.sidebar.error(f"No boat found for customer: {selected_customer_obj.customer_name}")
+
+# --- Service Type, Requested Date, Ramp (Inputs remain similar) ---
 service_type_options = ["Launch", "Haul", "Transport"]
 service_type_input = st.sidebar.selectbox("Select Service Type:", service_type_options)
-# Ensure ecm.TODAY_FOR_SIMULATION is accessible; if app.py and ecm_scheduler_logic.py are separate,
-# you might need to define a default here or ensure ecm module is fully loaded.
-# Assuming ecm.TODAY_FOR_SIMULATION is available:
-default_requested_date = ecm.TODAY_FOR_SIMULATION + datetime.timedelta(days=7)
-requested_date_input = st.sidebar.date_input("Requested Date:", value=default_requested_date)
-selected_ramp_id_input = None
-if service_type_input in ["Launch", "Haul"]:
-    ramp_options = list(ecm.ECM_RAMPS.keys()) # Assuming ecm.ECM_RAMPS is available
-    if ramp_options:
-        selected_ramp_id_input = st.sidebar.selectbox("Select Ramp:", ramp_options, index=0)
-    else:
-        st.sidebar.warning("No ramps defined.")
-        selected_ramp_id_input = st.sidebar.text_input("Enter Ramp ID:")
-transport_dropoff_input = None
-if service_type_input == "Transport":
-    transport_dropoff_input = st.sidebar.text_input("Transport Dropoff Address (Optional Info):", placeholder="e.g., 123 Other St, Town")
-st.sidebar.markdown("---")
+# ... (rest of your date and ramp inputs - ensure they only appear if a customer/boat is successfully selected) ...
+if selected_customer_id and selected_boat_id: # Only show these if we have a customer/boat
+    default_requested_date = ecm.TODAY_FOR_SIMULATION + datetime.timedelta(days=7)
+    requested_date_input = st.sidebar.date_input("Requested Date:", value=default_requested_date)
+
+    selected_ramp_id_input = None
+    if service_type_input in ["Launch", "Haul"]:
+        ramp_options = list(ecm.ECM_RAMPS.keys()) 
+        if ramp_options:
+            selected_ramp_id_input = st.sidebar.selectbox("Select Ramp:", ramp_options, index=0)
+        # ... (else for no ramps) ...
+    
+    transport_dropoff_input = None # As before
+    if service_type_input == "Transport":
+        transport_dropoff_input = st.sidebar.text_input("Transport Dropoff Address (Optional Info):", placeholder="e.g., 123 Other St, Town")
+    
+    st.sidebar.markdown("---")
+
+    # --- Button to Find Slots (ensure it uses selected_customer_id and selected_boat_id) ---
+    if st.sidebar.button("Find Available Slots", key="find_initial_slots"):
+        if not selected_customer_id or not selected_boat_id:
+            st.warning("Please select a customer (which will select their boat).")
+        else:
+            st.session_state.suggested_slot_history = []
+            st.session_state.current_batch_index = -1
+            st.session_state.slot_for_confirmation_preview = None
+            st.session_state.no_more_slots_forward = False
+
+            st.session_state.current_job_request_details = {
+                'customer_id': selected_customer_id, # Use the found ID
+                'boat_id': selected_boat_id,         # Use the found ID
+                'service_type': service_type_input,
+                'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
+                'selected_ramp_id': selected_ramp_id_input,
+                'transport_dropoff_details': {'address': transport_dropoff_input} if transport_dropoff_input else None
+            }
+            # ... (rest of the find_initial_slots button logic as before) ...
+            slots, message = ecm.find_available_job_slots(
+                **st.session_state.current_job_request_details,
+                start_after_slot_details=None
+            )
+            if slots:
+                st.session_state.suggested_slot_history.append(slots)
+                st.session_state.current_batch_index = 0
+            st.info(message)
+            st.rerun()
+
+# ... (Rest of your app.py: Navigation Buttons, Display Suggested Slots, Preview & Confirm Section, Show All Scheduled Jobs) ...
+# Ensure these sections also use selected_customer_obj and selected_boat_obj where needed for display,
+# and that the "CONFIRM THIS JOB" button uses the confirmed selected_customer_id and selected_boat_id.
+
+Key Changes and How They Address Your Requests:
+ * customer_name_search_input = st.sidebar.text_input(...): Replaces the Customer ID number input.
+ * Customer Search Logic:
+   * When you type in customer_name_search_input, the code iterates through ecm.ALL_CUSTOMERS.
+   * It performs a case-insensitive search to find matches.
+   * If one match is found, selected_customer_obj and selected_customer_id are set.
+   * If multiple matches, a st.sidebar.selectbox appears, letting you choose the correct customer from the matches.
+ * Automatic Boat Selection:
+   * Once selected_customer_id is determined, the code iterates through ecm.ALL_BOATS to find boats belonging to that customer.
+   * Simplification: It currently just takes the first boat found for that customer. If a customer can have multiple boats, you'd need another st.selectbox here to choose which boat.
+   * The "Enter Boat ID" selector is removed.
+ * Displaying Details in Sidebar:
+   * If a selected_customer_obj and selected_boat_obj are successfully identified, their details (name, boat type, length, preferred truck) are immediately displayed in the sidebar using st.sidebar.write(). This happens before you click "Find Available Slots."
+ * Conditional Display of Subsequent Inputs: The "Requested Date," "Select Ramp," etc., inputs and the "Find Available Slots" button are now logically nested to appear only after a customer and their boat have been successfully selected.
+ * Using Selected IDs: The "Find Available Slots" button logic now uses selected_customer_id and selected_boat_id (obtained from the search/auto-selection) when calling ecm.find_available_job_slots.
+To Implement This:
+ * You'll replace the old customer ID and boat ID input sections in your app.py with this new logic.
+ * Ensure that ecm.ALL_CUSTOMERS, ecm.ALL_BOATS, and ecm.ECM_TRUCKS are accessible from your app.py (which they are, via the import ecm_scheduler_logic as ecm statement, assuming these dictionaries are defined globally in ecm_scheduler_logic.py).
+ * The original_job_request_details dictionary stored in session state (and later passed to confirm_and_schedule_job) will now correctly contain the customer_id and boat_id derived from your name search.
+This should give you a much more intuitive way to start a new job request!
 
 
 # --- Button to Find Slots (Initial Search) ---
