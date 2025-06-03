@@ -48,11 +48,29 @@ selected_customer_id = None
 selected_customer_obj = None
 customer_search_results = []
 
+# ... (after imports and session state initialization in app.py) ...
+
+# --- Load data at the start of the session (ensure this is called) ---
+if 'data_loaded' not in st.session_state:
+    if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"): # Or your actual CSV filename
+        st.session_state.data_loaded = True
+    else:
+        st.session_state.data_loaded = False
+        st.error("Failed to load customer and boat data. Please check CSV and logs.")
+# ...
+
+# --- In your Customer Name Search section ---
+# ...
 if customer_name_search_input:
-    # Search for customers (case-insensitive)
-    for cust_id, cust_obj in ecm.ALL_CUSTOMERS.items(): # Assuming ALL_CUSTOMERS is accessible
-        if customer_name_search_input.lower() in cust_obj.customer_name.lower():
-            customer_search_results.append(cust_obj)
+    if st.session_state.get('data_loaded', False): # Check if data was loaded successfully
+        # Search for customers (case-insensitive) from LOADED_CUSTOMERS
+        for cust_id, cust_obj in ecm.LOADED_CUSTOMERS.items(): # <<< CHANGE HERE
+            if cust_obj.customer_name and customer_name_search_input.lower() in cust_obj.customer_name.lower():
+                customer_search_results.append(cust_obj)
+        # ... (rest of your logic for handling search results)
+    else:
+        st.error("Customer data is not loaded. Cannot perform search.")
+# ...
     
     if customer_search_results:
         if len(customer_search_results) == 1:
