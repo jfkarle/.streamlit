@@ -65,20 +65,21 @@ if customer_name_search_input:
 selected_boat_id = None
 selected_boat_obj = None
 
-if selected_customer_id:
-    # Find boat(s) associated with this customer
-    # For simplicity, assume first boat found for the customer.
-    # A more robust system would handle customers with multiple boats (e.g., another selectbox).
-    customer_boats = [boat for boat_id, boat in ecm.ALL_BOATS.items() if boat.customer_id == selected_customer_id] # Assuming ALL_BOATS is accessible
+if selected_customer_id: # This is the main check for a selected customer
+    customer_boats = [boat for boat_id, boat in ecm.ALL_BOATS.items() if boat.customer_id == selected_customer_id]
+
     if customer_boats:
         selected_boat_obj = customer_boats[0] # Take the first boat
         selected_boat_id = selected_boat_obj.boat_id
         
-        # --- 3. Display Customer/Boat Details ---
+        # --- 3. Display Customer/Boat Details (This whole block only runs if a boat is found) ---
         st.sidebar.markdown("---")
         st.sidebar.subheader("Selected Customer & Boat:")
-        st.sidebar.write(f"**Customer:** {selected_customer_obj.customer_name}")
-        if selected_boat_obj:
+        st.sidebar.write(f"**Customer:** {selected_customer_obj.customer_name}") # Assumes selected_customer_obj is defined if selected_customer_id is true
+
+        # This 'if' is for the boat object specifically. If customer_boats was empty, selected_boat_obj would be None.
+        # However, the outer 'if customer_boats:' already handles this.
+        # So, if we are inside this block, selected_boat_obj IS defined.
         st.sidebar.write(f"**Boat Type:** {selected_boat_obj.boat_type}")
         st.sidebar.write(f"**Boat Length:** {selected_boat_obj.length_ft}ft")
         
@@ -93,11 +94,11 @@ if selected_customer_id:
                 preferred_truck_name = f"Unknown Truck ID: {preferred_truck_id}" # Handle case where ID is bad
         
         st.sidebar.write(f"**Preferred Truck:** {preferred_truck_name}")
-        else:
-            st.sidebar.error("This customer has no boat on record.")
-        st.sidebar.markdown("---")
-    else:
+        st.sidebar.markdown("---") # This markdown should be part of displaying boat details
+
+    else: # This 'else' corresponds to 'if customer_boats:'
         st.sidebar.error(f"No boat found for customer: {selected_customer_obj.customer_name}")
+        # We
 
 # --- Service Type, Requested Date, Ramp (Inputs remain similar) ---
 service_type_options = ["Launch", "Haul", "Transport"]
