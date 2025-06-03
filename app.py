@@ -79,11 +79,20 @@ if selected_customer_id:
         st.sidebar.subheader("Selected Customer & Boat:")
         st.sidebar.write(f"**Customer:** {selected_customer_obj.customer_name}")
         if selected_boat_obj:
-            st.sidebar.write(f"**Boat Type:** {selected_boat_obj.boat_type}")
-            st.sidebar.write(f"**Boat Length:** {selected_boat_obj.length_ft}ft")
-            preferred_truck_id = selected_customer_obj.preferred_truck_id
-            preferred_truck_name = ecm.ECM_TRUCKS.get(preferred_truck_id, {}).get('truck_name', preferred_truck_id) if preferred_truck_id else "N/A"
-            st.sidebar.write(f"**Preferred Truck:** {preferred_truck_name}")
+        st.sidebar.write(f"**Boat Type:** {selected_boat_obj.boat_type}")
+        st.sidebar.write(f"**Boat Length:** {selected_boat_obj.length_ft}ft")
+        
+        preferred_truck_id = selected_customer_obj.preferred_truck_id
+        preferred_truck_name = "N/A" # Default
+
+        if preferred_truck_id:
+            truck_object = ecm.ECM_TRUCKS.get(preferred_truck_id) # Get the Truck object
+            if truck_object:
+                preferred_truck_name = truck_object.truck_name # Access attribute directly
+            else:
+                preferred_truck_name = f"Unknown Truck ID: {preferred_truck_id}" # Handle case where ID is bad
+        
+        st.sidebar.write(f"**Preferred Truck:** {preferred_truck_name}")
         else:
             st.sidebar.error("This customer has no boat on record.")
         st.sidebar.markdown("---")
