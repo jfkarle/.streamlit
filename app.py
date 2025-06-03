@@ -153,31 +153,6 @@ if selected_customer_id and selected_boat_id: # Only show these if we have a cus
 # Ensure these sections also use selected_customer_obj and selected_boat_obj where needed for display,
 # and that the "CONFIRM THIS JOB" button uses the confirmed selected_customer_id and selected_boat_id.
 
-# --- Button to Find Slots (Initial Search) ---
-if st.sidebar.button("Find Available Slots", key="find_initial_slots"):
-    st.session_state.suggested_slot_history = []
-    st.session_state.current_batch_index = -1
-    st.session_state.slot_for_confirmation_preview = None
-    st.session_state.no_more_slots_forward = False
-
-    st.session_state.current_job_request_details = {
-        'customer_id': customer_id_input,
-        'boat_id': boat_id_input,
-        'service_type': service_type_input,
-        'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
-        'selected_ramp_id': selected_ramp_id_input,
-        'transport_dropoff_details': {'address': transport_dropoff_input} if transport_dropoff_input else None
-    }
-    slots, message = ecm.find_available_job_slots(
-        **st.session_state.current_job_request_details,
-        start_after_slot_details=None
-    )
-    if slots:
-        st.session_state.suggested_slot_history.append(slots)
-        st.session_state.current_batch_index = 0
-    st.info(message)
-    st.rerun()
-
 # --- DEBUG LINES SET #3 (Before Navigation Buttons) ---
 st.sidebar.markdown("---")
 st.sidebar.write(f"DEBUG Before Nav: Index: {st.session_state.current_batch_index}, History len: {len(st.session_state.suggested_slot_history)}")
