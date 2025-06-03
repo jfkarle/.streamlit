@@ -95,7 +95,7 @@ selected_boat_obj = None
 if selected_customer_id: # Proceed only if a customer was successfully identified earlier
     # selected_customer_obj should already be defined from your customer search logic part
     
-    customer_boats = [boat for boat_id, boat in ecm.ALL_BOATS.items() if boat.customer_id == selected_customer_id]
+    customer_boats = [boat for boat_id, boat in ecm.LOADED_BOATS.items() if boat.customer_id == selected_customer_id]
 
     if customer_boats:
         selected_boat_obj = customer_boats[0] # Take the first boat
