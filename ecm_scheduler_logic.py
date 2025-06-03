@@ -303,42 +303,6 @@ def get_boat_details(boat_id):
         print(f"Warning: Boat ID {boat_id} not found in LOADED_BOATS.")
     return boat
 
-# --- Section: Data Access Helper Functions (Mocks for now) ---
-# These functions retrieve data from our global mock data dictionaries.
-# In a later iteration, these could read from CSVs or a database.
-
-def get_customer_details(customer_id):
-    """Fetches customer details from the global ALL_CUSTOMERS dictionary."""
-    customer = ALL_CUSTOMERS.get(customer_id)
-    if not customer:
-        print(f"Warning: Customer ID {customer_id} not found in ALL_CUSTOMERS.")
-    return customer
-
-def get_boat_details(boat_id):
-    """Fetches boat details from the global ALL_BOATS dictionary."""
-    boat = ALL_BOATS.get(boat_id)
-    if not boat:
-        print(f"Warning: Boat ID {boat_id} not found in ALL_BOATS.")
-    # Link customer's is_ecm_customer to boat.is_ecm_boat if not explicitly set on boat object
-    # This was conceptualized for the Boat class's @property
-    # if boat and hasattr(boat, 'is_ecm_boat') and boat.is_ecm_boat is None:
-    #     customer = get_customer_details(boat.customer_id)
-    #     if customer:
-    #         boat.is_ecm_boat = customer.is_ecm_customer
-    return boat
-
-def get_ramp_details(ramp_id_or_name):
-    """Fetches ramp details from the global ECM_RAMPS dictionary."""
-    # Assuming ECM_RAMPS is keyed by a unique ramp_id string like "PlymouthHarbor"
-    ramp = ECM_RAMPS.get(ramp_id_or_name)
-    if not ramp:
-        print(f"Warning: Ramp ID/Name '{ramp_id_or_name}' not found in ECM_RAMPS.")
-    return ramp
-
-# Make sure your ALL_CUSTOMERS, ALL_BOATS, and ECM_RAMPS dictionaries
-# are defined before these functions in ecm_scheduler_logic.py
-
-
 # --- Section 3: Date & Time Utilities ---
 def format_time_for_display(time_obj):
     if not isinstance(time_obj, datetime.time): return "InvalidTime"
