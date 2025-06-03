@@ -5,6 +5,15 @@ import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm # Your logic file
 
+if 'data_loaded' not in st.session_state: # Simple flag to load only once per session
+    if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"): # Use your actual filename
+        st.session_state.data_loaded = True
+        # Populate customer choices for the UI if needed here, or do it dynamically
+    else:
+        st.session_state.data_loaded = False
+        st.error("Failed to load customer and boat data. Please check the CSV file and logs.")
+
+
 # --- Page Configuration (Optional, but good practice) ---
 st.set_page_config(layout="wide")
 
