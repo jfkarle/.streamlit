@@ -273,6 +273,14 @@ if st.session_state.current_batch_index != -1 and st.session_state.suggested_slo
         st.write("No further slots available with the current criteria.")
 
 
+You're right, I gave you a general idea of where to put the debug lines, but let's be very specific with your app.py code snippet.
+
+You want to add the debug prints for original_request and selected_for_preview before these variables are passed to ecm.prepare_daily_schedule_data.
+
+Here's your code starting from line 276, with the new debug lines inserted:
+
+Python
+
 # --- Section to Display Schedule Preview and Confirm Job ---
 if st.session_state.slot_for_confirmation_preview:
     selected_for_preview = st.session_state.slot_for_confirmation_preview
@@ -285,24 +293,37 @@ if st.session_state.slot_for_confirmation_preview:
     if selected_for_preview['type'] != "Open" and selected_for_preview['bumped_job_details']:
         st.warning(f"This selection will BUMP Job ID: {selected_for_preview['bumped_job_details']['job_id']} "
                    f"for customer '{selected_for_preview['bumped_job_details']['customer_name']}'.")
-    st.write("Generating daily schedule preview data (raw output for now):")
+    
+    # --- INSERT DEBUG LINES HERE ---
+    st.write("--- DEBUG DATA FOR PREVIEW ---")
+    st.write("DEBUG: `original_request` (passed as `original_job_request_details_for_potential`):")
+    st.json(original_request if original_request is not None else "original_request is None") # Use st.json for better dict display
+    st.write("DEBUG: `selected_for_preview` (passed as `potential_job_slot_info`):")
+    st.json(selected_for_preview if selected_for_preview is not None else "selected_for_preview is None") # Use st.json
+    st.write("--- END DEBUG DATA ---")
+    # --- END INSERTED DEBUG LINES ---
+
+    st.write("Generating daily schedule preview data (raw output for now):") # This line was already here
     daily_schedule_preview_data = ecm.prepare_daily_schedule_data(
         display_date=selected_for_preview['date'],
-        potential_job_details=selected_for_preview,
+        # MODIFIED ARGUMENT NAME TO MATCH FUNCTION DEFINITION
+        original_job_request_details_for_potential=original_request, 
+        potential_job_slot_info=selected_for_preview,             
         time_increment_minutes=30
     )
-    st.json(daily_schedule_preview_data)
+    st.json(daily_schedule_preview_data) # This line was already here
     if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
+        # ... (rest of your confirmation logic) ...
         new_job_id, message = ecm.confirm_and_schedule_job(
             original_job_request_details=original_request,
             selected_slot_info=selected_for_preview
         )
         if new_job_id:
             st.success(f"Job Confirmed! {message}")
-            st.session_state.suggested_slot_history = [] # Clear history
-            st.session_state.current_batch_index = -1    # Reset index
-            st.session_state.slot_for_confirmation_preview = None # Clear preview
-            st.session_state.no_more_slots_forward = False # Reset this flag
+            st.session_state.suggested_slot_history = [] 
+            st.session_state.current_batch_index = -1    
+            st.session_state.slot_for_confirmation_preview = None 
+            st.session_state.no_more_slots_forward = False 
             st.rerun()
         else:
             st.error(f"Failed to confirm job: {message}")
