@@ -144,28 +144,6 @@ if selected_customer_id and selected_boat_id: # Only show these if we have a cus
 # Ensure these sections also use selected_customer_obj and selected_boat_obj where needed for display,
 # and that the "CONFIRM THIS JOB" button uses the confirmed selected_customer_id and selected_boat_id.
 
-Key Changes and How They Address Your Requests:
- * customer_name_search_input = st.sidebar.text_input(...): Replaces the Customer ID number input.
- * Customer Search Logic:
-   * When you type in customer_name_search_input, the code iterates through ecm.ALL_CUSTOMERS.
-   * It performs a case-insensitive search to find matches.
-   * If one match is found, selected_customer_obj and selected_customer_id are set.
-   * If multiple matches, a st.sidebar.selectbox appears, letting you choose the correct customer from the matches.
- * Automatic Boat Selection:
-   * Once selected_customer_id is determined, the code iterates through ecm.ALL_BOATS to find boats belonging to that customer.
-   * Simplification: It currently just takes the first boat found for that customer. If a customer can have multiple boats, you'd need another st.selectbox here to choose which boat.
-   * The "Enter Boat ID" selector is removed.
- * Displaying Details in Sidebar:
-   * If a selected_customer_obj and selected_boat_obj are successfully identified, their details (name, boat type, length, preferred truck) are immediately displayed in the sidebar using st.sidebar.write(). This happens before you click "Find Available Slots."
- * Conditional Display of Subsequent Inputs: The "Requested Date," "Select Ramp," etc., inputs and the "Find Available Slots" button are now logically nested to appear only after a customer and their boat have been successfully selected.
- * Using Selected IDs: The "Find Available Slots" button logic now uses selected_customer_id and selected_boat_id (obtained from the search/auto-selection) when calling ecm.find_available_job_slots.
-To Implement This:
- * You'll replace the old customer ID and boat ID input sections in your app.py with this new logic.
- * Ensure that ecm.ALL_CUSTOMERS, ecm.ALL_BOATS, and ecm.ECM_TRUCKS are accessible from your app.py (which they are, via the import ecm_scheduler_logic as ecm statement, assuming these dictionaries are defined globally in ecm_scheduler_logic.py).
- * The original_job_request_details dictionary stored in session state (and later passed to confirm_and_schedule_job) will now correctly contain the customer_id and boat_id derived from your name search.
-This should give you a much more intuitive way to start a new job request!
-
-
 # --- Button to Find Slots (Initial Search) ---
 if st.sidebar.button("Find Available Slots", key="find_initial_slots"):
     st.session_state.suggested_slot_history = []
