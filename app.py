@@ -65,40 +65,39 @@ if customer_name_search_input:
 selected_boat_id = None
 selected_boat_obj = None
 
-if selected_customer_id: # This is the main check for a selected customer
+if selected_customer_id: # Proceed only if a customer was successfully identified earlier
+    # selected_customer_obj should already be defined from your customer search logic part
+    
     customer_boats = [boat for boat_id, boat in ecm.ALL_BOATS.items() if boat.customer_id == selected_customer_id]
 
     if customer_boats:
         selected_boat_obj = customer_boats[0] # Take the first boat
         selected_boat_id = selected_boat_obj.boat_id
         
-        # --- 3. Display Customer/Boat Details (This whole block only runs if a boat is found) ---
-        st.sidebar.markdown("---")
+        # Display details since we found a boat
+        st.sidebar.markdown("---") # Separator before details
         st.sidebar.subheader("Selected Customer & Boat:")
-        st.sidebar.write(f"**Customer:** {selected_customer_obj.customer_name}") # Assumes selected_customer_obj is defined if selected_customer_id is true
-
-        # This 'if' is for the boat object specifically. If customer_boats was empty, selected_boat_obj would be None.
-        # However, the outer 'if customer_boats:' already handles this.
-        # So, if we are inside this block, selected_boat_obj IS defined.
+        st.sidebar.write(f"**Customer:** {selected_customer_obj.customer_name}")
         st.sidebar.write(f"**Boat Type:** {selected_boat_obj.boat_type}")
         st.sidebar.write(f"**Boat Length:** {selected_boat_obj.length_ft}ft")
         
         preferred_truck_id = selected_customer_obj.preferred_truck_id
-        preferred_truck_name = "N/A" # Default
+        preferred_truck_name = "N/A" 
 
         if preferred_truck_id:
-            truck_object = ecm.ECM_TRUCKS.get(preferred_truck_id) # Get the Truck object
+            truck_object = ecm.ECM_TRUCKS.get(preferred_truck_id) 
             if truck_object:
-                preferred_truck_name = truck_object.truck_name # Access attribute directly
+                preferred_truck_name = truck_object.truck_name 
             else:
-                preferred_truck_name = f"Unknown Truck ID: {preferred_truck_id}" # Handle case where ID is bad
+                preferred_truck_name = f"Unknown Truck ID: {preferred_truck_id}" 
         
         st.sidebar.write(f"**Preferred Truck:** {preferred_truck_name}")
-        st.sidebar.markdown("---") # This markdown should be part of displaying boat details
+        st.sidebar.markdown("---") # Separator after details
 
-    else: # This 'else' corresponds to 'if customer_boats:'
+    else: # No boats found for this selected customer
         st.sidebar.error(f"No boat found for customer: {selected_customer_obj.customer_name}")
-        # We
+        # You might want a separator here too, or handle it as part of an overall section structure
+        # st.sidebar.markdown("---")
 
 # --- Service Type, Requested Date, Ramp (Inputs remain similar) ---
 service_type_options = ["Launch", "Haul", "Transport"]
