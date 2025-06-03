@@ -288,20 +288,26 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
         print(f"An unexpected error occurred while reading '{csv_filename}': {e}")
         return False
 
-# Modify your existing helper functions to use the loaded data:
 def get_customer_details(customer_id):
     """Fetches customer details from the LOADED_CUSTOMERS dictionary."""
-    customer = LOADED_CUSTOMERS.get(customer_id) # Changed from ALL_CUSTOMERS
+    customer = LOADED_CUSTOMERS.get(customer_id)
     if not customer:
         print(f"Warning: Customer ID {customer_id} not found in LOADED_CUSTOMERS.")
     return customer
 
 def get_boat_details(boat_id):
     """Fetches boat details from the LOADED_BOATS dictionary."""
-    boat = LOADED_BOATS.get(boat_id) # Changed from ALL_BOATS
+    boat = LOADED_BOATS.get(boat_id)
     if not boat:
         print(f"Warning: Boat ID {boat_id} not found in LOADED_BOATS.")
     return boat
+
+def get_ramp_details(ramp_id_or_name): # Make sure this is the only definition
+    """Fetches ramp details from the global ECM_RAMPS dictionary."""
+    ramp = ECM_RAMPS.get(ramp_id_or_name)
+    if not ramp:
+        print(f"Warning: Ramp ID/Name '{ramp_id_or_name}' not found in ECM_RAMPS.")
+    return ramp
 
 # --- Section 3: Date & Time Utilities ---
 def format_time_for_display(time_obj):
