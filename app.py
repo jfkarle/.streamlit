@@ -326,7 +326,98 @@ if st.session_state.slot_for_confirmation_preview:
 if st.checkbox("Show All Currently Scheduled Jobs (In-Memory List for this Session)"):
     st.subheader("All Scheduled Jobs (Current Session):")
     if ecm.SCHEDULED_JOBS: # Assuming SCHEDULED_JOBS is accessible via ecm module
-        for job_item in ecm.SCHEDULED_JOBS:
-            st.text(str(job_item))
-    else:
+        
+        display_data_for_table = []
+        # Sort jobs by scheduled start time for consistent display
+        sorted_jobs = sorted(
+            [job for job in ecm.SCHEDULED_JOBS if job.scheduled_start_datetime], # Filter out jobs without a start time
+            key=lambda j: j.scheduled_start_datetime
+        )
+
+        for job in sorted_jobs:
+            customer = ecm.get_customer_details(job.customer_id)
+            boat = ecm.get_boat_details(job.boat_id)
+            
+            customer_name = customer.customer_name if customer else "N/A"
+            boat_type = boat.boat_type if boat else "N/A"
+            boat_length = f"{boat.length_ft}ft" if boat and hasattr(boat, 'length_ft') else "N/A" # Added hasattr check
+            
+            destination = "N/A"
+            # Determine destination based on service type
+            if job.service_type == "Launch" and job.dropoff_ramp_id:
+                ramp = ecm.get_ramp_details(job.dropoff_ramp_id)
+                destination = ramp.ramp_name if ramp else job.dropoff_ramp_id
+            elif job.dropoff_street_address: # For Haul or Transport if address is primary
+                destination = job.dropoff_street_address
+            elif job.service_type == "Haul" and job.dropoff_ramp_id: # Unlikely, Hauls usually to address
+                 ramp = ecm.get_ramp_details(job.dropoff_ramp_id)
+                 destination = ramp.ramp_name if ramp else job.dropoff_ramp_id
+
+            relevant_high_tides_str = ""
+            if job.service_type in ["Launch", "Haul"]:
+                ramp_id_for_tide = job.pickup_ramp_id if job.service_type == "Haul" else job.dropoff_ramp_id
+                if ramp_id_for_tide: # Ensure there is a ramp ID to check tides for
+                    ramp_obj_for_tide = ecm.get_ramp_details(ramp_id_for_tide)
+                    
+                    if ramp_obj_for_tide and ramp_obj_for_tide.tide_calculation_method != "AnyTide":
+                        job_date = job.scheduled_start_datetime.date()
+                        # Ensure fetch_noaa_tides and get_ecm_operating_hours are robust for None returns
+                        day_tides = ecm.fetch_noaa_tides(ramp_obj_for_tide.noaa_station_id, job_date)
+                        ecm_op_hours_for_job_date = ecm.get_ecm_operating_hours(job_date)
+                        
+                        if day_tides and ecm_op_hours_for_job_date:
+                            relevant_hts = []
+                            ecm_open_dt_job = datetime.datetime.combine(job_date, ecm_op_hours_for_job_date['open'])
+                            ecm_close_dt_job = datetime.datetime.combine(job_date, ecm_op_hours_for_job_date['close'])
+
+                            for tide_event in day_tides:
+                                if tide_event['type'] == 'H':
+                                    ht_datetime = datetime.datetime.combine(job_date, tide_event['time'])
+                                    
+                                    offset1_hours = float(ramp_obj_for_tide.tide_offset_hours1 or 0)
+                                    offset2_hours = float(ramp_obj_for_tide.tide_offset_hours2 or ramp_obj_for_tide.tide_offset_hours1 or 0)
+
+                                    offset1 = datetime.timedelta(hours=offset1_hours)
+                                    offset2 = datetime.timedelta(hours=offset2_hours)
+                                    
+                                    tidal_window_start = ht_datetime - offset1
+                                    tidal_window_end = ht_datetime + offset2
+                                    
+                                    if max(tidal_window_start, ecm_open_dt_job) < min(tidal_window_end, ecm_close_dt_job):
+                                        relevant_hts.append(ecm.format_time_for_display(tide_event['time']))
+                            
+                            if relevant_hts: relevant_high_tides_str = ", ".join(relevant_hts) + " HT"
+                            else: relevant_high_tides_str = "No relevant HT in op hours"
+                        elif not day_tides: relevant_high_tides_str = "Tide data N/A"
+                        else: relevant_high_tides_str = "ECM Closed"
+                    elif ramp_obj_for_tide and ramp_obj_for_tide.tide_calculation_method == "AnyTide":
+                        relevant_high_tides_str = "Any Tide"
+                    elif not ramp_obj_for_tide:
+                        relevant_high_tides_str = "Ramp info N/A"
+                else: # No ramp associated for tide check (e.g. Transport)
+                    relevant_high_tides_str = "N/A (Transport)"
+
+
+            job_info = {
+                "Job ID": job.job_id,
+                "Date": job.scheduled_start_datetime.strftime('%Y-%m-%d'),
+                "Start Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()),
+                "Customer": customer_name,
+                "Boat Type": boat_type,
+                "Length": boat_length,
+                "Service": job.service_type,
+                "Truck": job.assigned_hauling_truck_id,
+                "J17": "Yes" if job.assigned_crane_truck_id else "No",
+                "Destination/Location": destination, # Changed from "Destination" to match logbook context better for Launches too
+                "Status": job.job_status,
+                "Relevant High Tides": relevant_high_tides_str
+            }
+            display_data_for_table.append(job_info)
+        
+        if display_data_for_table:
+            st.dataframe(display_data_for_table)
+        else:
+            st.write("No jobs with schedule details to display.") # Handles cases where SCHEDULED_JOBS might have unscheduled items
+            
+    else: # If ecm.SCHEDULED_JOBS is empty
         st.write("No jobs scheduled in the current session yet.")
