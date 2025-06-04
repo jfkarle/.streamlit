@@ -887,14 +887,33 @@ def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
 # --- Section 9 (Detailed Implementation): prepare_daily_schedule_data ---
 # This replaces your current placeholder for this function.
 
-import datetime 
-# ... (other comments and then the functions themselves) ...
-
 def _mark_slots_in_grid(schedule_grid_truck_col, time_slots_dt_list, 
                         job_actual_start_dt, job_actual_end_dt, 
                         job_display_text, slot_status, job_id_for_ref,
                         time_increment_minutes): # Added time_increment_minutes as direct arg
-    # ... full implementation of _mark_slots_in_grid ...
+
+# This is the body for _mark_slots_in_grid
+    # Ensure this block is indented correctly under your def _mark_slots_in_grid(...) line
+    """
+    Internal helper to mark time slots in a specific truck's column as busy/potential.
+    """
+    job_marked_as_started = False
+    for i, slot_start_dt in enumerate(time_slots_dt_list):
+        # Calculate the end of the current display slot
+        slot_end_dt = slot_start_dt + datetime.timedelta(minutes=time_increment_minutes)
+
+        # Check for overlap: current slot starts before job ends AND current slot ends after job starts
+        if slot_start_dt < job_actual_end_dt and slot_end_dt > job_actual_start_dt:
+            # This slot is covered by the job
+            schedule_grid_truck_col[i]["status"] = slot_status
+            schedule_grid_truck_col[i]["job_id"] = job_id_for_ref
+            if not job_marked_as_started:
+                schedule_grid_truck_col[i]["display_text"] = job_display_text
+                schedule_grid_truck_col[i]["is_start_of_job"] = True
+                job_marked_as_started = True
+            else:
+                schedule_grid_truck_col[i]["display_text"] = " | | " # Continuation marker
+                schedule_grid_truck_col[i]["is_start_of_job"] = False
 
 def prepare_daily_schedule_data(display_date, 
                                 original_job_request_details_for_potential=None, 
