@@ -884,81 +884,24 @@ def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
     return new_job.job_id, final_msg
 
 
+# --- Section 9 (Detailed Implementation): prepare_daily_schedule_data ---
+# This replaces your current placeholder for this function.
+
+import datetime 
+# ... (other comments and then the functions themselves) ...
+
 def _mark_slots_in_grid(schedule_grid_truck_col, time_slots_dt_list, 
                         job_actual_start_dt, job_actual_end_dt, 
-                        job_display_text, slot_status, job_id_for_ref):
-    """
-    Internal helper to mark time slots in a specific truck's column as busy/potential.
-    Args:
-        schedule_grid_truck_col (list): The list of slot_info dicts for a single truck.
-        time_slots_dt_list (list): List of datetime.datetime objects representing the start of each display slot.
-        job_actual_start_dt (datetime.datetime): Actual start datetime of the job.
-        job_actual_end_dt (datetime.datetime): Actual end datetime of the job.
-        job_display_text (str): Text to show for the job.
-        slot_status (str): "busy" or "potential".
-        job_id_for_ref (any): The ID of the job being marked.
-    """
-    job_marked_as_started = False
-    for i, slot_start_dt in enumerate(time_slots_dt_list):
-        slot_end_dt = slot_start_dt + datetime.timedelta(minutes=getattr(_mark_slots_in_grid, 'time_increment_minutes', 15)) # Access increment
-
-        # Check for overlap: current slot starts before job ends AND current slot ends after job starts
-        if slot_start_dt < job_actual_end_dt and slot_end_dt > job_actual_start_dt:
-            schedule_grid_truck_col[i]["status"] = slot_status
-            schedule_grid_truck_col[i]["job_id"] = job_id_for_ref
-            if not job_marked_as_started:
-                schedule_grid_truck_col[i]["display_text"] = job_display_text
-                schedule_grid_truck_col[i]["is_start_of_job"] = True
-                job_marked_as_started = True
-            else:
-                schedule_grid_truck_col[i]["display_text"] = "" # Or some continuation mark
-                schedule_grid_truck_col[i]["is_start_of_job"] = False
-        # For slots already marked by another part of the same potential job (e.g. J17 vs hauler)
-        # Or if a slot is already busy and we're trying to mark a potential job - potential should overlay for display.
-        # This simple marking overwrites; more complex UI might show layers.
-        # For now, if 'potential' comes last, it will correctly show.
+                        job_display_text, slot_status, job_id_for_ref,
+                        time_increment_minutes): # Added time_increment_minutes as direct arg
+    # ... full implementation of _mark_slots_in_grid ...
 
 def prepare_daily_schedule_data(display_date, 
-                                original_job_request_details_for_potential=None, # Pass full original request
-                                potential_job_slot_info=None, # Pass the selected slot from find_available_job_slots
-                                time_increment_minutes=30): # Default to 30-min for fewer rows
-    """
-    Prepares data for rendering a daily schedule view.
-    """
-    # Store increment for helper function access
-    setattr(_mark_slots_in_grid, 'time_increment_minutes', time_increment_minutes)
-
-    output_data = {
-        "display_date_str": display_date.strftime("%Y-%m-%d %A"),
-        "time_slots_labels": [],
-        "truck_columns": ["S20/33", "S21/77", "S23/55", "J17"], # Truck names as column headers [user input]
-        "schedule_grid": {},
-        "operating_hours_display": "Closed"
-    }
-
-    # 1. Determine Time Range and Labels for the Day
-    ecm_hours = get_ecm_operating_hours(display_date)
-    if not ecm_hours:
-        # Populate with empty grid if closed, but still provide labels for consistency if needed by UI
-        # For simplicity, if closed, we can return minimal data.
-        output_data["schedule_grid"] = {truck_id: [] for truck_id in output_data["truck_columns"]}
-        return output_data 
-
-    output_data["operating_hours_display"] = \
-        f"{format_time_for_display(ecm_hours['open'])} - {format_time_for_display(ecm_hours['close'])}"
-
-    time_slots_datetime_objects = [] # Store actual datetime objects for comparison
-    current_dt_for_label = datetime.datetime.combine(display_date, ecm_hours['open'])
-    day_end_dt_for_label = datetime.datetime.combine(display_date, ecm_hours['close'])
-
-    while current_dt_for_label < day_end_dt_for_label:
-        output_data["time_slots_labels"].append(format_time_for_display(current_dt_for_label.time()))
-        time_slots_datetime_objects.append(current_dt_for_label)
-        current_dt_for_label += datetime.timedelta(minutes=time_increment_minutes)
-    
-    num_time_slots = len(output_data["time_slots_labels"])
-    if num_time_slots == 0: # Should not happen if ecm_hours is valid
-        return output_data
+                                original_job_request_details_for_potential=None, 
+                                potential_job_slot_info=None, 
+                                time_increment_minutes=30):
+    # ... full implementation of prepare_daily_schedule_data ...
+    return output_data
 
     # 2. Initialize Grid Data Structure
     for truck_col_id in output_data["truck_columns"]:
@@ -1062,22 +1005,6 @@ def prepare_daily_schedule_data(display_date,
                             job_id_for_ref=potential_job_id
                         )
     return output_data
-
-# --- Example Usage (Illustrative - requires SCHEDULED_JOBS to be populated) ---
-if __name__ == '__main__':
-    # --- Minimal Mocks for standalone execution of this section ---
-    # (Normally, these would be fully defined and imported from previous sections)
-    if 'Truck' not in globals(): # Define if not defined in a combined script
-        class Truck:
-            def __init__(self, truck_id, truck_name, max_boat_length_ft, is_crane=False, home_base_address="43 Mattakeeset St, Pembroke MA"):
-                self.truck_id = truck_id
-                self.truck_name = truck_name
-                self.max_boat_length_ft = max_boat_length_ft
-                self.is_crane = is_crane
-                self.home_base_address = home_base_address
-
-            def __repr__(self): # <--- CORRECTED INDENTATION FOR __repr__
-                return f"Truck(ID: {self.truck_id}, Name: {self.truck_name}, MaxLen: {self.max_boat_length_ft}, Crane: {self.is_crane})"
 
     # CORRECTED INDENTATION: These class definitions should NOT be inside the 'if Truck not in globals()' block.
     # They should be at the same level if they are also meant to be potentially re-defined mocks
