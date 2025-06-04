@@ -570,32 +570,69 @@ import datetime
 TODAY_FOR_SIMULATION = datetime.date(2025, 6, 2) # Monday, June 2, 2025
 
 def _check_and_create_slot_detail(current_search_date, current_potential_start_time_obj,
-                                  truck_id, customer, boat, service_type, ramp_obj, # ramp_obj can be None for Transports
-                                  ecm_op_hours, # Pass this in
+                                  truck_id, customer, boat, service_type, ramp_obj,
+                                  ecm_op_hours,
                                   job_duration_hours, needs_j17, j17_actual_busy_duration_hours):
-    """
-    Internal helper to check a specific slot and return its details if valid.
-    Returns a slot_detail dictionary or None.
-    """
+    print(f"DEBUG C&CSD: Checking Slot: Date={current_search_date}, Time={current_potential_start_time_obj}, Truck={truck_id}") 
+    
     proposed_start_dt = datetime.datetime.combine(current_search_date, current_potential_start_time_obj)
     proposed_end_dt_hauler = proposed_start_dt + datetime.timedelta(hours=job_duration_hours)
 
-    # Basic check: ensure job ends within operating hours for the day
-    # (get_final_schedulable_ramp_times already intersects with ecm_op_hours for ramp-based services)
-    # For transports, the sched_window IS ecm_op_hours.
-    # This check is more about not exceeding the *absolute* end of the day's operations.
     if proposed_end_dt_hauler.time() > ecm_op_hours['close'] and \
        not (proposed_end_dt_hauler.time() == ecm_op_hours['close'] and proposed_end_dt_hauler.date() == current_search_date):
-        return None # Hauler finishes too late
+        print(f"DEBUG C&CSD: Slot REJECTED - Hauler finishes too late ({proposed_end_dt_hauler.time()} vs close {ecm_op_hours['close']}).") # <-- DEBUG
+        return None 
 
     hauler_available = check_truck_availability(truck_id, current_search_date, proposed_start_dt, proposed_end_dt_hauler)
+    # print(f"DEBUG C&CSD: Hauler {truck_id} available: {hauler_available}") # Optional more verbose debug
+
     j17_available = True
     if needs_j17:
         j17_proposed_end_dt = proposed_start_dt + datetime.timedelta(hours=j17_actual_busy_duration_hours)
         j17_available = check_truck_availability("J17", current_search_date, proposed_start_dt, j17_proposed_end_dt)
+        # print(f"DEBUG C&CSD: J17 needed. J17 available: {j17_available}") # Optional
 
     if not (hauler_available and j17_available):
+        print(f"DEBUG C&CSD: Slot REJECTED - Hauler ({hauler_available}) or J17 ({j17_available}, needed: {needs_j17}) not available.") # <-- DEBUG
         return None
+    
+    passes_rules = True; slot_type = "Open"; bumped_job_info = None
+    
+    if current_potential_start_time_obj > datetime.time(15, 30): 
+        print(f"DEBUG C&CSD: Slot REJECTED - Rule C (start after 3:30 PM).") # <-- DEBUG
+        passes_rules = False
+    
+    if passes_rules: 
+        last_job = get_last_scheduled_job_for_truck_on_date(truck_id, current_search_date)
+        if last_job and last_job.scheduled_end_datetime < proposed_start_dt: 
+            prev_drop_coords = determine_job_location_coordinates("dropoff", last_job.service_type, get_customer_details(last_job.customer_id), get_boat_details(last_job.boat_id), ECM_RAMPS.get(last_job.dropoff_ramp_id) or ECM_RAMPS.get(last_job.pickup_ramp_id),getattr(last_job,'dropoff_loc_coords',None))
+            current_pickup_coords = determine_job_location_coordinates("pickup", service_type, customer, boat, ramp_obj, getattr(original_job_request_details,'transport_dropoff_details',None))
+            distance = calculate_distance_miles(prev_drop_coords, current_pickup_coords)
+
+            if current_potential_start_time_obj >= datetime.time(14,30):
+                if last_job.scheduled_end_datetime.time() < datetime.time(13,30) or distance > 10:
+                    print(f"DEBUG C&CSD: Slot REJECTED - Rule C (a/b). Prev end: {last_job.scheduled_end_datetime.time()}, Dist: {distance}") # <-- DEBUG
+                    passes_rules = False
+            
+            if passes_rules and service_type == "Transport" and last_job.service_type == "Transport":
+                if distance > 12:
+                    print(f"DEBUG C&CSD: Slot REJECTED - Adjacent transport >12 miles. Dist: {distance}") # <-- DEBUG
+                    passes_rules = False
+    
+    if not passes_rules:
+        # print("DEBUG C&CSD: Slot REJECTED - Did not pass overall scheduling rules.") # Generic, if any above set it false
+        return None
+
+    # (ECM Priority & Bumping Logic - can add debug prints inside too if needed)
+    # ...
+
+    print(f"DEBUG C&CSD: Slot VALID for {truck_id} at {current_potential_start_time_obj}") # <-- DEBUG
+    return { # ... slot_detail dictionary ... 
+        'date': current_search_date, 'time': current_potential_start_time_obj,
+        'truck_id': truck_id, 'j17_needed': needs_j17,
+        'type': slot_type, 'bumped_job_details': bumped_job_info,
+        'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.length_ft}ft {boat.boat_type}"
+    }
 
     # --- Apply Proximity, Late Day Rules (Rule C), ECM Priority & Bumping ---
     passes_rules = True; slot_type = "Open"; bumped_job_info = None
@@ -712,12 +749,17 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     potential_slots_collected = [] # Combined list before final sort
 
     # --- Phase 0: J17 Co-location Search (Only if new job needs J17 and is ramp-based for co-location) ---
-    # Now 'needs_j17', 'service_type', 'selected_ramp_id', etc. are all defined and can be used
     if needs_j17 and service_type in ["Launch", "Haul"] and selected_ramp_id and not start_after_slot_details:
         print(f"  Phase 0: Searching for J17 co-location opportunities at Ramp {selected_ramp_id}...")
-        # ... (rest of Phase 0 logic as in response #36) ...
-        # This phase will populate j17_colocated_slots
-        # ...
+        # ... (co_location_date_window_start/end logic) ...
+
+        for job_date, ramp_id_of_j17_job in sorted_j17_engagement_dates:
+            print(f"\nDEBUG FAS (Phase 0): Checking J17 Co-location Date: {job_date.strftime('%Y-%m-%d %A')}") # <-- DEBUG
+            if len(j17_colocated_slots) >= 3: break
+
+            ecm_op_hours = get_ecm_operating_hours(job_date)
+            print(f"DEBUG FAS (Phase 0): ECM Op Hours for {job_date}: {ecm_op_hours}") # <-- DEBUG
+            if not ecm_op_hours: continue
     
     potential_slots_collected.extend(j17_colocated_slots) # Add found J17 slots first
 
@@ -730,11 +772,18 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         pass 
 
     # --- Phase 2: Collect Additional Chronological Slots (If still fewer than 3) ---
-    if len(potential_slots_collected) < 3:
-        # ... (Full detailed loop for Phase 2 from response #36, adapted) ...
-        # This phase populates 'other_slots_collected' then adds unique ones to 'potential_slots_collected'
-        # For brevity, if you need the Phase 2 loop fully re-integrated, let me know.
-        pass
+# --- Phase 2: Collect Additional Chronological Slots (If still fewer than 3) ---
+    if len(potential_slots_collected) < 3: # Name of list might be final_valid_slots_to_present
+        # current_search_date_for_additional would be your loop variable for dates in this phase
+        # Example, assuming a loop like: while current_search_date_for_additional <= ...
+        # INSIDE THAT DATE LOOP FOR PHASE 2:
+        # print(f"\nDEBUG FAS (Phase 2): Checking Additional Date: {current_search_date_for_additional.strftime('%Y-%m-%d %A')}") # <-- DEBUG
+        # ecm_op_hours = get_ecm_operating_hours(current_search_date_for_additional)
+        # print(f"DEBUG FAS (Phase 2): ECM Op Hours for {current_search_date_for_additional}: {ecm_op_hours}") # <-- DEBUG
+        # daily_schedulable_windows = ...
+        # print(f"DEBUG FAS (Phase 2): Daily Schedulable Windows for {current_search_date_for_additional}: {daily_schedulable_windows}") # <-- DEBUG
+        # ... (rest of Phase 2 logic for iterating through all time slots) ...
+        pass # Placeholder - this needs the full Phase 2 loop structure
 
     # --- Final Processing ---
     if not potential_slots_collected:
