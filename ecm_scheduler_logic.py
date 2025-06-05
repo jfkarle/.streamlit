@@ -640,11 +640,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     today = TODAY_FOR_SIMULATION
     try: 
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
-    except ValueError: return [], "Error: Invalid date format."
+    except ValueError: DEBUG_LOG_MESSAGES.append("Error: Invalid date format."); return [], "Error: Invalid requested date format.", DEBUG_LOG_MESSAGES
     
     customer = get_customer_details(customer_id)
     boat = get_boat_details(boat_id)
-    if not customer or not boat: return [], "Error: Invalid Customer/Boat ID."
+    if not customer or not boat: DEBUG_LOG_MESSAGES.append("Error: Invalid Cust/Boat ID."); return [], "Error: Invalid Customer/Boat ID.", DEBUG_LOG_MESSAGES
 
     # ... (height check and peak month notices) ...
     
