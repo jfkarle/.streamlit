@@ -916,8 +916,6 @@ def prepare_daily_schedule_data(display_date,
                                 original_job_request_details_for_potential=None, 
                                 potential_job_slot_info=None, 
                                 time_increment_minutes=30):
-    # ... full implementation of prepare_daily_schedule_data ...
-    return output_data
 
     # 2. Initialize Grid Data Structure
     for truck_col_id in output_data["truck_columns"]:
@@ -1021,7 +1019,6 @@ def prepare_daily_schedule_data(display_date,
                             job_id_for_ref=potential_job_id
                         )
     return output_data
-
  
     if 'Ramp' not in globals(): # Example of how you might do it for all
         class Ramp:
