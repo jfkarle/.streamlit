@@ -569,27 +569,33 @@ import datetime
 # For context:
 TODAY_FOR_SIMULATION = datetime.date(2025, 6, 2) # Monday, June 2, 2025
 
+# In ecm_scheduler_logic.py
+
 def _check_and_create_slot_detail(current_search_date, current_potential_start_time_obj,
                                   truck_id, customer, boat, service_type, ramp_obj, 
                                   ecm_op_hours, job_duration_hours, needs_j17, 
-                                  j17_actual_busy_duration_hours):
+                                  j17_actual_busy_duration_hours, debug_log_list):
     """
     Internal helper to check a specific slot and return its details if valid.
     Returns a slot_detail dictionary or None.
     """
+    # (The rest of the function preamble remains the same)
+    debug_log_list.append(f"C&CSD: Check: {current_search_date.strftime('%a %m-%d')} {current_potential_start_time_obj.strftime('%I:%M%p')} Truck:{truck_id}")
     proposed_start_dt = datetime.datetime.combine(current_search_date, current_potential_start_time_obj)
     proposed_end_dt_hauler = proposed_start_dt + datetime.timedelta(hours=job_duration_hours)
 
     if proposed_end_dt_hauler.time() > ecm_op_hours['close'] and not (proposed_end_dt_hauler.time() == ecm_op_hours['close'] and proposed_end_dt_hauler.date() == current_search_date):
+        debug_log_list.append(f"C&CSD: REJECT - Hauler late: {proposed_end_dt_hauler.time()} > {ecm_op_hours['close']}")
         return None 
-
-    hauler_available = check_truck_availability(truck_id, current_search_date, proposed_start_dt, proposed_end_dt_hauler)
-    j17_available = True
+    
+    hauler_avail = check_truck_availability(truck_id, current_search_date, proposed_start_dt, proposed_end_dt_hauler)
+    j17_avail = True
     if needs_j17:
         j17_end_dt = proposed_start_dt + datetime.timedelta(hours=j17_actual_busy_duration_hours)
-        j17_available = check_truck_availability("J17", current_search_date, proposed_start_dt, j17_end_dt)
-
-    if not (hauler_available and j17_available):
+        j17_avail = check_truck_availability("J17", current_search_date, proposed_start_dt, j17_end_dt)
+    
+    if not (hauler_avail and j17_avail):
+        debug_log_list.append(f"C&CSD: REJECT - Truck/J17 Unavail. Hauler:{hauler_avail} J17:{j17_avail} (needed:{needs_j17})")
         return None
 
     passes_rules = True; slot_type = "Open"; bumped_job_info = None
@@ -599,31 +605,44 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
         last_job = get_last_scheduled_job_for_truck_on_date(truck_id, current_search_date)
         if last_job and last_job.scheduled_end_datetime < proposed_start_dt:
             prev_drop_coords = determine_job_location_coordinates("dropoff", last_job.service_type, get_customer_details(last_job.customer_id), get_boat_details(last_job.boat_id), ECM_RAMPS.get(last_job.dropoff_ramp_id or last_job.pickup_ramp_id), getattr(last_job, 'dropoff_loc_coords', None))
-            current_pickup_coords = determine_job_location_coordinates("pickup", service_type, customer, boat, ramp_obj, getattr(original_job_request_details, 'transport_dropoff_details', None))
+            
+            # --- MODIFICATION IS HERE ---
+            # Use .get() to safely access transport_dropoff_details which might not exist in original_job_request_details
+            transport_details = original_job_request_details.get('transport_dropoff_details') 
+            current_pickup_coords = determine_job_location_coordinates("pickup", service_type, customer, boat, ramp_obj, transport_details)
+            # --- END MODIFICATION ---
+
             distance = calculate_distance_miles(prev_drop_coords, current_pickup_coords)
 
-            if current_potential_start_time_obj >= datetime.time(14,30) and (last_job.scheduled_end_datetime.time() < datetime.time(13,30) or distance > 10):
-                passes_rules = False
-            if passes_rules and service_type == "Transport" and last_job.service_type == "Transport" and distance > 12:
-                passes_rules = False
+            if current_potential_start_time_obj >= datetime.time(14,30) and (last_job.scheduled_end_datetime.time() < datetime.time(13,30) or distance > 10): passes_rules = False
+            if passes_rules and service_type == "Transport" and last_job.service_type == "Transport" and distance > 12: passes_rules = False
     
     if not passes_rules:
+        debug_log_list.append(f"C&CSD: REJECT - Proximity/Late Day Rule")
         return None
-
+    
+    # (ECM Priority & Bumping logic remains the same)
     is_ecm_c = customer.is_ecm_customer; c_month = current_search_date.month
     is_spring_l = (service_type=="Launch" and c_month in [3,4,5,6] and is_ecm_c)
     is_fall_h_ecm = (service_type=="Haul" and c_month in [8,9,10,11] and is_ecm_c and is_dropoff_at_ecm_base(determine_job_location_coordinates("dropoff",service_type,customer,boat,ramp_obj)))
     target_morn_start = ecm_op_hours['open']
     if is_spring_l and current_potential_start_time_obj == target_morn_start:
         ex_job = get_job_at_slot(current_search_date, target_morn_start, truck_id)
-        if ex_job and ex_job.customer_id != customer.customer_id and not get_customer_details(ex_job.customer_id).is_ecm_customer and ex_job.service_type == "Launch":
-            slot_type, bumped_job_info = "BumpNonECM_SpringLaunch", {"job_id":ex_job.job_id, "customer_name":get_customer_details(ex_job.customer_id).customer_name}
-            
+        if ex_job and ex_job.customer_id != customer.customer_id:
+            ex_job_cust = get_customer_details(ex_job.customer_id)
+            if ex_job_cust and not ex_job_cust.is_ecm_customer and ex_job.service_type == "Launch":
+                slot_type, bumped_job_info = "BumpNonECM_SpringLaunch", {"job_id":ex_job.job_id, "customer_name":ex_job_cust.customer_name}
+                debug_log_list.append(f"C&CSD: Marked as BumpSpring option for Job {ex_job.job_id}")
+
     if is_fall_h_ecm and ramp_obj and current_potential_start_time_obj >= datetime.time(13,0):
         ex_job = get_job_at_slot(current_search_date, current_potential_start_time_obj, truck_id)
-        if ex_job and ex_job.customer_id != customer.customer_id and not get_customer_details(ex_job.customer_id).is_ecm_customer and ex_job.service_type == "Haul":
-            slot_type, bumped_job_info = "BumpNonECM_FallHaul", {"job_id":ex_job.job_id, "customer_name":get_customer_details(ex_job.customer_id).customer_name}
-            
+        if ex_job and ex_job.customer_id != customer.customer_id:
+            ex_job_cust = get_customer_details(ex_job.customer_id)
+            if ex_job_cust and not ex_job_cust.is_ecm_customer and ex_job.service_type == "Haul":
+                slot_type, bumped_job_info = "BumpNonECM_FallHaul", {"job_id":ex_job.job_id, "customer_name":ex_job_cust.customer_name}
+                debug_log_list.append(f"C&CSD: Marked as BumpFall option for Job {ex_job.job_id}")
+
+    debug_log_list.append(f"C&CSD: Slot VALID: {current_potential_start_time_obj} Truck:{truck_id} Type:{slot_type}")
     return {'date': current_search_date, 'time': current_potential_start_time_obj, 'truck_id': truck_id, 
             'j17_needed': needs_j17, 'type': slot_type, 'bumped_job_details': bumped_job_info,
             'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.length_ft}ft {boat.boat_type}"}
