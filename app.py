@@ -147,34 +147,43 @@ if selected_customer_id and selected_boat_id: # Only show these if we have a cus
     
     st.sidebar.markdown("---")
 
-    # --- Button to Find Slots (ensure it uses selected_customer_id and selected_boat_id) ---
-    if st.sidebar.button("Find Available Slots", key="find_initial_slots"):
-        if not selected_customer_id or not selected_boat_id:
-            st.warning("Please select a customer (which will select their boat).")
-        else:
-            st.session_state.suggested_slot_history = []
-            st.session_state.current_batch_index = -1
-            st.session_state.slot_for_confirmation_preview = None
-            st.session_state.no_more_slots_forward = False
+# --- Button to Find Slots (ensure it uses selected_customer_id and selected_boat_id) ---
+# --- Button to Find Slots (Initial Search) ---
+if st.sidebar.button("Find Available Slots", key="find_initial_slots"):
+    if not selected_customer_id or not selected_boat_id:
+        st.warning("Please select a customer (which will select their boat).")
+    else:
+        # Clear previous results and messages for a new search
+        st.session_state.suggested_slot_history = []
+        st.session_state.current_batch_index = -1
+        st.session_state.slot_for_confirmation_preview = None
+        st.session_state.no_more_slots_forward = False
+        st.session_state.info_message = "" # Clear any old message
 
-            st.session_state.current_job_request_details = {
-                'customer_id': selected_customer_id, # Use the found ID
-                'boat_id': selected_boat_id,         # Use the found ID
-                'service_type': service_type_input,
-                'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
-                'selected_ramp_id': selected_ramp_id_input,
-                'transport_dropoff_details': {'address': transport_dropoff_input} if transport_dropoff_input else None
-            }
-            # ... (rest of the find_initial_slots button logic as before) ...
-            slots, message = ecm.find_available_job_slots(
-                **st.session_state.current_job_request_details,
-                start_after_slot_details=None
-            )
-            if slots:
-                st.session_state.suggested_slot_history.append(slots)
-                st.session_state.current_batch_index = 0
-            st.info(message)
-            st.rerun()
+        st.session_state.current_job_request_details = {
+            'customer_id': selected_customer_id,
+            'boat_id': selected_boat_id,
+            'service_type': service_type_input,
+            'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
+            'selected_ramp_id': selected_ramp_id_input,
+            'transport_dropoff_details': {'address': transport_dropoff_input} if transport_dropoff_input else None
+        }
+        
+        # Call the logic function, which now returns a third item: debug messages
+        slots, message, debug_messages = ecm.find_available_job_slots(
+            **st.session_state.current_job_request_details,
+            start_after_slot_details=None
+        )
+        
+        # Store the results in session state so they persist across the rerun
+        st.session_state.info_message = message 
+        st.session_state.last_debug_messages = debug_messages
+
+        if slots:
+            st.session_state.suggested_slot_history.append(slots)
+            st.session_state.current_batch_index = 0
+        
+        st.rerun() # Now, rerun the script
 
 # ... (Rest of your app.py: Navigation Buttons, Display Suggested Slots, Preview & Confirm Section, Show All Scheduled Jobs) ...
 # Ensure these sections also use selected_customer_obj and selected_boat_obj where needed for display,
