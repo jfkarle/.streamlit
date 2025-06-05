@@ -18,6 +18,8 @@ if 'data_loaded' not in st.session_state: # Simple flag to load only once per se
 st.set_page_config(layout="wide")
 
 # --- Initialize Session State Variables ---
+
+if 'info_message' not in st.session_state: st.session_state.info_message = ""
 if 'suggested_slot_history' not in st.session_state:
     st.session_state.suggested_slot_history = []
 if 'current_batch_index' not in st.session_state:
@@ -39,6 +41,13 @@ st.sidebar.markdown("---")
 
 st.title("ECM Boat Hauling - Availability Scheduler")
 st.sidebar.header("New Job Request")
+
+# --- INSERT THE MESSAGE BLOCK HERE ---
+# This block checks for a message on every rerun and displays it at the top.
+if st.session_state.get('info_message'):
+    st.info(st.session_state.info_message)
+    st.session_state.info_message = "" # Clear the message after displaying it once
+# --- END OF INSERTED BLOCK ---
 
 # --- 1. Customer Name Search ---
 customer_name_search_input = st.sidebar.text_input("Enter Customer Name (or part of it):", 
