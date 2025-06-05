@@ -570,247 +570,217 @@ import datetime
 TODAY_FOR_SIMULATION = datetime.date(2025, 6, 2) # Monday, June 2, 2025
 
 def _check_and_create_slot_detail(current_search_date, current_potential_start_time_obj,
-                                  truck_id, customer, boat, service_type, ramp_obj,
-                                  ecm_op_hours,
-                                  job_duration_hours, needs_j17, j17_actual_busy_duration_hours):
-    print(f"DEBUG C&CSD: Checking Slot: Date={current_search_date}, Time={current_potential_start_time_obj}, Truck={truck_id}") 
-    
+                                  truck_id, customer, boat, service_type, ramp_obj, 
+                                  ecm_op_hours, job_duration_hours, needs_j17, 
+                                  j17_actual_busy_duration_hours):
+    """
+    Internal helper to check a specific slot and return its details if valid.
+    Returns a slot_detail dictionary or None.
+    """
     proposed_start_dt = datetime.datetime.combine(current_search_date, current_potential_start_time_obj)
     proposed_end_dt_hauler = proposed_start_dt + datetime.timedelta(hours=job_duration_hours)
 
-    if proposed_end_dt_hauler.time() > ecm_op_hours['close'] and \
-       not (proposed_end_dt_hauler.time() == ecm_op_hours['close'] and proposed_end_dt_hauler.date() == current_search_date):
-        print(f"DEBUG C&CSD: Slot REJECTED - Hauler finishes too late ({proposed_end_dt_hauler.time()} vs close {ecm_op_hours['close']}).") # <-- DEBUG
+    if proposed_end_dt_hauler.time() > ecm_op_hours['close'] and not (proposed_end_dt_hauler.time() == ecm_op_hours['close'] and proposed_end_dt_hauler.date() == current_search_date):
         return None 
 
     hauler_available = check_truck_availability(truck_id, current_search_date, proposed_start_dt, proposed_end_dt_hauler)
-    # print(f"DEBUG C&CSD: Hauler {truck_id} available: {hauler_available}") # Optional more verbose debug
-
     j17_available = True
     if needs_j17:
-        j17_proposed_end_dt = proposed_start_dt + datetime.timedelta(hours=j17_actual_busy_duration_hours)
-        j17_available = check_truck_availability("J17", current_search_date, proposed_start_dt, j17_proposed_end_dt)
-        # print(f"DEBUG C&CSD: J17 needed. J17 available: {j17_available}") # Optional
+        j17_end_dt = proposed_start_dt + datetime.timedelta(hours=j17_actual_busy_duration_hours)
+        j17_available = check_truck_availability("J17", current_search_date, proposed_start_dt, j17_end_dt)
 
     if not (hauler_available and j17_available):
-        print(f"DEBUG C&CSD: Slot REJECTED - Hauler ({hauler_available}) or J17 ({j17_available}, needed: {needs_j17}) not available.") # <-- DEBUG
-        return None
-    
-    passes_rules = True; slot_type = "Open"; bumped_job_info = None
-    
-    if current_potential_start_time_obj > datetime.time(15, 30): 
-        print(f"DEBUG C&CSD: Slot REJECTED - Rule C (start after 3:30 PM).") # <-- DEBUG
-        passes_rules = False
-    
-    if passes_rules: 
-        last_job = get_last_scheduled_job_for_truck_on_date(truck_id, current_search_date)
-        if last_job and last_job.scheduled_end_datetime < proposed_start_dt: 
-            prev_drop_coords = determine_job_location_coordinates("dropoff", last_job.service_type, get_customer_details(last_job.customer_id), get_boat_details(last_job.boat_id), ECM_RAMPS.get(last_job.dropoff_ramp_id) or ECM_RAMPS.get(last_job.pickup_ramp_id),getattr(last_job,'dropoff_loc_coords',None))
-            current_pickup_coords = determine_job_location_coordinates("pickup", service_type, customer, boat, ramp_obj, getattr(original_job_request_details,'transport_dropoff_details',None))
-            distance = calculate_distance_miles(prev_drop_coords, current_pickup_coords)
-
-            if current_potential_start_time_obj >= datetime.time(14,30):
-                if last_job.scheduled_end_datetime.time() < datetime.time(13,30) or distance > 10:
-                    print(f"DEBUG C&CSD: Slot REJECTED - Rule C (a/b). Prev end: {last_job.scheduled_end_datetime.time()}, Dist: {distance}") # <-- DEBUG
-                    passes_rules = False
-            
-            if passes_rules and service_type == "Transport" and last_job.service_type == "Transport":
-                if distance > 12:
-                    print(f"DEBUG C&CSD: Slot REJECTED - Adjacent transport >12 miles. Dist: {distance}") # <-- DEBUG
-                    passes_rules = False
-    
-    if not passes_rules:
-        # print("DEBUG C&CSD: Slot REJECTED - Did not pass overall scheduling rules.") # Generic, if any above set it false
         return None
 
-    # (ECM Priority & Bumping Logic - can add debug prints inside too if needed)
-    # ...
-
-    print(f"DEBUG C&CSD: Slot VALID for {truck_id} at {current_potential_start_time_obj}") # <-- DEBUG
-    return { # ... slot_detail dictionary ... 
-        'date': current_search_date, 'time': current_potential_start_time_obj,
-        'truck_id': truck_id, 'j17_needed': needs_j17,
-        'type': slot_type, 'bumped_job_details': bumped_job_info,
-        'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.length_ft}ft {boat.boat_type}"
-    }
-
-    # --- Apply Proximity, Late Day Rules (Rule C), ECM Priority & Bumping ---
     passes_rules = True; slot_type = "Open"; bumped_job_info = None
-    
-    # Rule C: No starts past 3:30 PM
     if current_potential_start_time_obj > datetime.time(15, 30): passes_rules = False
     
-    if passes_rules: # Only proceed if not already invalidated
+    if passes_rules:
         last_job = get_last_scheduled_job_for_truck_on_date(truck_id, current_search_date)
-        if last_job and last_job.scheduled_end_datetime < proposed_start_dt: # Is it a subsequent job?
-            prev_drop_coords = determine_job_location_coordinates("dropoff", last_job.service_type, get_customer_details(last_job.customer_id), get_boat_details(last_job.boat_id), ECM_RAMPS.get(last_job.dropoff_ramp_id) or ECM_RAMPS.get(last_job.pickup_ramp_id),getattr(last_job,'dropoff_loc_coords',None))
-            current_pickup_coords = determine_job_location_coordinates("pickup", service_type, customer, boat, ramp_obj, getattr(original_job_request_details,'transport_dropoff_details',None))
+        if last_job and last_job.scheduled_end_datetime < proposed_start_dt:
+            prev_drop_coords = determine_job_location_coordinates("dropoff", last_job.service_type, get_customer_details(last_job.customer_id), get_boat_details(last_job.boat_id), ECM_RAMPS.get(last_job.dropoff_ramp_id or last_job.pickup_ramp_id), getattr(last_job, 'dropoff_loc_coords', None))
+            current_pickup_coords = determine_job_location_coordinates("pickup", service_type, customer, boat, ramp_obj, getattr(original_job_request_details, 'transport_dropoff_details', None))
+            distance = calculate_distance_miles(prev_drop_coords, current_pickup_coords)
 
-
-            # Rule C parts a & b for jobs starting >= 2:30 PM
-            if current_potential_start_time_obj >= datetime.time(14,30):
-                distance = calculate_distance_miles(prev_drop_coords, current_pickup_coords)
-                if last_job.scheduled_end_datetime.time() < datetime.time(13,30) or distance > 10:
-                    passes_rules = False
-            
-            # Adjacent transport rule
-            if passes_rules and service_type == "Transport" and last_job.service_type == "Transport":
-                distance = calculate_distance_miles(prev_drop_coords, current_pickup_coords)
-                if distance > 12:
-                    passes_rules = False
+            if current_potential_start_time_obj >= datetime.time(14,30) and (last_job.scheduled_end_datetime.time() < datetime.time(13,30) or distance > 10):
+                passes_rules = False
+            if passes_rules and service_type == "Transport" and last_job.service_type == "Transport" and distance > 12:
+                passes_rules = False
     
     if not passes_rules:
         return None
 
-    # ECM Priority & Bumping (only if other rules pass)
-    is_ecm_cust = customer.is_ecm_customer; current_month = current_search_date.month
-    is_spring_launch = (service_type == "Launch" and current_month in [3,4,5,6] and is_ecm_cust)
-    is_fall_haul_ecm = (service_type == "Haul" and current_month in [8,9,10,11] and is_ecm_cust and \
-                        is_dropoff_at_ecm_base(determine_job_location_coordinates("dropoff",service_type,customer,boat,ramp_obj)))
-    
-    target_morning_start_time = ecm_op_hours['open']
-    if is_spring_launch and current_potential_start_time_obj == target_morning_start_time:
-        existing_job = get_job_at_slot(current_search_date, target_morning_start_time, truck_id)
-        if existing_job and not get_customer_details(existing_job.customer_id).is_ecm_customer and existing_job.service_type == "Launch":
-            slot_type = "BumpNonECM_SpringLaunch"
-            bumped_job_info = {"job_id": existing_job.job_id, "customer_name": get_customer_details(existing_job.customer_id).customer_name}
-    
-    if is_fall_haul_ecm and ramp_obj: # Check for strategic end of day slot
-        # This is a simplification: assumes any late afternoon slot for an ECM fall haul is "strategic" for bumping.
-        # A more precise check would calculate if this is the *latest possible* slot.
-        if current_potential_start_time_obj >= datetime.time(13,0): # Arbitrary "late enough"
-            existing_job = get_job_at_slot(current_search_date, current_potential_start_time_obj, truck_id)
-            if existing_job and not get_customer_details(existing_job.customer_id).is_ecm_customer and existing_job.service_type == "Haul":
-                slot_type = "BumpNonECM_FallHaul"
-                bumped_job_info = {"job_id": existing_job.job_id, "customer_name": get_customer_details(existing_job.customer_id).customer_name}
-    
-    return {
-        'date': current_search_date, 'time': current_potential_start_time_obj,
-        'truck_id': truck_id, 'j17_needed': needs_j17,
-        'type': slot_type, 'bumped_job_details': bumped_job_info,
-        'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.length_ft}ft {boat.boat_type}"
-    }
-
+    is_ecm_c = customer.is_ecm_customer; c_month = current_search_date.month
+    is_spring_l = (service_type=="Launch" and c_month in [3,4,5,6] and is_ecm_c)
+    is_fall_h_ecm = (service_type=="Haul" and c_month in [8,9,10,11] and is_ecm_c and is_dropoff_at_ecm_base(determine_job_location_coordinates("dropoff",service_type,customer,boat,ramp_obj)))
+    target_morn_start = ecm_op_hours['open']
+    if is_spring_l and current_potential_start_time_obj == target_morn_start:
+        ex_job = get_job_at_slot(current_search_date, target_morn_start, truck_id)
+        if ex_job and ex_job.customer_id != customer.customer_id and not get_customer_details(ex_job.customer_id).is_ecm_customer and ex_job.service_type == "Launch":
+            slot_type, bumped_job_info = "BumpNonECM_SpringLaunch", {"job_id":ex_job.job_id, "customer_name":get_customer_details(ex_job.customer_id).customer_name}
+            
+    if is_fall_h_ecm and ramp_obj and current_potential_start_time_obj >= datetime.time(13,0):
+        ex_job = get_job_at_slot(current_search_date, current_potential_start_time_obj, truck_id)
+        if ex_job and ex_job.customer_id != customer.customer_id and not get_customer_details(ex_job.customer_id).is_ecm_customer and ex_job.service_type == "Haul":
+            slot_type, bumped_job_info = "BumpNonECM_FallHaul", {"job_id":ex_job.job_id, "customer_name":get_customer_details(ex_job.customer_id).customer_name}
+            
+    return {'date': current_search_date, 'time': current_potential_start_time_obj, 'truck_id': truck_id, 
+            'j17_needed': needs_j17, 'type': slot_type, 'bumped_job_details': bumped_job_info,
+            'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.length_ft}ft {boat.boat_type}"}
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
                              selected_ramp_id=None, transport_dropoff_details=None,
                              start_after_slot_details=None):
-    global original_job_request_details 
+    global original_job_request_details
     original_job_request_details = {'transport_dropoff_details': transport_dropoff_details, 
                                     'customer_id': customer_id, 'boat_id': boat_id,
                                     'service_type': service_type}
-
-    print(f"\nSearching for {service_type} for Cust {customer_id}, Boat {boat_id}, ReqDate: {requested_date_str}, Ramp: {selected_ramp_id or 'N/A'}"
-          f"{', Starting after ' + str(start_after_slot_details) if start_after_slot_details else ''}")
-
-    today = TODAY_FOR_SIMULATION # Defined in global context
+    
+    # --- Initial Setup & Search Window ---
+    today = TODAY_FOR_SIMULATION
     try: 
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
-    except ValueError: return [], "Error: Invalid requested date format."
-
+    except ValueError: return [], "Error: Invalid date format."
+    
     customer = get_customer_details(customer_id)
     boat = get_boat_details(boat_id)
     if not customer or not boat: return [], "Error: Invalid Customer/Boat ID."
 
-    if boat.height_ft_keel_to_highest and boat.height_ft_keel_to_highest > 12.0: 
-        print(f"  Alert: Boat height ({boat.height_ft_keel_to_highest}ft) > 12ft limit.")
-    if today.month in [4, 5, 9, 10]: 
-        print(f"  Notice: Peak month mileage restrictions apply (full check pending).")
-
-    # Determine search window and starting point for this call
+    # ... (height check and peak month notices) ...
+    
     effective_search_start_date = requested_date_obj
     min_start_time_on_first_day = None
     if start_after_slot_details and start_after_slot_details.get('date'):
         effective_search_start_date = start_after_slot_details['date']
         if start_after_slot_details.get('time'):
-            last_slot_start_dt = datetime.datetime.combine(effective_search_start_date, start_after_slot_details['time'])
-            min_start_time_on_first_day = (last_slot_start_dt + datetime.timedelta(minutes=1)).time()
-    else: 
+            min_start_time_on_first_day = (datetime.datetime.combine(effective_search_start_date, start_after_slot_details['time']) + datetime.timedelta(minutes=1)).time()
+    else:
         if requested_date_obj >= today + datetime.timedelta(days=7):
             effective_search_start_date = requested_date_obj - datetime.timedelta(days=3)
         if effective_search_start_date < today:
             effective_search_start_date = today
     search_end_limit_date = requested_date_obj + datetime.timedelta(days=30)
-
-    # >>>>>>>> THESE DEFINITIONS MUST BE HERE, AFTER customer/boat ARE KNOWN <<<<<<<<<<
-    job_duration_hours = 3.0 if boat.boat_type in ["Sailboat MD", "Sailboat MT"] else 1.5
-    needs_j17 = boat.boat_type in ["Sailboat MD", "Sailboat MT"]
+    
+    job_duration_hours = 3.0 if boat.boat_type in ["Sailboat MD","Sailboat MT"] else 1.5
+    needs_j17 = boat.boat_type in ["Sailboat MD","Sailboat MT"]
     j17_actual_busy_duration_hours = 0
     if boat.boat_type == "Sailboat MD": j17_actual_busy_duration_hours = 1.0
     elif boat.boat_type == "Sailboat MT": j17_actual_busy_duration_hours = 1.5
+    suitable_truck_ids = get_suitable_trucks(boat.length_ft, customer.preferred_truck_id)
+    if not suitable_truck_ids: return [], "Error: No suitable trucks."
+
+    collected_slots = []
     
-    suitable_hauling_truck_ids = get_suitable_trucks(boat.length_ft, customer.preferred_truck_id)
-    # >>>>>>>> END OF CRITICAL DEFINITIONS PLACEMENT <<<<<<<<<<
-
-    # Initialize lists for collecting slots from different phases
-    j17_colocated_slots = []
-    prime_early_slots = [] # This list will be used by Phase 1 logic
-    # other_slots_collected = [] # This list will be used by Phase 2 logic
-    potential_slots_collected = [] # Combined list before final sort
-
-    # --- Phase 0: J17 Co-location Search (Only if new job needs J17 and is ramp-based for co-location) ---
+    # --- Phase 0: J17 Co-location Search ---
     if needs_j17 and service_type in ["Launch", "Haul"] and selected_ramp_id and not start_after_slot_details:
         print(f"  Phase 0: Searching for J17 co-location opportunities at Ramp {selected_ramp_id}...")
-        # ... (co_location_date_window_start/end logic) ...
+        co_location_window_start = requested_date_obj - datetime.timedelta(days=14)
+        if co_location_window_start < today: co_location_window_start = today
+        co_location_window_end = requested_date_obj + datetime.timedelta(days=14)
 
-        for job_date, ramp_id_of_j17_job in sorted_j17_engagement_dates:
-            print(f"\nDEBUG FAS (Phase 0): Checking J17 Co-location Date: {job_date.strftime('%Y-%m-%d %A')}") # <-- DEBUG
-            if len(j17_colocated_slots) >= 3: break
-
+        j17_engagements = {}
+        for job in SCHEDULED_JOBS:
+            if job.assigned_crane_truck_id == "J17" and job.scheduled_start_datetime and job.job_status == "Scheduled":
+                job_date = job.scheduled_start_datetime.date()
+                job_ramp_id = job.pickup_ramp_id or job.dropoff_ramp_id
+                if co_location_window_start <= job_date <= co_location_window_end and job_ramp_id == selected_ramp_id:
+                    j17_engagements[(job_date, job_ramp_id)] = True
+        
+        for job_date, ramp_id in sorted(list(j17_engagements.keys())):
+            if len(collected_slots) >= 3: break
             ecm_op_hours = get_ecm_operating_hours(job_date)
-            print(f"DEBUG FAS (Phase 0): ECM Op Hours for {job_date}: {ecm_op_hours}") # <-- DEBUG
             if not ecm_op_hours: continue
-    
-    potential_slots_collected.extend(j17_colocated_slots) # Add found J17 slots first
+            if boat.boat_type in ["Sailboat MD", "Sailboat MT"] and job_date.weekday() == 5: continue
+            
+            ramp_obj = ECM_RAMPS.get(ramp_id)
+            if not ramp_obj: continue
+            
+            daily_windows = get_final_schedulable_ramp_times(ramp_obj, boat, job_date)
+            if not daily_windows: continue
 
-    # --- Phase 1: Collect "Prime Early Slots" (If fewer than 3 slots so far, and primarily for initial search) ---
-    if len(potential_slots_collected) < 3: # Check if we still need more after Phase 0
-        # ... (Full detailed loop for Phase 1 from response #36, adapted) ...
-        # This phase populates 'prime_early_slots' then adds unique ones to 'potential_slots_collected'
-        # For brevity, if you need the Phase 1 loop fully re-integrated, let me know.
-        # The key is that it uses job_duration_hours, needs_j17, etc. which are now defined above.
-        pass 
+            for truck_id in suitable_truck_ids:
+                if len(collected_slots) >= 3: break
+                for window in daily_windows:
+                    if len(collected_slots) >= 3: break
+                    potential_time = window['start_time']
+                    while potential_time < window['end_time']:
+                        temp_dt = datetime.datetime.combine(job_date, potential_time)
+                        if temp_dt.minute not in [0, 30]:
+                            if temp_dt.minute < 30: temp_dt = temp_dt.replace(minute=30, second=0, microsecond=0)
+                            else: temp_dt = (temp_dt + datetime.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+                        potential_time = temp_dt.time()
+                        if potential_time >= window['end_time']: break
+                        
+                        slot_detail = _check_and_create_slot_detail(job_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours)
+                        if slot_detail:
+                            slot_detail['type'] = f"J17-Optimized ({slot_detail['type']})"
+                            if not any(s['date'] == slot_detail['date'] and s['time'] == slot_detail['time'] and s['truck_id'] == slot_detail['truck_id'] for s in collected_slots):
+                                collected_slots.append(slot_detail)
+                                if len(collected_slots) >= 3: break
+                        
+                        potential_time = (datetime.datetime.combine(datetime.date.min, potential_time) + datetime.timedelta(minutes=30)).time()
 
-    # --- Phase 2: Collect Additional Chronological Slots (If still fewer than 3) ---
-# --- Phase 2: Collect Additional Chronological Slots (If still fewer than 3) ---
-    if len(potential_slots_collected) < 3: # Name of list might be final_valid_slots_to_present
-        # current_search_date_for_additional would be your loop variable for dates in this phase
-        # Example, assuming a loop like: while current_search_date_for_additional <= ...
-        # INSIDE THAT DATE LOOP FOR PHASE 2:
-        # print(f"\nDEBUG FAS (Phase 2): Checking Additional Date: {current_search_date_for_additional.strftime('%Y-%m-%d %A')}") # <-- DEBUG
-        # ecm_op_hours = get_ecm_operating_hours(current_search_date_for_additional)
-        # print(f"DEBUG FAS (Phase 2): ECM Op Hours for {current_search_date_for_additional}: {ecm_op_hours}") # <-- DEBUG
-        # daily_schedulable_windows = ...
-        # print(f"DEBUG FAS (Phase 2): Daily Schedulable Windows for {current_search_date_for_additional}: {daily_schedulable_windows}") # <-- DEBUG
-        # ... (rest of Phase 2 logic for iterating through all time slots) ...
-        pass # Placeholder - this needs the full Phase 2 loop structure
-
+    # --- Phase 1 & 2: Main Chronological Search ---
+    if len(collected_slots) < 3:
+        MAX_POOL_SIZE = 15 # Collect a larger pool for better sorting
+        current_search_date = effective_search_start_date
+        days_iterated = 0
+        while current_search_date <= search_end_limit_date and len(collected_slots) < MAX_POOL_SIZE and days_iterated < 60:
+            ecm_op_hours = get_ecm_operating_hours(current_search_date)
+            if not ecm_op_hours:
+                current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
+            if boat.boat_type in ["Sailboat MD", "Sailboat MT"] and current_search_date.weekday() == 5:
+                current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
+            
+            daily_windows = []; ramp_obj = None
+            if service_type in ["Launch", "Haul"]:
+                ramp_obj = ECM_RAMPS.get(selected_ramp_id)
+                if not ramp_obj: break
+                daily_windows = get_final_schedulable_ramp_times(ramp_obj, boat, current_search_date)
+            elif service_type == "Transport":
+                daily_windows = [{'start_time': ecm_op_hours['open'], 'end_time': ecm_op_hours['close']}]
+            if not daily_windows:
+                current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
+                
+            for truck_id in suitable_truck_ids:
+                if len(collected_slots) >= MAX_POOL_SIZE: break
+                for window in daily_windows:
+                    if len(collected_slots) >= MAX_POOL_SIZE: break
+                    iter_start_time = window['start_time']
+                    if current_search_date == effective_search_start_date and min_start_time_on_first_day and min_start_time_on_first_day > iter_start_time:
+                        iter_start_time = min_start_time_on_first_day
+                    
+                    potential_time = iter_start_time
+                    while potential_time < window['end_time']:
+                        if len(collected_slots) >= MAX_POOL_SIZE: break
+                        temp_dt = datetime.datetime.combine(current_search_date, potential_time)
+                        if temp_dt.minute not in [0,30]:
+                            if temp_dt.minute < 30: temp_dt = temp_dt.replace(minute=30, second=0, microsecond=0)
+                            else: temp_dt = (temp_dt + datetime.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+                        potential_time = temp_dt.time()
+                        if potential_time >= window['end_time']: break
+                        
+                        if not any(s['date'] == current_search_date and s['time'] == potential_time and s['truck_id'] == truck_id for s in collected_slots):
+                            slot_detail = _check_and_create_slot_detail(current_search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours)
+                            if slot_detail:
+                                collected_slots.append(slot_detail)
+                        
+                        potential_time = (datetime.datetime.combine(datetime.date.min, potential_time) + datetime.timedelta(minutes=30)).time()
+            
+            if current_search_date == effective_search_start_date: min_start_time_on_first_day = None
+            current_search_date += datetime.timedelta(days=1); days_iterated += 1
+            
     # --- Final Processing ---
-    if not potential_slots_collected:
-        return [], "No suitable slots found within the search window."
-    else:
-        unique_slots_dict = {}
-        for slot in potential_slots_collected:
-            key = (slot['date'], slot['time'], slot['truck_id'])
-            if key not in unique_slots_dict:
-                 unique_slots_dict[key] = slot
-        
-        final_sorted_list = sorted(list(unique_slots_dict.values()), key=lambda x: (x['time'], x['date'])) # Prioritize time, then date
-        
-        # If J17 co-located slots were found, they should ideally be at the top.
-        # The current phased collection adds them first to potential_slots_collected.
-        # The final sort by (time, date) might reorder them if a non-J17-optimized slot
-        # has an earlier time. This might need a more complex final sort if J17 takes absolute precedence.
-        # For now, the (time, date) sort after collecting from phases is the primary driver.
-
-        final_slots_to_present = final_sorted_list[:3]
-        
-        return final_slots_to_present, f"Showing top {len(final_slots_to_present)} slots (J17 co-location considered)."
-
-# ... (rest of the file)
-
-# You would also need to ensure the _check_and_create_slot_detail helper function
-# (from response #36) is defined in your ecm_scheduler_logic.py file.
+    if not collected_slots: return [], "No suitable slots found within the search window."
+    
+    def sort_priority(slot):
+        if "J17-Optimized" in slot['type']: return (0, slot['date'], slot['time'])
+        return (1, slot['time'], slot['date'])
+    
+    collected_slots.sort(key=sort_priority)
+    final_slots_to_present = collected_slots[:3]
+    
+    return final_slots_to_present, f"Showing top {len(final_slots_to_present)} slots (J17/Early-Day prioritized)."
 
 # --- Section 10 (Revisited): confirm_and_schedule_job ---
 def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
