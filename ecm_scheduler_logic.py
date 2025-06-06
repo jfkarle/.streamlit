@@ -887,21 +887,12 @@ def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
 def _mark_slots_in_grid(schedule_grid_truck_col, time_slots_dt_list, 
                         job_actual_start_dt, job_actual_end_dt, 
                         job_display_text, slot_status, job_id_for_ref,
-                        time_increment_minutes): # Added time_increment_minutes as direct arg
-
-# This is the body for _mark_slots_in_grid
-    # Ensure this block is indented correctly under your def _mark_slots_in_grid(...) line
-    """
-    Internal helper to mark time slots in a specific truck's column as busy/potential.
-    """
+                        time_increment_minutes):
+    """Internal helper to mark time slots in a specific truck's column."""
     job_marked_as_started = False
     for i, slot_start_dt in enumerate(time_slots_dt_list):
-        # Calculate the end of the current display slot
         slot_end_dt = slot_start_dt + datetime.timedelta(minutes=time_increment_minutes)
-
-        # Check for overlap: current slot starts before job ends AND current slot ends after job starts
         if slot_start_dt < job_actual_end_dt and slot_end_dt > job_actual_start_dt:
-            # This slot is covered by the job
             schedule_grid_truck_col[i]["status"] = slot_status
             schedule_grid_truck_col[i]["job_id"] = job_id_for_ref
             if not job_marked_as_started:
@@ -909,116 +900,112 @@ def _mark_slots_in_grid(schedule_grid_truck_col, time_slots_dt_list,
                 schedule_grid_truck_col[i]["is_start_of_job"] = True
                 job_marked_as_started = True
             else:
-                schedule_grid_truck_col[i]["display_text"] = " | | " # Continuation marker
+                schedule_grid_truck_col[i]["display_text"] = " | | "
                 schedule_grid_truck_col[i]["is_start_of_job"] = False
 
 def prepare_daily_schedule_data(display_date, 
                                 original_job_request_details_for_potential=None, 
                                 potential_job_slot_info=None, 
                                 time_increment_minutes=30):
+    """Prepares data for rendering a daily schedule view."""
+    
+    # >> This is the critical definition of output_data at the beginning <<
+    output_data = {
+        "display_date_str": display_date.strftime("%Y-%m-%d %A"),
+        "time_slots_labels": [],
+        "truck_columns": ["S20/33", "S21/77", "S23/55", "J17"],
+        "schedule_grid": {},
+        "operating_hours_display": "Closed"
+    }
 
-    # 2. Initialize Grid Data Structure
+    ecm_hours = get_ecm_operating_hours(display_date)
+    if not ecm_hours:
+        output_data["schedule_grid"] = {truck_id: [] for truck_id in output_data["truck_columns"]}
+        return output_data 
+
+    output_data["operating_hours_display"] = \
+        f"{format_time_for_display(ecm_hours['open'])} - {format_time_for_display(ecm_hours['close'])}"
+
+    time_slots_datetime_objects = []
+    current_dt_for_label = datetime.datetime.combine(display_date, ecm_hours['open'])
+    day_end_dt_for_label = datetime.datetime.combine(display_date, ecm_hours['close'])
+
+    while current_dt_for_label < day_end_dt_for_label:
+        output_data["time_slots_labels"].append(format_time_for_display(current_dt_for_label.time()))
+        time_slots_datetime_objects.append(current_dt_for_label)
+        current_dt_for_label += datetime.timedelta(minutes=time_increment_minutes)
+    
+    num_time_slots = len(output_data["time_slots_labels"])
+    if num_time_slots == 0: return output_data
+
     for truck_col_id in output_data["truck_columns"]:
         output_data["schedule_grid"][truck_col_id] = [
             {"status": "free", "job_id": None, "display_text": "", "is_start_of_job": False} 
             for _ in range(num_time_slots)
         ]
 
-    # 3. Populate with Existing Confirmed Jobs
-    for job in SCHEDULED_JOBS: # Assumes SCHEDULED_JOBS is the global list of Job objects
+    for job in SCHEDULED_JOBS:
         if job.scheduled_start_datetime and \
            job.scheduled_start_datetime.date() == display_date and \
            job.job_status == "Scheduled":
             
             customer = get_customer_details(job.customer_id)
             boat = get_boat_details(job.boat_id)
-            
             cust_name = customer.customer_name if customer else f"CustID {job.customer_id}"
-            boat_info = f"{boat.length_ft}ft {boat.boat_type}" if boat else "N/A"
-            # Example: "Seth Ohm => 30' Bear's Island"
-            # For simplicity, using a generic display text for now.
-            # You can customize this based on job.service_type, job.pickup_desc, job.dropoff_desc
-            job_text = f"{cust_name} - {boat_info} ({job.service_type})"
+            boat_info = f"{boat.length_ft}ft {boat.boat_type}" if boat and hasattr(boat, 'length_ft') and hasattr(boat, 'boat_type') else "N/A"
+            job_text = f"{cust_name} ({boat_info})"
 
-
-            # Mark for Hauling Truck
             if job.assigned_hauling_truck_id in output_data["schedule_grid"]:
                 _mark_slots_in_grid(
                     output_data["schedule_grid"][job.assigned_hauling_truck_id],
                     time_slots_datetime_objects,
                     job.scheduled_start_datetime,
-                    job.scheduled_end_datetime, # Hauler's end time
-                    job_text,
-                    slot_status="busy",
-                    job_id_for_ref=job.job_id
-                )
+                    job.scheduled_end_datetime, 
+                    job_text, "busy", job.job_id,
+                    time_increment_minutes)
 
-            # Mark for J17 Crane
             if job.assigned_crane_truck_id == "J17" and job.j17_busy_end_datetime:
-                if "J17" in output_data["schedule_grid"]: # Ensure J17 column exists
+                if "J17" in output_data["schedule_grid"]:
                     _mark_slots_in_grid(
                         output_data["schedule_grid"]["J17"],
                         time_slots_datetime_objects,
-                        job.scheduled_start_datetime, # J17 starts with the job
-                        job.j17_busy_end_datetime,    # J17's specific busy end time
-                        job_text, # Could be "J17 for Job X" or similar
-                        slot_status="busy",
-                        job_id_for_ref=job.job_id
-                    )
+                        job.scheduled_start_datetime, 
+                        job.j17_busy_end_datetime,
+                        f"J17 for {cust_name}", "busy", job.job_id,
+                        time_increment_minutes)
     
-    # 4. Incorporate the "Potential" New Job (if provided)
     if potential_job_slot_info and original_job_request_details_for_potential:
         pot_date = potential_job_slot_info['date']
-        # Ensure potential job is for the display_date
         if pot_date == display_date:
-            pot_start_time_obj = potential_job_slot_info['time']
-            pot_start_dt = datetime.datetime.combine(display_date, pot_start_time_obj)
-            
-            pot_customer = get_customer_details(original_job_request_details_for_potential['customer_id'])
-            pot_boat = get_boat_details(original_job_request_details_for_potential['boat_id'])
+            pot_start_dt = datetime.datetime.combine(display_date, potential_job_slot_info['time'])
+            pot_customer = get_customer_details(original_job_request_details_for_potential.get('customer_id'))
+            pot_boat = get_boat_details(original_job_request_details_for_potential.get('boat_id'))
 
             if pot_customer and pot_boat:
                 pot_hauler_duration_hours = 3.0 if pot_boat.boat_type in ["Sailboat MD", "Sailboat MT"] else 1.5
                 pot_hauler_end_dt = pot_start_dt + datetime.timedelta(hours=pot_hauler_duration_hours)
                 
-                pot_j17_needed = potential_job_slot_info['j17_needed']
-                pot_j17_end_dt = None
-                if pot_j17_needed:
-                    j17_busy_hours = 0
-                    if pot_boat.boat_type == "Sailboat MD": j17_busy_hours = 1.0
-                    elif pot_boat.boat_type == "Sailboat MT": j17_busy_hours = 1.5
-                    if j17_busy_hours > 0:
-                        pot_j17_end_dt = pot_start_dt + datetime.timedelta(hours=j17_busy_hours)
-
-                potential_job_text = f"POTENTIAL: {pot_customer.customer_name} - {pot_boat.length_ft}ft {pot_boat.boat_type} ({original_job_request_details_for_potential['service_type']})"
-                potential_job_id = "POTENTIAL_JOB" # A unique identifier for this potential job
-
-                # Mark for Potential Hauling Truck
+                potential_job_text = f"POTENTIAL: {pot_customer.customer_name} ({pot_boat.length_ft}ft {pot_boat.boat_type})"
                 hauler_truck_id = potential_job_slot_info['truck_id']
                 if hauler_truck_id in output_data["schedule_grid"]:
                     _mark_slots_in_grid(
                         output_data["schedule_grid"][hauler_truck_id],
                         time_slots_datetime_objects,
-                        pot_start_dt,
-                        pot_hauler_end_dt,
-                        potential_job_text,
-                        slot_status="potential",
-                        job_id_for_ref=potential_job_id
-                    )
+                        pot_start_dt, pot_hauler_end_dt,
+                        potential_job_text, "potential", "POTENTIAL_JOB",
+                        time_increment_minutes)
                 
-                # Mark for Potential J17 Crane
-                if pot_j17_needed and pot_j17_end_dt:
-                    if "J17" in output_data["schedule_grid"]:
-                         _mark_slots_in_grid(
-                            output_data["schedule_grid"]["J17"],
-                            time_slots_datetime_objects,
-                            pot_start_dt,
-                            pot_j17_end_dt,
-                            potential_job_text, # Or "J17 for Potential Job"
-                            slot_status="potential",
-                            job_id_for_ref=potential_job_id
-                        )
-    return output_data
+                if potential_job_slot_info.get('j17_needed'):
+                    j17_busy_hours = 1.0 if pot_boat.boat_type == "Sailboat MD" else (1.5 if pot_boat.boat_type == "Sailboat MT" else 0)
+                    if j17_busy_hours > 0:
+                        pot_j17_end_dt = pot_start_dt + datetime.timedelta(hours=j17_busy_hours)
+                        if "J17" in output_data["schedule_grid"]:
+                             _mark_slots_in_grid(
+                                output_data["schedule_grid"]["J17"],
+                                time_slots_datetime_objects,
+                                pot_start_dt, pot_j17_end_dt,
+                                f"J17 for POTENTIAL: {pot_customer.customer_name}", "potential", "POTENTIAL_JOB",
+                                time_increment_minutes)
  
     if 'Ramp' not in globals(): # Example of how you might do it for all
         class Ramp:
