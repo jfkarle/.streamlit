@@ -1148,12 +1148,7 @@ def prepare_daily_schedule_data(display_date,
     ALL_CUSTOMERS = { 1: Customer(1, "Test Customer 1"), 2: Customer(2, "Sailboat Customer") }
     ALL_BOATS = { 101: Boat(101, 1, "Powerboat", 30), 102: Boat(102, 2, "Sailboat MD", 40) }
     operating_hours_rules = [ OperatingHoursEntry(1, "Standard", 0, datetime.time(8,0), datetime.time(16,0)) ] # Mon 8-4
-    def get_ecm_operating_hours(d): # Simplified
-        if d.weekday() == 0: return {"open": datetime.time(8,0), "close": datetime.time(16,0)}
-        return None
-    def format_time_for_display(t): return t.strftime('%I:%M %p').lstrip('0') if isinstance(t, datetime.time) else "Invalid"
-    def get_customer_details(cid): return ALL_CUSTOMERS.get(cid)
-    def get_boat_details(bid): return ALL_BOATS.get(bid)
+
     # --- End Mocks ---
 
     # Add a sample scheduled job
@@ -1289,6 +1284,9 @@ if __name__ == '__main__':
         slots_for_req2, msg_req2 = find_available_job_slots(**job_request_2)
         print(msg_req2)
         for slot in slots_for_req2: print(f"   - {slot}")
+
+    else:
+        print("No initial slots found to proceed with further tests.")
 
     else:
         print("No initial slots found to proceed with further tests.")
