@@ -806,21 +806,37 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         current_search_date += datetime.timedelta(days=1); days_iterated += 1
 
     if not potential_slots_collected: 
-        return [], "No suitable slots found.", DEBUG_LOG_MESSAGES
+    return [], "No suitable slots found.", DEBUG_LOG_MESSAGES
+
+# First, sort all candidates by our priority: time, then date, then preferred truck.
+# To sort by preferred truck, we can check if the truck in the slot matches the customer's preference.
+def sort_priority(slot):
+    is_preferred = 1 # Default to non-preferred
+    if customer.preferred_truck_id and slot['truck_id'] == customer.preferred_truck_id:
+        is_preferred = 0 # Give preferred truck a higher sort priority (0 comes before 1)
     
-    unique_slots_dict = {}
-    for slot in potential_slots_collected:
-        key = (slot['date'], slot['time'], slot['truck_id'])
-        if key not in unique_slots_dict: unique_slots_dict[key] = slot
+    j17_priority = 1 # Default for normal slots
+    if "J17-Optimized" in slot['type']:
+        j17_priority = 0 # J17-Optimized slots come first
+
+    return (j17_priority, slot['time'], slot['date'], is_preferred)
+
+potential_slots_collected.sort(key=sort_priority)
+
+# Now, intelligently pick the top 3 unique time slots
+final_slots_to_present = []
+used_date_times = set()
+for slot in potential_slots_collected:
+    if len(final_slots_to_present) >= 3:
+        break
     
-    # Priority sort: earliest time of day first, then by date.
-    final_sorted_list = sorted(list(unique_slots_dict.values()), key=lambda x: (x['time'], x['date']))
-    
-    final_slots_to_present = final_sorted_list[:3]
-    
-    return final_slots_to_present, f"Showing top {len(final_slots_to_present)} prioritized slots.", DEBUG_LOG_MESSAGES
-    
-    return final_slots_to_present, f"Showing top {len(final_slots_to_present)} prioritized slots.", DEBUG_LOG_MESSAGES
+    slot_datetime = datetime.datetime.combine(slot['date'], slot['time'])
+    if slot_datetime not in used_date_times:
+        final_slots_to_present.append(slot)
+        used_date_times.add(slot_datetime)
+
+return final_slots_to_present, f"Showing top {len(final_slots_to_present)} prioritized slots.", DEBUG_LOG_MESSAGES
+
 # --- Section 10 (Revisited): confirm_and_schedule_job ---
 def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
     global JOB_ID_COUNTER, SCHEDULED_JOBS
