@@ -894,10 +894,6 @@ def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
     # print(final_msg)
     return new_job.job_id, final_msg
 
-
-# --- Section 9 (Detailed Implementation): prepare_daily_schedule_data ---
-# This replaces your current placeholder for this function.
-
 # --- Section 9 (Detailed Implementation): prepare_daily_schedule_data ---
 # This replaces your current placeholder for this function.
 
@@ -1026,210 +1022,49 @@ def prepare_daily_schedule_data(display_date,
                                 
     return output_data
  
-    if 'Ramp' not in globals(): # Example of how you might do it for all
-        class Ramp:
-            def __init__(self, ramp_id, ramp_name, town, tide_rule_description,
-                         tide_calculation_method, noaa_station_id,
-                         tide_offset_hours1=None, tide_offset_hours2=None,
-                         draft_restriction_ft=None, draft_restriction_tide_rule=None,
-                         allowed_boat_types="Power and Sail", ramp_fee=None, operating_notes=None,
-                         latitude=None, longitude=None):
-                self.ramp_id = ramp_id
-                self.ramp_name = ramp_name
-                # ... (rest of Ramp __init__ attributes) ...
-                self.town = town
-                self.tide_rule_description = tide_rule_description
-                self.tide_calculation_method = tide_calculation_method
-                self.noaa_station_id = noaa_station_id
-                self.tide_offset_hours1 = tide_offset_hours1
-                self.tide_offset_hours2 = tide_offset_hours2 if tide_offset_hours2 is not None else self.tide_offset_hours1
-                self.draft_restriction_ft = draft_restriction_ft
-                self.draft_restriction_tide_rule = draft_restriction_tide_rule
-                self.allowed_boat_types = allowed_boat_types
-                self.ramp_fee = ramp_fee
-                self.operating_notes = operating_notes
-                self.latitude = latitude
-                self.longitude = longitude
+# This block should be at the very end of your ecm_scheduler_logic.py file.
+if __name__ == "__main__":
+    """
+    This block runs only when the script is executed directly from the command line.
+    It is the standard place for testing and demonstration code.
+    """
+    # --- Test Setup ---
+    # This test demonstrates the prepare_daily_schedule_data function.
+    
+    # For this test, we will use mock customer and boat data
+    # instead of loading from a CSV file.
+    LOADED_CUSTOMERS = {
+        1: Customer(1, "Test Customer 1", is_ecm_customer=False),
+        2: Customer(2, "Sailboat Customer", is_ecm_customer=True)
+    }
+    LOADED_BOATS = {
+        101: Boat(101, 1, "Powerboat", 30),
+        102: Boat(102, 2, "Sailboat MD", 40)
+    }
 
+    # Reset the main job list for a clean test.
+    SCHEDULED_JOBS = []
 
-    if 'Customer' not in globals():
-        class Customer:
-            def __init__(self, customer_id, customer_name,
-                         home_latitude=None, home_longitude=None,
-                         preferred_truck_id=None, is_ecm_customer=False, is_safe_harbor_customer=False):
-                self.customer_id = customer_id
-                # ... (rest of Customer __init__ attributes) ...
-                self.customer_name = customer_name
-                self.home_latitude = home_latitude
-                self.home_longitude = home_longitude
-                self.preferred_truck_id = preferred_truck_id
-                self.is_ecm_customer = is_ecm_customer
-                self.is_safe_harbor_customer = is_safe_harbor_customer
-
-
-    if 'Boat' not in globals():
-        class Boat:
-            def __init__(self, boat_id, customer_id, boat_type, length_ft,
-                         draft_ft=None, height_ft_keel_to_highest=None, keel_type=None, is_ecm_boat=None):
-                self.boat_id = boat_id
-                # ... (rest of Boat __init__ attributes) ...
-                self.customer_id = customer_id
-                self.boat_type = boat_type
-                self.length_ft = length_ft
-                self.draft_ft = draft_ft
-                self.height_ft_keel_to_highest = height_ft_keel_to_highest
-                self.keel_type = keel_type
-                self._is_ecm_boat_direct = is_ecm_boat
-
-            @property
-            def is_ecm_boat(self):
-                if self._is_ecm_boat_direct is not None:
-                    return self._is_ecm_boat_direct
-                # This get_customer_details inside the mock __main__ would need a mock version too
-                # or rely on a globally defined one if this __main__ is part of the larger script.
-                # For simplicity, if this is a truly isolated __main__ test for just one function,
-                # you might hardcode this property or mock get_customer_details here too.
-                # customer = get_customer_details(self.customer_id) 
-                # return customer.is_ecm_customer if customer else False
-                return False # Simplified for isolated mock
-
-    if 'Job' not in globals():
-        class Job:
-            def __init__(self, job_id, customer_id, boat_id, service_type, requested_date,
-                         scheduled_start_datetime=None, calculated_job_duration_hours=None,
-                         scheduled_end_datetime=None, 
-                         assigned_hauling_truck_id=None,
-                         assigned_crane_truck_id=None, 
-                         j17_busy_end_datetime=None,   
-                         # ... (rest of Job __init__ parameters and assignments) ...
-                         pickup_ramp_id=None, pickup_street_address=None,
-                         dropoff_ramp_id=None, dropoff_street_address=None,
-                         job_status="Pending", notes=None,
-                         pickup_loc_coords=None, dropoff_loc_coords=None): 
-                self.job_id = job_id
-                self.customer_id = customer_id
-                self.boat_id = boat_id
-                self.service_type = service_type
-                # ... (all other assignments) ...
-                self.requested_date = requested_date
-                self.scheduled_start_datetime = scheduled_start_datetime
-                self.calculated_job_duration_hours = calculated_job_duration_hours
-                self.scheduled_end_datetime = scheduled_end_datetime
-                self.assigned_hauling_truck_id = assigned_hauling_truck_id
-                self.assigned_crane_truck_id = assigned_crane_truck_id
-                self.j17_busy_end_datetime = j17_busy_end_datetime
-                self.pickup_ramp_id = pickup_ramp_id
-                self.pickup_street_address = pickup_street_address
-                self.dropoff_ramp_id = dropoff_ramp_id
-                self.dropoff_street_address = dropoff_street_address
-                self.job_status = job_status
-                self.notes = notes
-                self.is_ecm_priority_job = False 
-                self.was_bumped = False
-                self.bumped_from_job_id = None
-                self.pickup_loc_coords = pickup_loc_coords
-                self.dropoff_loc_coords = dropoff_loc_coords
-
-
-            def __repr__(self):
-                # ... (as defined previously, ensure format_time_for_display is available or mock it) ...
-                # For this mock, let's simplify the __repr__ to avoid external dependencies
-                return f"Job(ID: {self.job_id}, Cust: {self.customer_id}, Svc: {self.service_type}, Status: {self.job_status})"
-
-    if 'OperatingHoursEntry' not in globals():
-        class OperatingHoursEntry:
-            def __init__(self, rule_id, season, day_of_week, open_time, close_time, notes=None):
-                self.rule_id = rule_id
-                # ... (rest of OperatingHoursEntry __init__ assignments) ...
-                self.season = season
-                self.day_of_week = day_of_week
-                self.open_time = open_time
-                self.close_time = close_time
-                self.notes = notes
-
-            # def __repr__(self): ... (simplified or ensure format_time_for_display)
-
-            def __repr__(self):
-                # ... (as defined previously) ...
-                return (f"OpHours(Season: {self.season}, Day: {self.day_of_week}, "
-                        f"Open: {format_time_for_display(self.open_time)}, Close: {format_time_for_display(self.close_time)})") # Assumes format_time_for_display is available
-        
-    SCHEDULED_JOBS = [] # Reset for test
-    ECM_TRUCKS = { "S20/33": Truck("S20/33", "S20", 60), "S21/77": Truck("S21/77", "S21", 50), "S23/55": Truck("S23/55","S23",30), "J17": Truck("J17", "J17", None, True) }
-    ALL_CUSTOMERS = { 1: Customer(1, "Test Customer 1"), 2: Customer(2, "Sailboat Customer") }
-    ALL_BOATS = { 101: Boat(101, 1, "Powerboat", 30), 102: Boat(102, 2, "Sailboat MD", 40) }
-    operating_hours_rules = [ OperatingHoursEntry(1, "Standard", 0, datetime.time(8,0), datetime.time(16,0)) ] # Mon 8-4
-
-    # --- End Mocks ---
-
-    # Add a sample scheduled job
-    job_start = datetime.datetime(2025, 6, 2, 9, 0) # Monday June 2nd, 2025 at 9:00 AM
+    # Add a sample scheduled job to the list for our test scenario.
+    job_start_time = datetime.datetime(2025, 6, 9, 9, 0) # A future Monday at 9:00 AM
     SCHEDULED_JOBS.append(
-        Job(job_id=1001, customer_id=1, boat_id=101, service_type="Launch", requested_date=datetime.date(2025,6,2),
-            scheduled_start_datetime=job_start,
-            calculated_job_duration_hours=1.5,
-            scheduled_end_datetime=job_start + datetime.timedelta(hours=1.5),
+        Job(job_id=1001,
+            customer_id=1,
+            boat_id=101,
+            service_type="Launch",
+            requested_date=datetime.date(2025, 6, 9),
+            scheduled_start_datetime=job_start_time,
+            scheduled_end_datetime=job_start_time + datetime.timedelta(hours=1.5),
             assigned_hauling_truck_id="S20/33",
             job_status="Scheduled"
         )
     )
-    # Add a sailboat job involving J17
-    job2_start = datetime.datetime(2025, 6, 2, 13, 0) # 1:00 PM
-    SCHEDULED_JOBS.append(
-        Job(job_id=1002, customer_id=2, boat_id=102, service_type="Haul", requested_date=datetime.date(2025,6,2),
-            scheduled_start_datetime=job2_start,
-            calculated_job_duration_hours=3.0, # Sailboat
-            scheduled_end_datetime=job2_start + datetime.timedelta(hours=3.0),
-            assigned_hauling_truck_id="S21/77",
-            assigned_crane_truck_id="J17",
-            j17_busy_end_datetime=job2_start + datetime.timedelta(hours=1.0), # J17 busy for 1hr for MD
-            job_status="Scheduled"
-        )
-    )
+    
+    # --- Run the Test ---
+    print("\n--- Running Daily Schedule Test ---")
+    display_date = datetime.date(2025, 6, 9)
+    schedule_data = prepare_daily_schedule_data(display_date)
 
-    test_display_date = datetime.date(2025, 6, 2) # Same day as scheduled jobs
-
-    # Test without a potential job
-    print(f"\n--- Daily Schedule Data for {test_display_date} (No Potential Job) ---")
-    schedule_data_existing = prepare_daily_schedule_data(test_display_date, time_increment_minutes=30)
-    # For a clean print of the grid data (which can be large):
-    # import json
-    # print(json.dumps(schedule_data_existing, indent=2, default=str))
-    print(f"Date: {schedule_data_existing['display_date_str']}, Hours: {schedule_data_existing['operating_hours_display']}")
-    print("Time Slots:", schedule_data_existing['time_slots_labels'])
-    for truck, slots in schedule_data_existing['schedule_grid'].items():
-        print(f"  Truck {truck}:")
-        for i, slot_info in enumerate(slots):
-            if slot_info['status'] != 'free':
-                print(f"    {schedule_data_existing['time_slots_labels'][i]}: {slot_info['status']} - {slot_info.get('display_text','')} (Job ID: {slot_info.get('job_id')})")
-
-
-    # Test with a potential job
-    # Original request that led to this potential slot (needed for customer/boat details)
-    mock_original_request = {
-        'customer_id': 1, 'boat_id': 101, 'service_type': "Transport", 
-        'requested_date_str': "2025-06-02" 
-    }
-    mock_potential_slot = { # This would come from find_available_job_slots output
-        'date': test_display_date, 
-        'time': datetime.time(11, 0), 
-        'truck_id': "S23/55", 
-        'j17_needed': False, 
-        'type': "Open", # Not used directly by prepare_daily_schedule_data, but good for context
-        'customer_name': "Olivia (Non-ECM)", # This info is already in the slot from find_available_job_slots
-        'boat_details_summary': "28ft Powerboat"
-    }
-    print(f"\n--- Daily Schedule Data for {test_display_date} (With Potential Job at {format_time_for_display(mock_potential_slot['time'])}) ---")
-    schedule_data_potential = prepare_daily_schedule_data(test_display_date, 
-                                                          original_job_request_details_for_potential=mock_original_request,
-                                                          potential_job_slot_info=mock_potential_slot,
-                                                          time_increment_minutes=30)
-    # print(json.dumps(schedule_data_potential, indent=2, default=str))
-    print(f"Date: {schedule_data_potential['display_date_str']}, Hours: {schedule_data_potential['operating_hours_display']}")
-    for truck, slots in schedule_data_potential['schedule_grid'].items():
-        print(f"  Truck {truck}:")
-        for i, slot_info in enumerate(slots):
-            if slot_info['status'] != 'free':
-                 print(f"    {schedule_data_potential['time_slots_labels'][i]}: {slot_info['status']} - {slot_info.get('display_text','')} (Job ID: {slot_info.get('job_id')})")
-
-
+    # Print the results in a readable format.
+    import json
+    print(json.dumps(schedule_data, indent=2, default=str))
