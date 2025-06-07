@@ -1223,68 +1223,94 @@ def prepare_daily_schedule_data(display_date,
 
 
 # --- Main example for testing flow (Streamlit would call these functions) ---
+# --- Main example for testing flow (Streamlit would call these functions) ---
 if __name__ == '__main__':
     print(f"--- ECM Scheduler Logic Test ---")
     print(f"Simulating for date: {TODAY_FOR_SIMULATION.strftime('%Y-%m-%d %A')}")
+
+    # Load data from the CSV file for the test to work
+    if load_customers_and_boats_from_csv("ECM Sample Cust.csv"):
+        print("CSV Data Loaded for Test.")
+    else:
+        print("CSV Data FAILED to load for Test. Exiting.")
+        exit() # Stop the test if data can't load
+
     SCHEDULED_JOBS.clear() # Start with no jobs for a clean test run
 
-    # Define a sample request
-    job_request_1 = {
-        'customer_id': 2, # James (ECM Priority)
-        'boat_id': 102,     # Sailboat MD, 40ft
-        'service_type': "Launch",
-        'requested_date_str': "2025-06-09", # A Monday in June
-        'selected_ramp_id': "PlymouthHarbor"
-    }
-
-    # 1. Find initial slots
-    print("\n1. Finding initial slots...")
-    slots_batch_1, msg1 = find_available_job_slots(**job_request_1)
-    print(msg1)
-    for slot in slots_batch_1: print(f"   - {slot}")
-
-    if slots_batch_1:
-        # 2. Simulate user "rolling forward"
-        print("\n2. Rolling forward for more slots...")
-        last_slot_b1 = slots_batch_1[-1]
-        start_after_b1 = {'date': last_slot_b1['date'], 'time': last_slot_b1['time'], 'truck_id': last_slot_b1['truck_id']}
-        slots_batch_2, msg2 = find_available_job_slots(**job_request_1, start_after_slot_details=start_after_b1)
-        print(msg2)
-        for slot in slots_batch_2: print(f"   - {slot}")
-
-        # 3. Simulate user selecting a slot (e.g., the first one from batch 1)
-        selected_slot_to_book = slots_batch_1[0]
-        print(f"\n3. User selected slot: {selected_slot_to_book}")
-
-        # 4. Conceptual: User would see a daily schedule preview
-        #    (In Streamlit, you'd call prepare_daily_schedule_data and render it)
-        print("\n4. Generating data for daily schedule preview (conceptual)...")
-        preview_data = prepare_daily_schedule_data(selected_slot_to_book['date'], potential_job_details=selected_slot_to_book)
-        print(f"   Preview data for {preview_data['display_date_str']}: Operating {preview_data['operating_hours_display']}")
-        # print(f"   (Grid data: {preview_data['schedule_grid']})") # Potentially very verbose
-
-        # 5. User confirms the job
-        print("\n5. Confirming the selected job...")
-        new_job_id, confirm_msg = confirm_and_schedule_job(job_request_1, selected_slot_to_book)
-        print(confirm_msg)
-
-        print("\n--- Current Scheduled Jobs ---")
-        for job in SCHEDULED_JOBS:
-            print(f"   - {job}")
-        
-        # 6. Try to find slots for another job to see if the first one blocks correctly
-        job_request_2 = {
-            'customer_id': 1, # Olivia (Non-ECM)
-            'boat_id': 101,     # Powerboat, 28ft
+    # Define a sample request using an ID from the loaded CSV data
+    # NOTE: The IDs from the CSV loader start at 1000 for customers and 5000 for boats
+    test_cust_id = 1000 
+    test_boat_id = 5000
+    
+    # Check if these IDs actually exist after loading, in case the CSV is empty
+    if test_cust_id not in LOADED_CUSTOMERS or test_boat_id not in LOADED_BOATS:
+        print(f"Test Error: Cannot run test because Customer ID {test_cust_id} or Boat ID {test_boat_id} was not loaded from CSV.")
+    else:
+        job_request_1 = {
+            'customer_id': test_cust_id,
+            'boat_id': test_boat_id,
             'service_type': "Launch",
-            'requested_date_str': selected_slot_to_book['date'].strftime('%Y-%m-%d'), # Same day as first job
+            'requested_date_str': "2025-06-09", # A Monday in June
             'selected_ramp_id': "PlymouthHarbor"
         }
-        print("\n6. Finding slots for a second job on the same day...")
-        slots_for_req2, msg_req2 = find_available_job_slots(**job_request_2)
-        print(msg_req2)
-        for slot in slots_for_req2: print(f"   - {slot}")
 
-    else:
-        print("No initial slots found to proceed with further tests.")
+        # 1. Find initial slots
+        print("\n1. Finding initial slots...")
+        # CORRECTED: Capture all 3 return values
+        slots_batch_1, msg1, debug_log1 = find_available_job_slots(**job_request_1)
+        print(msg1)
+        # print("--- DEBUG LOG ---")
+        # for d_msg in debug_log1: print(d_msg) # Optional: uncomment to see the full trace
+        # print("-----------------")
+        for slot in slots_batch_1: print(f"   - {slot}")
 
+        if slots_batch_1:
+            # 2. Simulate user "rolling forward"
+            print("\n2. Rolling forward for more slots...")
+            last_slot_b1 = slots_batch_1[-1]
+            start_after_b1 = {'date': last_slot_b1['date'], 'time': last_slot_b1['time'], 'truck_id': last_slot_b1['truck_id']}
+            # CORRECTED: Capture all 3 return values
+            slots_batch_2, msg2, debug2 = find_available_job_slots(**job_request_1, start_after_slot_details=start_after_b1)
+            print(msg2)
+            for slot in slots_batch_2: print(f"   - {slot}")
+
+            # 3. Simulate user selecting a slot (e.g., the first one from batch 1)
+            selected_slot_to_book = slots_batch_1[0]
+            print(f"\n3. User selected slot: {selected_slot_to_book}")
+
+            # 4. Preview the daily schedule
+            print("\n4. Generating data for daily schedule preview...")
+            # For the preview, we need the original request details
+            preview_data = prepare_daily_schedule_data(
+                display_date=selected_slot_to_book['date'], 
+                original_job_request_details_for_potential=job_request_1,
+                potential_job_slot_info=selected_slot_to_book
+            )
+            print(f"   Preview data for {preview_data['display_date_str']}: Operating {preview_data['operating_hours_display']}")
+
+            # 5. User confirms the job
+            print("\n5. Confirming the selected job...")
+            new_job_id, confirm_msg = confirm_and_schedule_job(job_request_1, selected_slot_to_book)
+            print(confirm_msg)
+
+            print("\n--- Current Scheduled Jobs ---")
+            for job in SCHEDULED_JOBS:
+                print(f"   - {job}")
+            
+            # 6. Try to find slots for another job to see if the first one blocks correctly
+            # (Using a different customer/boat ID from the CSV)
+            job_request_2 = {
+                'customer_id': 1001, 
+                'boat_id': 5001,
+                'service_type': "Launch",
+                'requested_date_str': selected_slot_to_book['date'].strftime('%Y-%m-%d'), # Same day as first job
+                'selected_ramp_id': "PlymouthHarbor"
+            }
+            print("\n6. Finding slots for a second job on the same day...")
+            # CORRECTED: Capture all 3 return values
+            slots_for_req2, msg_req2, debug3 = find_available_job_slots(**job_request_2)
+            print(msg_req2)
+            for slot in slots_for_req2: print(f"   - {slot}")
+
+        else:
+            print("No initial slots found to proceed with further tests.")
