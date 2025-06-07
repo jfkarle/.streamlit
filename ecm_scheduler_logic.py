@@ -705,6 +705,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         slot_detail = _check_and_create_slot_detail(current_search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES)
                         if slot_detail:
                             potential_slots_collected.append(slot_detail)
+                            break #
                     
                     potential_time = (datetime.datetime.combine(datetime.date.min, potential_time) + datetime.timedelta(minutes=30)).time()
         
