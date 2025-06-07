@@ -708,7 +708,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              start_after_slot_details=None):
     global original_job_request_details, DEBUG_LOG_MESSAGES
     DEBUG_LOG_MESSAGES = [f"FindSlots Start: Cust({customer_id}) Boat({boat_id}) Svc({service_type}) ReqDate({requested_date_str}) Ramp({selected_ramp_id})"]
-    original_job_request_details = {'transport_dropoff_details': transport_dropoff_details, 'customer_id': customer_id, 'boat_id': boat_id, 'service_type': service_type}
+    original_job_request_details = {'transport_dropoff_details': transport_dropoff_details, 'customer_id': customer_id, 'boat_id': boat_id, 'service_type': service_type, 'selected_ramp_id': selected_ramp_id, 'requested_date_str': requested_date_str}
     
     try: 
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
@@ -755,8 +755,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     potential_slots_collected = []
     MAX_POOL_SIZE = 20
     
-    # This combines all phases into a single chronological search for simplicity of implementation.
-    # The final sort step is what ensures the prioritization you want.
     current_search_date = effective_search_start_date
     days_iterated = 0
     while current_search_date <= search_end_limit_date and len(potential_slots_collected) < MAX_POOL_SIZE and days_iterated < 45:
@@ -767,7 +765,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         ramp_obj = None; daily_windows = []
         if service_type in ["Launch", "Haul"]:
             ramp_obj = ECM_RAMPS.get(selected_ramp_id)
-            if not ramp_obj: break
+            if not ramp_obj: 
+                DEBUG_LOG_MESSAGES.append(f"Error: Ramp ID '{selected_ramp_id}' not found.")
+                break
             daily_windows = get_final_schedulable_ramp_times(ramp_obj, boat, current_search_date)
         elif service_type == "Transport":
             daily_windows = [{'start_time': ecm_op_hours['open'], 'end_time': ecm_op_hours['close']}]
@@ -806,36 +806,26 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         current_search_date += datetime.timedelta(days=1); days_iterated += 1
 
     if not potential_slots_collected: 
-    return [], "No suitable slots found.", DEBUG_LOG_MESSAGES
+        return [], "No suitable slots found.", DEBUG_LOG_MESSAGES
 
-# First, sort all candidates by our priority: time, then date, then preferred truck.
-# To sort by preferred truck, we can check if the truck in the slot matches the customer's preference.
-def sort_priority(slot):
-    is_preferred = 1 # Default to non-preferred
-    if customer.preferred_truck_id and slot['truck_id'] == customer.preferred_truck_id:
-        is_preferred = 0 # Give preferred truck a higher sort priority (0 comes before 1)
-    
-    j17_priority = 1 # Default for normal slots
-    if "J17-Optimized" in slot['type']:
-        j17_priority = 0 # J17-Optimized slots come first
+    def sort_priority(slot):
+        is_preferred = 1 if not (customer.preferred_truck_id and slot['truck_id'] == customer.preferred_truck_id) else 0
+        j17_priority = 0 if "J17-Optimized" in slot.get('type', '') else 1
+        return (j17_priority, slot['time'], slot['date'], is_preferred)
 
-    return (j17_priority, slot['time'], slot['date'], is_preferred)
+    potential_slots_collected.sort(key=sort_priority)
 
-potential_slots_collected.sort(key=sort_priority)
+    final_slots_to_present = []
+    used_date_times = set()
+    for slot in potential_slots_collected:
+        if len(final_slots_to_present) >= 3:
+            break
+        slot_datetime = datetime.datetime.combine(slot['date'], slot['time'])
+        if slot_datetime not in used_date_times:
+            final_slots_to_present.append(slot)
+            used_date_times.add(slot_datetime)
 
-# Now, intelligently pick the top 3 unique time slots
-final_slots_to_present = []
-used_date_times = set()
-for slot in potential_slots_collected:
-    if len(final_slots_to_present) >= 3:
-        break
-    
-    slot_datetime = datetime.datetime.combine(slot['date'], slot['time'])
-    if slot_datetime not in used_date_times:
-        final_slots_to_present.append(slot)
-        used_date_times.add(slot_datetime)
-
-return final_slots_to_present, f"Showing top {len(final_slots_to_present)} prioritized slots.", DEBUG_LOG_MESSAGES
+    return final_slots_to_present, f"Showing top {len(final_slots_to_present)} prioritized slots.", DEBUG_LOG_MESSAGES
 
 # --- Section 10 (Revisited): confirm_and_schedule_job ---
 def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
