@@ -915,7 +915,10 @@ def prepare_daily_schedule_data(display_date,
                                 original_job_request_details_for_potential=None, 
                                 potential_job_slot_info=None, 
                                 time_increment_minutes=30):
-    """Prepares data for rendering a daily schedule view."""
+    global SCHEDULED_JOBS # <<< ADD THIS LINE
+    """
+    Prepares data for rendering a daily schedule view.
+    """
     
     # >> This is the critical definition of output_data at the beginning <<
     output_data = {
