@@ -892,6 +892,9 @@ def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
 # --- Section 9 (Detailed Implementation): prepare_daily_schedule_data ---
 # This replaces your current placeholder for this function.
 
+# --- Section 9 (Detailed Implementation): prepare_daily_schedule_data ---
+# This replaces your current placeholder for this function.
+
 def _mark_slots_in_grid(schedule_grid_truck_col, time_slots_dt_list, 
                         job_actual_start_dt, job_actual_end_dt, 
                         job_display_text, slot_status, job_id_for_ref,
@@ -915,12 +918,9 @@ def prepare_daily_schedule_data(display_date,
                                 original_job_request_details_for_potential=None, 
                                 potential_job_slot_info=None, 
                                 time_increment_minutes=30):
-    global SCHEDULED_JOBS # <<< ADD THIS LINE
-    """
-    Prepares data for rendering a daily schedule view.
-    """
+    """Prepares data for rendering a daily schedule view."""
+    global SCHEDULED_JOBS
     
-    # >> This is the critical definition of output_data at the beginning <<
     output_data = {
         "display_date_str": display_date.strftime("%Y-%m-%d %A"),
         "time_slots_labels": [],
@@ -1017,6 +1017,8 @@ def prepare_daily_schedule_data(display_date,
                                 pot_start_dt, pot_j17_end_dt,
                                 f"J17 for POTENTIAL: {pot_customer.customer_name}", "potential", "POTENTIAL_JOB",
                                 time_increment_minutes)
+                                
+    return output_data
  
     if 'Ramp' not in globals(): # Example of how you might do it for all
         class Ramp:
