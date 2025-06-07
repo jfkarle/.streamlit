@@ -925,7 +925,8 @@ def prepare_daily_schedule_data(display_date,
                                 pot_start_dt, pot_j17_end_dt,
                                 f"J17 for POTENTIAL: {pot_customer.customer_name}", "potential", "POTENTIAL_JOB",
                                 time_increment_minutes)
-                                
+    return output_data
+                                    
     # This block should be at the very end of your ecm_scheduler_logic.py file.
 if __name__ == "__main__":
     """
@@ -973,6 +974,6 @@ if __name__ == "__main__":
     import json
     print(json.dumps(schedule_data, indent=2, default=str))
                                     
-return output_data
+
  
 
