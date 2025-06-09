@@ -210,7 +210,6 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
     LOADED_CUSTOMERS.clear()
     LOADED_BOATS.clear()
     
-    # --- NEW: A dictionary to track customers we've already created ---
     customer_name_to_id_map = {}
     
     current_cust_id = CUSTOMER_ID_FROM_CSV_COUNTER
@@ -221,7 +220,6 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
             reader = csv.DictReader(infile)
             
             for original_row in reader:
-                # Make header access case-insensitive
                 row = {key.lower().strip(): value for key, value in original_row.items()}
 
                 try:
@@ -231,12 +229,9 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
 
                     customer_id_for_this_boat = None
 
-                    # --- CORE LOGIC FIX ---
                     if cust_name in customer_name_to_id_map:
-                        # If we've seen this customer before, use their existing ID
                         customer_id_for_this_boat = customer_name_to_id_map[cust_name]
                     else:
-                        # If this is a new customer, create a new entry for them
                         is_ecm = row.get("is_ecm_boat", "False").strip().lower() == 'true'
                         
                         customer = Customer(
@@ -251,9 +246,7 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
                         customer_name_to_id_map[cust_name] = current_cust_id
                         customer_id_for_this_boat = current_cust_id
                         current_cust_id += 1
-                    # --- END OF CORE LOGIC FIX ---
 
-                    # Now create the boat and link it to the correct, single customer ID
                     boat_type = row.get("boat_type")
                     boat_len_str = row.get("boat_length")
 
@@ -262,7 +255,7 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
                         
                         boat = Boat(
                             boat_id=current_boat_id,
-                            customer_id=customer_id_for_this_boat, # Use the correct ID
+                            customer_id=customer_id_for_this_boat,
                             boat_type=boat_type,
                             boat_length=float(boat_len_str),
                             draft_ft=float(boat_draft_str) if boat_draft_str and boat_draft_str.strip() else None
@@ -278,16 +271,6 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
 
     except FileNotFoundError:
         print(f"Error: Customer CSV file '{csv_filename}' not found.")
-        return False
-    except Exception as e:
-        print(f"An unexpected error occurred while reading '{csv_filename}': {e}")
-        return False
-        
-        print(f"Successfully loaded {len(LOADED_CUSTOMERS)} customers and {len(LOADED_BOATS)} boats from {csv_filename}.")
-        return True
-
-    except FileNotFoundError:
-        print(f"Error: Customer CSV file '{csv_filename}' not found. Please ensure it's in the same directory as the script.")
         return False
     except Exception as e:
         print(f"An unexpected error occurred while reading '{csv_filename}': {e}")
@@ -651,10 +634,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], "Error: Invalid Cust/Boat ID.", DEBUG_LOG_MESSAGES
 
     today = TODAY_FOR_SIMULATION
-    # ... (the middle part of this function remains the same) ...
-    # ... (job duration, truck suitability, etc.) ...
     
-    # This section is the same as before
     effective_search_start_date = requested_date_obj
     min_start_time_on_first_day = None
     if start_after_slot_details and start_after_slot_details.get('date'):
@@ -701,15 +681,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         elif service_type == "Transport":
             daily_windows = [{'start_time': ecm_op_hours['open'], 'end_time': ecm_op_hours['close']}]
         
-       if not daily_windows:
+        if not daily_windows:
             current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
             
-        # <<< YOU WILL ADD THE NEW CODE BLOCK RIGHT HERE
-            
-        for truck_id in suitable_truck_ids:
-            if len(potential_slots_collected) >= MAX_POOL_SIZE: break
-            for window in daily_windows:
-
         # --- NEW RULE LOGIC ---
         is_busy_month = get_season(current_search_date) == "Busy"
         is_launch_request = service_type == "Launch"
@@ -717,21 +691,20 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
         if is_busy_month and is_launch_request and is_non_ecm_cust:
             # For non-ECM launches in busy months, their first available slot is delayed.
+            DEBUG_LOG_MESSAGES.append(f"Applying 1.5hr delay for non-ECM launch on {current_search_date}")
             delayed_windows = []
             for window in daily_windows:
                 first_available_dt = datetime.datetime.combine(current_search_date, window['start_time'])
                 non_ecm_min_start_dt = first_available_dt + datetime.timedelta(hours=1.5)
                 
-                # If the new minimum start time is still within the window, create a new adjusted window
                 if non_ecm_min_start_dt.time() < window['end_time']:
                     delayed_windows.append({'start_time': non_ecm_min_start_dt.time(), 'end_time': window['end_time']})
-            daily_windows = delayed_windows # Replace original windows with delayed ones
+            daily_windows = delayed_windows
         # --- END NEW RULE LOGIC ---
             
         for truck_id in suitable_truck_ids:
             if len(potential_slots_collected) >= MAX_POOL_SIZE: break
             for window in daily_windows:
-                # ... (rest of the function continues as before) ...
                 if len(potential_slots_collected) >= MAX_POOL_SIZE: break
                 
                 iter_start_time = window['start_time']
@@ -760,7 +733,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         if current_search_date == effective_search_start_date: min_start_time_on_first_day = None
         current_search_date += datetime.timedelta(days=1); days_iterated += 1
     
-    # ... (rest of function sorting and returning slots remains the same)
     if not potential_slots_collected: 
         return [], "No suitable slots found.", DEBUG_LOG_MESSAGES
 
