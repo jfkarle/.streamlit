@@ -1,18 +1,12 @@
 # app.py
 # Your main Streamlit application file
 
-# app.py - REPLACE THE TOP OF YOUR FILE WITH THIS
-
 import streamlit as st
-
-# --- FIX: st.set_page_config() MUST be the first st.command ---
-# This line has been MOVED to the top, right after importing streamlit.
-# This will resolve the error you are seeing.
-st.set_page_config(layout="wide")
-# --- The rest of your imports can go here ---
 import datetime
 import csv
 import ecm_scheduler_logic as ecm # Your logic file
+
+st.set_page_config(layout="wide")
 
 if 'data_loaded' not in st.session_state: # Simple flag to load only once per session
     if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"): # Use your actual filename
