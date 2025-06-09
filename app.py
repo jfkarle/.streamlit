@@ -9,58 +9,10 @@ import streamlit as st
 # This line has been MOVED to the top, right after importing streamlit.
 # This will resolve the error you are seeing.
 st.set_page_config(layout="wide")
-
-
 # --- The rest of your imports can go here ---
 import datetime
 import csv
 import ecm_scheduler_logic as ecm # Your logic file
-
-
-# --- ENHANCED DIAGNOSTIC CODE (Checks the first data row) ---
-st.subheader("🕵️ CSV Data Diagnostic")
-try:
-    with open("ECM Sample Cust.csv", mode='r', newline='', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
-        
-        st.write("✅ Headers are correct. Now checking the data...")
-
-        # --- Let's inspect the first data row ---
-        try:
-            first_row = next(reader)
-            st.write("**Data from the first row of your CSV:**")
-            st.json(first_row)
-
-            # Test the most likely failure point: converting boat_length to a number
-            st.write("**Testing the 'boat_length' column...**")
-            length_value_from_file = first_row.get('boat_length', 'NOT FOUND').strip()
-            
-            st.write(f"Value found in the 'boat_length' column: `{length_value_from_file}`")
-
-            if not length_value_from_file:
-                st.error("‼️ PROBLEM FOUND: The 'boat_length' column in the first data row is EMPTY. The script cannot process rows with no boat length. Please check your data.")
-            else:
-                try:
-                    converted_length = float(length_value_from_file)
-                    st.success(f"✅ Successfully converted '{length_value_from_file}' to the number {converted_length}.")
-                    st.info("Since the first row processed correctly, the error might be in a LATER row. If so, please check that ALL rows have a valid number in the 'boat_length' column.")
-                except ValueError:
-                    st.error(f"‼️ PROBLEM FOUND: Could not convert '{length_value_from_file}' to a number. This is why the data won't load. Please check your CSV file and ensure all values in the 'boat_length' column are valid numbers (e.g., '32', not '32ft' or 'thirty-two').")
-
-        except StopIteration:
-            st.warning("⚠️ The CSV file appears to be empty (it has headers but no data rows).")
-        except KeyError:
-            st.error("‼️ A KeyError occurred. This should not happen if headers are correct. Please double check the CSV file.")
-        except Exception as e:
-            st.error(f"An unexpected error occurred while inspecting the first data row: {e}")
-
-except Exception as e:
-    st.error(f"An error occurred trying to open or read 'ECM Sample Cust.csv': {e}")
-
-st.divider()
-# --- END OF ENHANCED DIAGNOSTIC CODE ---
-
-
 
 if 'data_loaded' not in st.session_state: # Simple flag to load only once per session
     if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"): # Use your actual filename
@@ -70,9 +22,7 @@ if 'data_loaded' not in st.session_state: # Simple flag to load only once per se
         st.session_state.data_loaded = False
         st.error("Failed to load customer and boat data. Please check the CSV file and logs.")
 
-
-#### --- ORIGINAL Page Configuration (REMOVE ### below after testing CSV HEADER DIAGNOSTIC ABOVE) ---
-####  st.set_page_config(layout="wide")
+st.set_page_config(layout="wide")
 
 # --- Initialize Session State Variables ---
 
