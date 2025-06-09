@@ -2,8 +2,11 @@
 # Your main Streamlit application file
 
 import streamlit as st
+st.set_page_config(layout="wide")
 import datetime
 import ecm_scheduler_logic as ecm # Your logic file
+
+st.set_page_config(layout="wide") ### TEMP REMOVE THIS LINE AND CORRECT ### BELOW AFTER TESTING HEADERS
 
 # HEADER MISMATCH Begin diagnostic code
 
@@ -56,8 +59,8 @@ if 'data_loaded' not in st.session_state: # Simple flag to load only once per se
         st.error("Failed to load customer and boat data. Please check the CSV file and logs.")
 
 
-# --- Page Configuration (Optional, but good practice) ---
-st.set_page_config(layout="wide")
+#### --- ORIGINAL Page Configuration (REMOVE ### below after testing CSV HEADER DIAGNOSTIC ABOVE) ---
+####  st.set_page_config(layout="wide")
 
 # --- Initialize Session State Variables ---
 
