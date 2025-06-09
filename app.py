@@ -5,6 +5,48 @@ import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm # Your logic file
 
+# HEADER MISMATCH Begin diagnostic code
+
+st.subheader("🕵️ CSV Header Diagnostic")
+try:
+    with open("ECM Sample Cust.csv", mode='r', newline='', encoding='utf-8-sig') as f:
+        # Using DictReader to get fieldnames is the most accurate way
+        reader = csv.DictReader(f)
+        headers_from_file = reader.fieldnames
+
+        st.write("Python is reading the following headers from your CSV file:")
+        st.code(f"{headers_from_file}", language="python")
+
+        required_headers = [
+            'customer_id', 'customer_name', 'primary_contact_name',
+            'primary_contact_phone', 'primary_contact_email', 'billing_address',
+            'boat_id', 'boat_name', 'boat_type', 'length_ft', 'home_port_or_marina'
+        ]
+        st.write("The script requires these exact headers:")
+        st.code(f"{required_headers}", language="python")
+
+        # Compare the lists to find the exact problem
+        missing_from_file = [h for h in required_headers if h not in headers_from_file]
+        extra_in_file = [h for h in headers_from_file if h not in required_headers]
+
+        if not missing_from_file and not extra_in_file:
+            st.success("✅ Headers appear to match perfectly! The issue may be with the data in the rows.")
+        else:
+            if missing_from_file:
+                st.error(f"‼️ MISMATCH: The script can't find these required headers: {missing_from_file}")
+            if extra_in_file:
+                st.error(f"‼️ MISMATCH: Your CSV has extra/misspelled headers: {extra_in_file}")
+
+except FileNotFoundError:
+    st.error("Could not find 'ECM Sample Cust.csv'. Make sure it's in the same directory as your app.py.")
+except Exception as e:
+    st.error(f"An unexpected error occurred while reading the file: {e}")
+
+st.divider()
+# --- END OF DIAGNOSTIC CODE ---
+
+
+
 if 'data_loaded' not in st.session_state: # Simple flag to load only once per session
     if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"): # Use your actual filename
         st.session_state.data_loaded = True
