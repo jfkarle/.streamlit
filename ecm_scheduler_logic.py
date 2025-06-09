@@ -199,13 +199,17 @@ BOAT_ID_FROM_CSV_COUNTER = 5000   # Start from a different range
 
 def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
     """
-    Loads customer and associated boat data from a CSV file into
-    LOADED_CUSTOMERS and LOADED_BOATS dictionaries.
-    This version is corrected to be case-insensitive to headers.
+    Loads customer and associated boat data from a CSV file.
+    This version correctly handles multiple boats per customer by creating only one
+    customer object per unique name.
     """
     global LOADED_CUSTOMERS, LOADED_BOATS, CUSTOMER_ID_FROM_CSV_COUNTER, BOAT_ID_FROM_CSV_COUNTER
     LOADED_CUSTOMERS.clear()
     LOADED_BOATS.clear()
+    
+    # --- NEW: A dictionary to track customers we've already created ---
+    customer_name_to_id_map = {}
+    
     current_cust_id = CUSTOMER_ID_FROM_CSV_COUNTER
     current_boat_id = BOAT_ID_FROM_CSV_COUNTER
 
@@ -214,54 +218,59 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
             reader = csv.DictReader(infile)
             
             for original_row in reader:
-                # --- FIX: Convert all header keys to lowercase for consistent access ---
+                # Make header access case-insensitive
                 row = {key.lower().strip(): value for key, value in original_row.items()}
 
                 try:
-                    # Now, use lowercase keys for all .get() calls
                     cust_name = row.get("customer_name")
                     if not cust_name:
                         continue
 
-                    is_ecm = row.get("is_ecm_boat", "False").strip().lower() == 'true'
-                    
-                    # Create the customer object using lowercase keys
-                    customer = Customer(
-                        customer_id=current_cust_id,
-                        customer_name=cust_name,
-                        home_latitude=float(row["home_latitude"]) if row.get("home_latitude") else None,
-                        home_longitude=float(row["home_longitude"]) if row.get("home_longitude") else None,
-                        preferred_truck_id=row.get("preferred_truck") if row.get("preferred_truck") in ECM_TRUCKS else None,
-                        is_ecm_customer=is_ecm
-                    )
-                    LOADED_CUSTOMERS[current_cust_id] = customer
+                    customer_id_for_this_boat = None
 
-                    # Load the boat using lowercase keys
+                    # --- CORE LOGIC FIX ---
+                    if cust_name in customer_name_to_id_map:
+                        # If we've seen this customer before, use their existing ID
+                        customer_id_for_this_boat = customer_name_to_id_map[cust_name]
+                    else:
+                        # If this is a new customer, create a new entry for them
+                        is_ecm = row.get("is_ecm_boat", "False").strip().lower() == 'true'
+                        
+                        customer = Customer(
+                            customer_id=current_cust_id,
+                            customer_name=cust_name,
+                            home_latitude=float(row["home_latitude"]) if row.get("home_latitude") else None,
+                            home_longitude=float(row["home_longitude"]) if row.get("home_longitude") else None,
+                            preferred_truck_id=row.get("preferred_truck"),
+                            is_ecm_customer=is_ecm
+                        )
+                        LOADED_CUSTOMERS[current_cust_id] = customer
+                        customer_name_to_id_map[cust_name] = current_cust_id
+                        customer_id_for_this_boat = current_cust_id
+                        current_cust_id += 1
+                    # --- END OF CORE LOGIC FIX ---
+
+                    # Now create the boat and link it to the correct, single customer ID
                     boat_type = row.get("boat_type")
                     boat_len_str = row.get("boat_length")
 
                     if boat_type and boat_len_str:
                         boat_draft_str = row.get("boat_draft")
-                        boat_len = float(boat_len_str)
-                        boat_draft = float(boat_draft_str) if boat_draft_str and boat_draft_str.strip() else None
-
+                        
                         boat = Boat(
                             boat_id=current_boat_id,
-                            customer_id=current_cust_id,
+                            customer_id=customer_id_for_this_boat, # Use the correct ID
                             boat_type=boat_type,
-                            boat_length=boat_len,
-                            draft_ft=boat_draft
+                            boat_length=float(boat_len_str),
+                            draft_ft=float(boat_draft_str) if boat_draft_str and boat_draft_str.strip() else None
                         )
                         LOADED_BOATS[current_boat_id] = boat
                         current_boat_id += 1
-                    else:
-                        print(f"Warning: Missing boat type or length for customer {cust_name}. Boat not created.")
                     
-                    current_cust_id += 1
                 except (ValueError, TypeError) as ve:
                     print(f"Warning: Skipping row due to data conversion error: {original_row} - Error: {ve}")
         
-        print(f"Successfully loaded {len(LOADED_CUSTOMERS)} customers and {len(LOADED_BOATS)} boats from {csv_filename}.")
+        print(f"Successfully loaded {len(LOADED_CUSTOMERS)} unique customers and {len(LOADED_BOATS)} boats.")
         return True
 
     except FileNotFoundError:
