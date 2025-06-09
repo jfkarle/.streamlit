@@ -418,7 +418,7 @@ if st.checkbox("Show All Currently Scheduled Jobs (In-Memory List for this Sessi
 
             job_info = {
                 "Job ID": job.job_id,
-                "Date": job.scheduled_start_datetime.strftime('%Y-%m-%d'),
+                "Date": job.scheduled_start_datetime.strftime('%B %d, %Y'),
                 "Start Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()),
                 "Customer": customer_name,
                 "Boat Type": boat_type,
