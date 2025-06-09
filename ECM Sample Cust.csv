@@ -1,4 +1,4 @@
-Customer_Name,Boat_Type,PREFERRED T_RUCK,Boat_Length,Boat_Draft,Home_Latitude,Home_Longitud,Is_ECM_Boat,PREFERRED_RAMP
+Customer_Name,Boat_Type,PREFERRED_TRUCK,Boat_Length,Boat_Draft,Home_Latitude,Home_Longitude,Is_ECM_Boat,PREFERRED_RAMP
 Natalie Walsh,Powerboat,S20/33,48,1.5,42.2168160159773,-70.5606527162728,False,Humarock
 Paul Baker,Powerboat,S21/77,55,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
 Derek Lee,Powerboat,S23/55,23,1.5,42.1963196230142,-70.5736398533909,False,Humarock
