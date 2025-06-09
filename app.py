@@ -106,6 +106,30 @@ if selected_customer_id: # Proceed only if a customer was successfully identifie
     
     customer_boats = [boat for boat_id, boat in ecm.LOADED_BOATS.items() if boat.customer_id == selected_customer_id]
 
+# Sailboat MT BUG debug // In app.py
+
+# --- 2. Automatically Get Boat & Display Details (if customer is selected) ---
+selected_boat_id = None
+selected_boat_obj = None
+
+if selected_customer_id: # Proceed only if a customer was successfully identified earlier
+    customer_boats = [boat for boat_id, boat in ecm.LOADED_BOATS.items() if boat.customer_id == selected_customer_id]
+
+    # --- INSERT DEBUG BLOCK HERE ---
+    with st.sidebar.expander("Show Debug Info for Boat Search"):
+        st.write(f"Searching for boats for Customer ID: `{selected_customer_id}`")
+        st.write(f"Found `{len(customer_boats)}` boat(s) for this customer.")
+        if customer_boats:
+            st.write("Details of found boat(s):")
+            st.json([boat.__dict__ for boat in customer_boats]) # Show all data for the found boat(s)
+    # --- END DEBUG BLOCK ---
+
+    if customer_boats:
+        selected_boat_obj = customer_boats[0] # Take the first boat
+        selected_boat_id = selected_boat_obj.boat_id
+        
+        # ... (rest of the display logic as before) ...
+    
     if customer_boats:
         selected_boat_obj = customer_boats[0] # Take the first boat
         selected_boat_id = selected_boat_obj.boat_id
