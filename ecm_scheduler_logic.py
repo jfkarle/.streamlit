@@ -201,44 +201,47 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
     """
     Loads customer and associated boat data from a CSV file into
     LOADED_CUSTOMERS and LOADED_BOATS dictionaries.
+    This version is corrected to be case-insensitive to headers.
     """
     global LOADED_CUSTOMERS, LOADED_BOATS, CUSTOMER_ID_FROM_CSV_COUNTER, BOAT_ID_FROM_CSV_COUNTER
-    LOADED_CUSTOMERS.clear(); LOADED_BOATS.clear()
-    current_cust_id = CUSTOMER_ID_FROM_CSV_COUNTER; current_boat_id = BOAT_ID_FROM_CSV_COUNTER
+    LOADED_CUSTOMERS.clear()
+    LOADED_BOATS.clear()
+    current_cust_id = CUSTOMER_ID_FROM_CSV_COUNTER
+    current_boat_id = BOAT_ID_FROM_CSV_COUNTER
 
     try:
         with open(csv_filename, mode='r', encoding='utf-8-sig') as infile:
             reader = csv.DictReader(infile)
-            # Normalize fieldnames to handle potential whitespace issues
-            reader.fieldnames = [field.strip() for field in reader.fieldnames]
+            
+            for original_row in reader:
+                # --- FIX: Convert all header keys to lowercase for consistent access ---
+                row = {key.lower().strip(): value for key, value in original_row.items()}
 
-            for row in reader:
                 try:
-                    cust_name = row.get("Customer Name")
-                    if not cust_name: continue
+                    # Now, use lowercase keys for all .get() calls
+                    cust_name = row.get("customer_name")
+                    if not cust_name:
+                        continue
 
-                    is_ecm = row.get("Is ECM Boat", "False").strip().lower() == 'true'
+                    is_ecm = row.get("is_ecm_boat", "False").strip().lower() == 'true'
+                    
+                    # Create the customer object using lowercase keys
                     customer = Customer(
                         customer_id=current_cust_id,
                         customer_name=cust_name,
-                        home_latitude=float(row["Home Latitude"]) if row.get("Home Latitude") else None,
-                        home_longitude=float(row["Home Longitude"]) if row.get("Home Longitude") else None,
-                        preferred_truck_id=row.get("PREFERRED TRUCK") if row.get("PREFERRED TRUCK") in ECM_TRUCKS else None,
+                        home_latitude=float(row["home_latitude"]) if row.get("home_latitude") else None,
+                        home_longitude=float(row["home_longitude"]) if row.get("home_longitude") else None,
+                        preferred_truck_id=row.get("preferred_truck") if row.get("preferred_truck") in ECM_TRUCKS else None,
                         is_ecm_customer=is_ecm
                     )
                     LOADED_CUSTOMERS[current_cust_id] = customer
 
-                    # --- CORRECTED BOAT LOADING ---
-                    boat_type = row.get("Boat Type") # Check for exact header "Boat Type"
-                    boat_len_str = row.get("Boat Length")
-                    
-                    if not boat_type: # Add a check if the header was not found
-                        print(f"Warning: 'Boat Type' column not found or empty for row: {row}. Boat not created.")
-                        current_cust_id += 1
-                        continue # Skip to the next customer row
+                    # Load the boat using lowercase keys
+                    boat_type = row.get("boat_type")
+                    boat_len_str = row.get("boat_length")
 
                     if boat_type and boat_len_str:
-                        boat_draft_str = row.get("Boat Draft")
+                        boat_draft_str = row.get("boat_draft")
                         boat_len = float(boat_len_str)
                         boat_draft = float(boat_draft_str) if boat_draft_str and boat_draft_str.strip() else None
 
@@ -247,21 +250,20 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
                             customer_id=current_cust_id,
                             boat_type=boat_type,
                             boat_length=boat_len,
-                            draft_ft=boat_draft,
-                            is_ecm_boat_flag=is_ecm
+                            draft_ft=boat_draft
                         )
                         LOADED_BOATS[current_boat_id] = boat
                         current_boat_id += 1
                     else:
                         print(f"Warning: Missing boat type or length for customer {cust_name}. Boat not created.")
-                    # --- END CORRECTED BOAT LOADING ---
-
+                    
                     current_cust_id += 1
                 except (ValueError, TypeError) as ve:
-                    print(f"Warning: Skipping row due to data conversion error: {row} - Error: {ve}")
+                    print(f"Warning: Skipping row due to data conversion error: {original_row} - Error: {ve}")
         
         print(f"Successfully loaded {len(LOADED_CUSTOMERS)} customers and {len(LOADED_BOATS)} boats from {csv_filename}.")
         return True
+
     except FileNotFoundError:
         print(f"Error: Customer CSV file '{csv_filename}' not found.")
         return False
