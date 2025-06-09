@@ -168,25 +168,28 @@ ECM_RAMPS = {
 }
 
 operating_hours_rules = [
-    # Standard Season Rules (e.g., Jan-Apr, Oct-Dec, excluding specific May/Sep rules)
+    # Standard Season (e.g., Jan-Mar, Jul-Aug, Nov-Dec)
     OperatingHoursEntry(1, "Standard", 0, datetime.time(8, 0), datetime.time(16, 0)), # Mon
     OperatingHoursEntry(2, "Standard", 1, datetime.time(8, 0), datetime.time(16, 0)), # Tue
     OperatingHoursEntry(3, "Standard", 2, datetime.time(8, 0), datetime.time(16, 0)), # Wed
     OperatingHoursEntry(4, "Standard", 3, datetime.time(8, 0), datetime.time(16, 0)), # Thu
     OperatingHoursEntry(5, "Standard", 4, datetime.time(8, 0), datetime.time(16, 0)), # Fri
-    OperatingHoursEntry(6, "Standard", 5, datetime.time(23, 58), datetime.time(23,59), notes="Effectively Closed"), # Sat CLOSED
-    OperatingHoursEntry(7, "Standard", 6, datetime.time(23, 58), datetime.time(23,59), notes="Effectively Closed"), # Sun CLOSED
+    OperatingHoursEntry(6, "Standard", 5, datetime.time(23, 58), datetime.time(23, 59), notes="Closed"), # Sat
+    OperatingHoursEntry(7, "Standard", 6, datetime.time(23, 58), datetime.time(23, 59), notes="Closed"), # Sun
 
-    # May & September Peak Rules (May=5, Sep=9)
-    OperatingHoursEntry(10, "MaySep", 0, datetime.time(7, 30), datetime.time(17, 0)), # Mon
-    OperatingHoursEntry(11, "MaySep", 1, datetime.time(7, 30), datetime.time(17, 0)), # Tue
-    OperatingHoursEntry(12, "MaySep", 2, datetime.time(7, 30), datetime.time(17, 0)), # Wed
-    OperatingHoursEntry(13, "MaySep", 3, datetime.time(7, 30), datetime.time(17, 0)), # Thu
-    OperatingHoursEntry(14, "MaySep", 4, datetime.time(7, 30), datetime.time(17, 0)), # Fri
-    OperatingHoursEntry(15, "MaySep", 5, datetime.time(7, 30), datetime.time(17, 30)), # Sat OPEN
-    OperatingHoursEntry(16, "MaySep", 6, datetime.time(23, 58), datetime.time(23,59), notes="Effectively Closed"), # Sun CLOSED
+    # Busy Season (Apr, May, Jun, Sep, Oct)
+    OperatingHoursEntry(10, "Busy", 0, datetime.time(7, 30), datetime.time(17, 30)), # Mon
+    OperatingHoursEntry(11, "Busy", 1, datetime.time(7, 30), datetime.time(17, 30)), # Tue
+    OperatingHoursEntry(12, "Busy", 2, datetime.time(7, 30), datetime.time(17, 30)), # Wed
+    OperatingHoursEntry(13, "Busy", 3, datetime.time(7, 30), datetime.time(17, 30)), # Thu
+    OperatingHoursEntry(14, "Busy", 4, datetime.time(7, 30), datetime.time(17, 30)), # Fri
+    # Saturday rules are handled separately in get_ecm_operating_hours
+    OperatingHoursEntry(15, "Busy", 5, datetime.time(23, 58), datetime.time(23, 59), notes="Closed unless May or Sep"), # Sat
+    OperatingHoursEntry(16, "Busy", 6, datetime.time(23, 58), datetime.time(23, 59), notes="Closed"), # Sun
+
+    # Rule for May & September Saturdays
+    OperatingHoursEntry(20, "BusySaturday", 5, datetime.time(7, 30), datetime.time(17, 30)), # Sat OPEN
 ]
-
 # NEW: Global dictionaries for data loaded from CSV
 LOADED_CUSTOMERS = {}
 LOADED_BOATS = {}
@@ -321,24 +324,32 @@ def format_time_for_display(time_obj):
     return formatted_time
 
 def get_season(date_to_check):
-    month = date_to_check.month
-    if month == 5 or month == 9:
-        return "MaySep"
-    # Add other season logic if needed, e.g., "Peak" vs "Standard"
-    # For now, defaulting to "Standard" if not May/Sep
+    """Determines if the date falls within a 'Busy' or 'Standard' season."""
+    busy_months = [4, 5, 6, 9, 10] # Apr, May, Jun, Sep, Oct
+    if date_to_check.month in busy_months:
+        return "Busy"
     return "Standard"
 
 def get_ecm_operating_hours(date_to_check):
-    season = get_season(date_to_check)
+    """
+    Gets the operating hours for a specific date, accounting for season and special Saturday rules.
+    """
     day_of_week = date_to_check.weekday() # Monday=0, Sunday=6
+    month = date_to_check.month
+    
+    # Special rule for May & September Saturdays
+    if day_of_week == 5 and month in [5, 9]: # 5=Saturday
+        season_to_check = "BusySaturday"
+    else:
+        season_to_check = get_season(date_to_check)
 
     for rule in operating_hours_rules:
-        if rule.season == season and rule.day_of_week == day_of_week:
-            # Check for "Effectively Closed"
-            if rule.open_time == datetime.time(23,58) and rule.close_time == datetime.time(23,59):
+        if rule.season == season_to_check and rule.day_of_week == day_of_week:
+            # Check for our "Effectively Closed" signal
+            if rule.open_time.hour == 23 and rule.open_time.minute == 58:
                 return None
             return {"open": rule.open_time, "close": rule.close_time}
-    return None # Should not happen if rules are comprehensive
+    return None # Default to closed if no rule matches
 
 # --- Section 4: NOAA Tide Data Fetching (Mocked for Standalone Testing) ---
 def fetch_noaa_tides(station_id, date_to_check):
@@ -631,11 +642,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], "Error: Invalid Cust/Boat ID.", DEBUG_LOG_MESSAGES
 
     today = TODAY_FOR_SIMULATION
-    if boat.height_ft_keel_to_highest and boat.height_ft_keel_to_highest > 12.0: 
-        DEBUG_LOG_MESSAGES.append(f"Alert: Boat height {boat.height_ft_keel_to_highest}ft > 12ft.")
-    if today.month in [4, 5, 9, 10]: 
-        DEBUG_LOG_MESSAGES.append("Notice: Peak month mileage rules apply (check pending).")
-
+    # ... (the middle part of this function remains the same) ...
+    # ... (job duration, truck suitability, etc.) ...
+    
+    # This section is the same as before
     effective_search_start_date = requested_date_obj
     min_start_time_on_first_day = None
     if start_after_slot_details and start_after_slot_details.get('date'):
@@ -665,16 +675,18 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     
     current_search_date = effective_search_start_date
     days_iterated = 0
+
     while current_search_date <= search_end_limit_date and len(potential_slots_collected) < MAX_POOL_SIZE and days_iterated < 45:
         ecm_op_hours = get_ecm_operating_hours(current_search_date)
-        if not ecm_op_hours or (boat.boat_type in ["Sailboat MD", "Sailboat MT"] and current_search_date.weekday() == 5):
+        if not ecm_op_hours or (boat.boat_type in ["Sailboat MD", "Sailboat MT"] and current_search_date.weekday() == 5 and current_search_date.month not in [5, 9]):
             current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
         
         ramp_obj = None; daily_windows = []
         if service_type in ["Launch", "Haul"]:
-            ramp_obj = ECM_RAMPS.get(selected_ramp_id)
+            ramp_id_for_job = selected_ramp_id
+            ramp_obj = ECM_RAMPS.get(ramp_id_for_job)
             if not ramp_obj: 
-                DEBUG_LOG_MESSAGES.append(f"Error: Ramp ID '{selected_ramp_id}' not found.")
+                DEBUG_LOG_MESSAGES.append(f"Error: Ramp ID '{ramp_id_for_job}' not found.")
                 break
             daily_windows = get_final_schedulable_ramp_times(ramp_obj, boat, current_search_date)
         elif service_type == "Transport":
@@ -682,10 +694,29 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
         if not daily_windows:
             current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
+
+        # --- NEW RULE LOGIC ---
+        is_busy_month = get_season(current_search_date) == "Busy"
+        is_launch_request = service_type == "Launch"
+        is_non_ecm_cust = not customer.is_ecm_customer
         
+        if is_busy_month and is_launch_request and is_non_ecm_cust:
+            # For non-ECM launches in busy months, their first available slot is delayed.
+            delayed_windows = []
+            for window in daily_windows:
+                first_available_dt = datetime.datetime.combine(current_search_date, window['start_time'])
+                non_ecm_min_start_dt = first_available_dt + datetime.timedelta(hours=1.5)
+                
+                # If the new minimum start time is still within the window, create a new adjusted window
+                if non_ecm_min_start_dt.time() < window['end_time']:
+                    delayed_windows.append({'start_time': non_ecm_min_start_dt.time(), 'end_time': window['end_time']})
+            daily_windows = delayed_windows # Replace original windows with delayed ones
+        # --- END NEW RULE LOGIC ---
+            
         for truck_id in suitable_truck_ids:
             if len(potential_slots_collected) >= MAX_POOL_SIZE: break
             for window in daily_windows:
+                # ... (rest of the function continues as before) ...
                 if len(potential_slots_collected) >= MAX_POOL_SIZE: break
                 
                 iter_start_time = window['start_time']
@@ -707,20 +738,21 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         slot_detail = _check_and_create_slot_detail(current_search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES)
                         if slot_detail:
                             potential_slots_collected.append(slot_detail)
-                            break #
+                            break
                     
                     potential_time = (datetime.datetime.combine(datetime.date.min, potential_time) + datetime.timedelta(minutes=30)).time()
         
         if current_search_date == effective_search_start_date: min_start_time_on_first_day = None
         current_search_date += datetime.timedelta(days=1); days_iterated += 1
-
+    
+    # ... (rest of function sorting and returning slots remains the same)
     if not potential_slots_collected: 
         return [], "No suitable slots found.", DEBUG_LOG_MESSAGES
 
     def sort_priority(slot):
         is_preferred = 1 if not (customer.preferred_truck_id and slot['truck_id'] == customer.preferred_truck_id) else 0
         j17_priority = 0 if "J17-Optimized" in slot.get('type', '') else 1
-        return (j17_priority, slot['time'], slot['date'], is_preferred)
+        return (slot['date'], slot['time'], j17_priority, is_preferred)
 
     potential_slots_collected.sort(key=sort_priority)
 
