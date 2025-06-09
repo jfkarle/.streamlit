@@ -195,88 +195,79 @@ LOADED_BOATS = {}
 CUSTOMER_ID_FROM_CSV_COUNTER = 1000 # Start from a different range than mocks
 BOAT_ID_FROM_CSV_COUNTER = 5000   # Start from a different range
 
+# In ecm_scheduler_logic.py, replace your entire load_customers_and_boats_from_csv function
+
 def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
     """
     Loads customer and associated boat data from a CSV file into
     LOADED_CUSTOMERS and LOADED_BOATS dictionaries.
     """
     global LOADED_CUSTOMERS, LOADED_BOATS, CUSTOMER_ID_FROM_CSV_COUNTER, BOAT_ID_FROM_CSV_COUNTER
-    
-    LOADED_CUSTOMERS.clear() # Clear previous loads
-    LOADED_BOATS.clear()     # Clear previous loads
-    
-    # Reset counters or ensure they generate unique IDs if called multiple times
-    current_cust_id = CUSTOMER_ID_FROM_CSV_COUNTER 
-    current_boat_id = BOAT_ID_FROM_CSV_COUNTER
+    LOADED_CUSTOMERS.clear(); LOADED_BOATS.clear()
+    current_cust_id = CUSTOMER_ID_FROM_CSV_COUNTER; current_boat_id = BOAT_ID_FROM_CSV_COUNTER
 
     try:
-        with open(csv_filename, mode='r', encoding='utf-8-sig') as infile: # 'utf-8-sig' handles potential BOM
+        with open(csv_filename, mode='r', encoding='utf-8-sig') as infile:
             reader = csv.DictReader(infile)
-            if not reader.fieldnames:
-                print(f"Error: CSV file '{csv_filename}' might be empty or headers are missing.")
-                return False
-            
-            # Expected headers (adjust if your CSV is different)
-            # "Customer Name", "Boat Type", "PREFERRED TRUCK", "Boat Length", "Boat Draft",
-            # "Home Latitude", "Home Longitude", "Is ECM Boat"
+            # Normalize fieldnames to handle potential whitespace issues
+            reader.fieldnames = [field.strip() for field in reader.fieldnames]
 
             for row in reader:
                 try:
-                    # Customer Data
                     cust_name = row.get("Customer Name")
-                    if not cust_name: # Skip row if essential data like name is missing
-                        print(f"Warning: Skipping row due to missing Customer Name: {row}")
-                        continue
+                    if not cust_name: continue
 
-                    pref_truck_id = row.get("PREFERRED TRUCK")
-                    home_lat_str = row.get("Home Latitude")
-                    home_lon_str = row.get("Home Longitude")
-                    is_ecm_str = row.get("Is ECM Boat", "False") # Default to False if missing
-
-                    home_lat = float(home_lat_str) if home_lat_str else None
-                    home_lon = float(home_lon_str) if home_lon_str else None
-                    is_ecm = is_ecm_str.strip().lower() == 'true'
-
+                    is_ecm = row.get("Is ECM Boat", "False").strip().lower() == 'true'
                     customer = Customer(
                         customer_id=current_cust_id,
                         customer_name=cust_name,
-                        home_latitude=home_lat,
-                        home_longitude=home_lon,
-                        preferred_truck_id=pref_truck_id if pref_truck_id in ECM_TRUCKS else None, # Validate truck ID
+                        home_latitude=float(row["Home Latitude"]) if row.get("Home Latitude") else None,
+                        home_longitude=float(row["Home Longitude"]) if row.get("Home Longitude") else None,
+                        preferred_truck_id=row.get("PREFERRED TRUCK") if row.get("PREFERRED TRUCK") in ECM_TRUCKS else None,
                         is_ecm_customer=is_ecm
                     )
                     LOADED_CUSTOMERS[current_cust_id] = customer
 
-                    # Boat Data (assuming one boat per customer row in this CSV)
-                    boat_type = row.get("Boat Type")
+                    # --- CORRECTED BOAT LOADING ---
+                    boat_type = row.get("Boat Type") # Check for exact header "Boat Type"
                     boat_len_str = row.get("Boat Length")
-                    boat_draft_str = row.get("Boat Draft")
-                    # height_ft_keel_to_highest and keel_type are not in this CSV structure,
-                    # they would need to be added or handled as None/defaults.
                     
-                    if boat_type and boat_len_str: # Basic check for essential boat data
+                    if not boat_type: # Add a check if the header was not found
+                        print(f"Warning: 'Boat Type' column not found or empty for row: {row}. Boat not created.")
+                        current_cust_id += 1
+                        continue # Skip to the next customer row
+
+                    if boat_type and boat_len_str:
+                        boat_draft_str = row.get("Boat Draft")
                         boat_len = float(boat_len_str)
-                        boat_draft = float(boat_draft_str) if boat_draft_str else None
+                        boat_draft = float(boat_draft_str) if boat_draft_str and boat_draft_str.strip() else None
 
                         boat = Boat(
                             boat_id=current_boat_id,
-                            customer_id=current_cust_id, # Link to the customer we just created
+                            customer_id=current_cust_id,
                             boat_type=boat_type,
                             length_ft=boat_len,
                             draft_ft=boat_draft,
-                            # height_ft_keel_to_highest, keel_type would be None or default here
-                            # is_ecm_boat will be derived from customer via @property
+                            is_ecm_boat_flag=is_ecm
                         )
                         LOADED_BOATS[current_boat_id] = boat
                         current_boat_id += 1
                     else:
                         print(f"Warning: Missing boat type or length for customer {cust_name}. Boat not created.")
+                    # --- END CORRECTED BOAT LOADING ---
 
                     current_cust_id += 1
-                except ValueError as ve:
-                    print(f"Warning: Skipping row due to data conversion error (e.g., non-numeric Lat/Lon/Length/Draft): {row} - Error: {ve}")
-                except Exception as e:
-                    print(f"Warning: Skipping row due to unexpected error: {row} - Error: {e}")
+                except (ValueError, TypeError) as ve:
+                    print(f"Warning: Skipping row due to data conversion error: {row} - Error: {ve}")
+        
+        print(f"Successfully loaded {len(LOADED_CUSTOMERS)} customers and {len(LOADED_BOATS)} boats from {csv_filename}.")
+        return True
+    except FileNotFoundError:
+        print(f"Error: Customer CSV file '{csv_filename}' not found.")
+        return False
+    except Exception as e:
+        print(f"An unexpected error occurred while reading '{csv_filename}': {e}")
+        return False
         
         print(f"Successfully loaded {len(LOADED_CUSTOMERS)} customers and {len(LOADED_BOATS)} boats from {csv_filename}.")
         return True
