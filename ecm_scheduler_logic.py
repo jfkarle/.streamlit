@@ -919,53 +919,5 @@ def prepare_daily_schedule_data(display_date,
                                 time_increment_minutes)
     return output_data
                                     
-    # This block should be at the very end of your ecm_scheduler_logic.py file.
-if __name__ == "__main__":
-    """
-    This block runs only when the script is executed directly from the command line.
-    It is the standard place for testing and demonstration code.
-    """
-    # --- Test Setup ---
-    # This test demonstrates the prepare_daily_schedule_data function.
-    
-    # For this test, we will use mock customer and boat data
-    # instead of loading from a CSV file.
-    LOADED_CUSTOMERS = {
-        1: Customer(1, "Test Customer 1", is_ecm_customer=False),
-        2: Customer(2, "Sailboat Customer", is_ecm_customer=True)
-    }
-    LOADED_BOATS = {
-        101: Boat(101, 1, "Powerboat", 30),
-        102: Boat(102, 2, "Sailboat MD", 40)
-    }
 
-    # Reset the main job list for a clean test.
-    SCHEDULED_JOBS = []
-
-    # Add a sample scheduled job to the list for our test scenario.
-    job_start_time = datetime.datetime(2025, 6, 9, 9, 0) # A future Monday at 9:00 AM
-    SCHEDULED_JOBS.append(
-        Job(job_id=1001,
-            customer_id=1,
-            boat_id=101,
-            service_type="Launch",
-            requested_date=datetime.date(2025, 6, 9),
-            scheduled_start_datetime=job_start_time,
-            scheduled_end_datetime=job_start_time + datetime.timedelta(hours=1.5),
-            assigned_hauling_truck_id="S20/33",
-            job_status="Scheduled"
-        )
-    )
-    
-    # --- Run the Test ---
-    print("\n--- Running Daily Schedule Test ---")
-    display_date = datetime.date(2025, 6, 9)
-    schedule_data = prepare_daily_schedule_data(display_date)
-
-    # Print the results in a readable format.
-    import json
-    print(json.dumps(schedule_data, indent=2, default=str))
-                                    
-
- 
 
