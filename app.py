@@ -17,43 +17,48 @@ import csv
 import ecm_scheduler_logic as ecm # Your logic file
 
 
-# --- DIAGNOSTIC CODE (to find the original CSV issue) ---
-st.subheader("🕵️ CSV Header Diagnostic")
+# --- ENHANCED DIAGNOSTIC CODE (Checks the first data row) ---
+st.subheader("🕵️ CSV Data Diagnostic")
 try:
     with open("ECM Sample Cust.csv", mode='r', newline='', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
-        headers_from_file = reader.fieldnames
+        
+        st.write("✅ Headers are correct. Now checking the data...")
 
-        st.write("Python is reading the following headers from your CSV file:")
-        st.code(f"{headers_from_file}", language="python")
+        # --- Let's inspect the first data row ---
+        try:
+            first_row = next(reader)
+            st.write("**Data from the first row of your CSV:**")
+            st.json(first_row)
 
-        required_headers = [
-            'customer_id', 'customer_name', 'primary_contact_name',
-            'primary_contact_phone', 'primary_contact_email', 'billing_address',
-            'boat_id', 'boat_name', 'boat_type', 'length_ft', 'home_port_or_marina'
-        ]
-        st.write("The script requires these exact headers:")
-        st.code(f"{required_headers}", language="python")
+            # Test the most likely failure point: converting length_ft to a number
+            st.write("**Testing the 'length_ft' column...**")
+            length_value_from_file = first_row.get('length_ft', 'NOT FOUND').strip()
+            
+            st.write(f"Value found in the 'length_ft' column: `{length_value_from_file}`")
 
-        # Compare the lists to find the exact problem
-        missing_from_file = [h for h in required_headers if h not in headers_from_file]
-        extra_in_file = [h for h in headers_from_file if h not in required_headers]
+            if not length_value_from_file:
+                st.error("‼️ PROBLEM FOUND: The 'length_ft' column in the first data row is EMPTY. The script cannot process rows with no boat length. Please check your data.")
+            else:
+                try:
+                    converted_length = float(length_value_from_file)
+                    st.success(f"✅ Successfully converted '{length_value_from_file}' to the number {converted_length}.")
+                    st.info("Since the first row processed correctly, the error might be in a LATER row. If so, please check that ALL rows have a valid number in the 'length_ft' column.")
+                except ValueError:
+                    st.error(f"‼️ PROBLEM FOUND: Could not convert '{length_value_from_file}' to a number. This is why the data won't load. Please check your CSV file and ensure all values in the 'length_ft' column are valid numbers (e.g., '32', not '32ft' or 'thirty-two').")
 
-        if not missing_from_file and not extra_in_file:
-            st.success("✅ Headers appear to match perfectly! The issue may be with the data in the rows.")
-        else:
-            if missing_from_file:
-                st.error(f"‼️ MISMATCH: The script can't find these required headers: {missing_from_file}")
-            if extra_in_file:
-                st.error(f"‼️ MISMATCH: Your CSV has extra/misspelled headers: {extra_in_file}")
+        except StopIteration:
+            st.warning("⚠️ The CSV file appears to be empty (it has headers but no data rows).")
+        except KeyError:
+            st.error("‼️ A KeyError occurred. This should not happen if headers are correct. Please double check the CSV file.")
+        except Exception as e:
+            st.error(f"An unexpected error occurred while inspecting the first data row: {e}")
 
-except FileNotFoundError:
-    st.error("Could not find 'ECM Sample Cust.csv'. Make sure it's in the same directory as your app.py.")
 except Exception as e:
-    st.error(f"An unexpected error occurred while reading the file: {e}")
+    st.error(f"An error occurred trying to open or read 'ECM Sample Cust.csv': {e}")
 
 st.divider()
-# --- END OF DIAGNOSTIC CODE ---
+# --- END OF ENHANCED DIAGNOSTIC CODE ---
 
 
 
