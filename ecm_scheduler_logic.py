@@ -16,15 +16,15 @@ SCHEDULED_JOBS = []
 
 # --- Section 1: Data Models (Classes) ---
 class Truck:
-    def __init__(self, truck_id, truck_name, max_boat_length_ft, is_crane=False, home_base_address="43 Mattakeeset St, Pembroke MA"):
+    def __init__(self, truck_id, truck_name, max_boat_boat_length, is_crane=False, home_base_address="43 Mattakeeset St, Pembroke MA"):
         self.truck_id = truck_id
         self.truck_name = truck_name
-        self.max_boat_length_ft = max_boat_length_ft
+        self.max_boat_boat_length = max_boat_boat_length
         self.is_crane = is_crane
         self.home_base_address = home_base_address # Added for consistency
 
     def __repr__(self):
-        return f"Truck(ID: {self.truck_id}, Name: {self.truck_name}, MaxLen: {self.max_boat_length_ft}, Crane: {self.is_crane})"
+        return f"Truck(ID: {self.truck_id}, Name: {self.truck_name}, MaxLen: {self.max_boat_boat_length}, Crane: {self.is_crane})"
 
 class Ramp:
     def __init__(self, ramp_id, ramp_name, town, tide_rule_description,
@@ -68,12 +68,12 @@ class Customer:
         return f"Customer(ID: {self.customer_id}, Name: {self.customer_name}, ECM_Cust: {self.is_ecm_customer})"
 
 class Boat:
-    def __init__(self, boat_id, customer_id, boat_type, length_ft,
+    def __init__(self, boat_id, customer_id, boat_type, boat_length,
                  draft_ft=None, height_ft_keel_to_highest=None, keel_type=None, is_ecm_boat=None):
         self.boat_id = boat_id
         self.customer_id = customer_id
         self.boat_type = boat_type # "Powerboat", "Sailboat MD" (Mast Down), "Sailboat MT" (Mast Trans.)
-        self.length_ft = length_ft
+        self.boat_length = boat_length
         self.draft_ft = draft_ft
         self.height_ft_keel_to_highest = height_ft_keel_to_highest # For over-height check [user input]
         self.keel_type = keel_type # For sailboats: "Wing", "Bulb", "Full", "Centerboard" [user input]
@@ -85,7 +85,7 @@ class Boat:
         return customer.is_ecm_customer if customer else False
 
     def __repr__(self):
-        return f"Boat(ID: {self.boat_id}, CustID: {self.customer_id}, Type: {self.boat_type}, Len: {self.length_ft}ft)"
+        return f"Boat(ID: {self.boat_id}, CustID: {self.customer_id}, Type: {self.boat_type}, Len: {self.boat_length}ft)"
 
 class Job:
     def __init__(self, job_id, customer_id, boat_id, service_type, requested_date,
@@ -147,10 +147,10 @@ class OperatingHoursEntry:
 # For initial testing, this data is embedded. Later, it can be read from files.
 
 ECM_TRUCKS = {
-    "S20/33": Truck(truck_id="S20/33", truck_name="S20 (aka S33)", max_boat_length_ft=60),
-    "S21/77": Truck(truck_id="S21/77", truck_name="S21 (aka S77)", max_boat_length_ft=50),
-    "S23/55": Truck(truck_id="S23/55", truck_name="S23 (aka S55)", max_boat_length_ft=30),
-    "J17": Truck(truck_id="J17", truck_name="J17 (Crane Truck)", max_boat_length_ft=None, is_crane=True)
+    "S20/33": Truck(truck_id="S20/33", truck_name="S20 (aka S33)", max_boat_boat_length=60),
+    "S21/77": Truck(truck_id="S21/77", truck_name="S21 (aka S77)", max_boat_boat_length=50),
+    "S23/55": Truck(truck_id="S23/55", truck_name="S23 (aka S55)", max_boat_boat_length=30),
+    "J17": Truck(truck_id="J17", truck_name="J17 (Crane Truck)", max_boat_boat_length=None, is_crane=True)
 }
 
 ECM_RAMPS = {
@@ -246,7 +246,7 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
                             boat_id=current_boat_id,
                             customer_id=current_cust_id,
                             boat_type=boat_type,
-                            length_ft=boat_len,
+                            boat_length=boat_len,
                             draft_ft=boat_draft,
                             is_ecm_boat_flag=is_ecm
                         )
@@ -452,18 +452,18 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
     return unique_final_windows
 
 # --- Section 7 & 8 (Combined): Main Scheduling Algorithm - Core Logic Helpers ---
-def get_suitable_trucks(boat_length_ft, preferred_truck_id=None):
+def get_suitable_trucks(boat_boat_length, preferred_truck_id=None):
     suitable_trucks_list = []
     if preferred_truck_id and preferred_truck_id in ECM_TRUCKS:
         truck = ECM_TRUCKS[preferred_truck_id]
-        if not truck.is_crane and (truck.max_boat_length_ft is None or boat_length_ft <= truck.max_boat_length_ft):
+        if not truck.is_crane and (truck.max_boat_boat_length is None or boat_boat_length <= truck.max_boat_boat_length):
             suitable_trucks_list.append(truck.truck_id)
     for truck_id, truck in ECM_TRUCKS.items():
         if truck.is_crane: continue
         if truck_id not in suitable_trucks_list:
-            if truck.max_boat_length_ft is None or boat_length_ft <= truck.max_boat_length_ft:
+            if truck.max_boat_boat_length is None or boat_boat_length <= truck.max_boat_boat_length:
                 suitable_trucks_list.append(truck.truck_id)
-    if not suitable_trucks_list: print(f"Warning: No suitable hauler for boat {boat_length_ft}ft.")
+    if not suitable_trucks_list: print(f"Warning: No suitable hauler for boat {boat_boat_length}ft.")
     return suitable_trucks_list
 
 def check_truck_availability(truck_id_to_check, check_date, proposed_start_dt, proposed_end_dt):
@@ -596,7 +596,7 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
 
     return {'date': current_search_date, 'time': current_potential_start_time_obj, 'truck_id': truck_id, 
             'j17_needed': needs_j17, 'type': slot_type, 'bumped_job_details': bumped_job_info,
-            'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.length_ft}ft {boat.boat_type}"}
+            'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.boat_length}ft {boat.boat_type}"}
 
 # --- Section 11 (CORRECTED): find_available_job_slots (with 3 return values) ---
 
@@ -644,7 +644,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     j17_actual_busy_duration_hours = 0
     if boat.boat_type == "Sailboat MD": j17_actual_busy_duration_hours = 1.0
     elif boat.boat_type == "Sailboat MT": j17_actual_busy_duration_hours = 1.5
-    suitable_truck_ids = get_suitable_trucks(boat.length_ft, customer.preferred_truck_id)
+    suitable_truck_ids = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
     if not suitable_truck_ids: 
         DEBUG_LOG_MESSAGES.append("Error: No suitable trucks."); 
         return [], "Error: No suitable trucks.", DEBUG_LOG_MESSAGES
@@ -863,7 +863,7 @@ def prepare_daily_schedule_data(display_date,
             customer = get_customer_details(job.customer_id)
             boat = get_boat_details(job.boat_id)
             cust_name = customer.customer_name if customer else f"CustID {job.customer_id}"
-            boat_info = f"{boat.length_ft}ft {boat.boat_type}" if boat and hasattr(boat, 'length_ft') and hasattr(boat, 'boat_type') else "N/A"
+            boat_info = f"{boat.boat_length}ft {boat.boat_type}" if boat and hasattr(boat, 'boat_length') and hasattr(boat, 'boat_type') else "N/A"
             job_text = f"{cust_name} ({boat_info})"
 
             if job.assigned_hauling_truck_id in output_data["schedule_grid"]:
@@ -896,7 +896,7 @@ def prepare_daily_schedule_data(display_date,
                 pot_hauler_duration_hours = 3.0 if pot_boat.boat_type in ["Sailboat MD", "Sailboat MT"] else 1.5
                 pot_hauler_end_dt = pot_start_dt + datetime.timedelta(hours=pot_hauler_duration_hours)
                 
-                potential_job_text = f"POTENTIAL: {pot_customer.customer_name} ({pot_boat.length_ft}ft {pot_boat.boat_type})"
+                potential_job_text = f"POTENTIAL: {pot_customer.customer_name} ({pot_boat.boat_length}ft {pot_boat.boat_type})"
                 hauler_truck_id = potential_job_slot_info['truck_id']
                 if hauler_truck_id in output_data["schedule_grid"]:
                     _mark_slots_in_grid(
