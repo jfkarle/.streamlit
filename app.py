@@ -131,6 +131,8 @@ if selected_customer_id: # Proceed only if a customer was successfully identifie
         st.sidebar.markdown("---") # Separator before details
         st.sidebar.subheader("Selected Customer & Boat:")
         st.sidebar.write(f"**Customer:** {selected_customer_obj.customer_name}")
+        ecm_status_str = "Yes" if selected_customer_obj.is_ecm_customer else "No"
+        st.sidebar.write(f"**ECM Boat:** {ecm_status_str}")
         st.sidebar.write(f"**Boat Type:** {selected_boat_obj.boat_type}")
         st.sidebar.write(f"**Boat Length:** {selected_boat_obj.boat_length}ft")
         
