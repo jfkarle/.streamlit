@@ -1,19 +1,26 @@
 # app.py
 # Your main Streamlit application file
 
+# app.py - REPLACE THE TOP OF YOUR FILE WITH THIS
+
 import streamlit as st
+
+# --- FIX: st.set_page_config() MUST be the first st.command ---
+# This line has been MOVED to the top, right after importing streamlit.
+# This will resolve the error you are seeing.
 st.set_page_config(layout="wide")
+
+
+# --- The rest of your imports can go here ---
 import datetime
+import csv
 import ecm_scheduler_logic as ecm # Your logic file
 
-st.set_page_config(layout="wide") ### TEMP REMOVE THIS LINE AND CORRECT ### BELOW AFTER TESTING HEADERS
 
-# HEADER MISMATCH Begin diagnostic code
-
+# --- DIAGNOSTIC CODE (to find the original CSV issue) ---
 st.subheader("🕵️ CSV Header Diagnostic")
 try:
     with open("ECM Sample Cust.csv", mode='r', newline='', encoding='utf-8-sig') as f:
-        # Using DictReader to get fieldnames is the most accurate way
         reader = csv.DictReader(f)
         headers_from_file = reader.fieldnames
 
