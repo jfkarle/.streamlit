@@ -16,8 +16,6 @@ if 'data_loaded' not in st.session_state: # Simple flag to load only once per se
         st.session_state.data_loaded = False
         st.error("Failed to load customer and boat data. Please check the CSV file and logs.")
 
-st.set_page_config(layout="wide")
-
 # --- Initialize Session State Variables ---
 
 if 'info_message' not in st.session_state: st.session_state.info_message = ""
@@ -31,12 +29,6 @@ if 'slot_for_confirmation_preview' not in st.session_state:
     st.session_state.slot_for_confirmation_preview = None
 if 'no_more_slots_forward' not in st.session_state:
     st.session_state.no_more_slots_forward = False
-
-# --- DEBUG LINES SET #1 (You have this already) ---
-st.sidebar.markdown("---")
-st.sidebar.write(f"DEBUG Initial: Index: {st.session_state.current_batch_index}, History len: {len(st.session_state.suggested_slot_history)}")
-st.sidebar.markdown("---")
-# --- END DEBUG LINES SET #1 ---
 
 # ... (st.set_page_config, session state initializations as before) ...
 
