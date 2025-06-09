@@ -31,21 +31,21 @@ try:
             st.write("**Data from the first row of your CSV:**")
             st.json(first_row)
 
-            # Test the most likely failure point: converting length_ft to a number
-            st.write("**Testing the 'length_ft' column...**")
-            length_value_from_file = first_row.get('length_ft', 'NOT FOUND').strip()
+            # Test the most likely failure point: converting boat_length to a number
+            st.write("**Testing the 'boat_length' column...**")
+            length_value_from_file = first_row.get('boat_length', 'NOT FOUND').strip()
             
-            st.write(f"Value found in the 'length_ft' column: `{length_value_from_file}`")
+            st.write(f"Value found in the 'boat_length' column: `{length_value_from_file}`")
 
             if not length_value_from_file:
-                st.error("‼️ PROBLEM FOUND: The 'length_ft' column in the first data row is EMPTY. The script cannot process rows with no boat length. Please check your data.")
+                st.error("‼️ PROBLEM FOUND: The 'boat_length' column in the first data row is EMPTY. The script cannot process rows with no boat length. Please check your data.")
             else:
                 try:
                     converted_length = float(length_value_from_file)
                     st.success(f"✅ Successfully converted '{length_value_from_file}' to the number {converted_length}.")
-                    st.info("Since the first row processed correctly, the error might be in a LATER row. If so, please check that ALL rows have a valid number in the 'length_ft' column.")
+                    st.info("Since the first row processed correctly, the error might be in a LATER row. If so, please check that ALL rows have a valid number in the 'boat_length' column.")
                 except ValueError:
-                    st.error(f"‼️ PROBLEM FOUND: Could not convert '{length_value_from_file}' to a number. This is why the data won't load. Please check your CSV file and ensure all values in the 'length_ft' column are valid numbers (e.g., '32', not '32ft' or 'thirty-two').")
+                    st.error(f"‼️ PROBLEM FOUND: Could not convert '{length_value_from_file}' to a number. This is why the data won't load. Please check your CSV file and ensure all values in the 'boat_length' column are valid numbers (e.g., '32', not '32ft' or 'thirty-two').")
 
         except StopIteration:
             st.warning("⚠️ The CSV file appears to be empty (it has headers but no data rows).")
@@ -196,7 +196,7 @@ if selected_customer_id: # Proceed only if a customer was successfully identifie
         st.sidebar.subheader("Selected Customer & Boat:")
         st.sidebar.write(f"**Customer:** {selected_customer_obj.customer_name}")
         st.sidebar.write(f"**Boat Type:** {selected_boat_obj.boat_type}")
-        st.sidebar.write(f"**Boat Length:** {selected_boat_obj.length_ft}ft")
+        st.sidebar.write(f"**Boat Length:** {selected_boat_obj.boat_length}ft")
         
         preferred_truck_id = selected_customer_obj.preferred_truck_id
         preferred_truck_name = "N/A" 
@@ -439,7 +439,7 @@ if st.checkbox("Show All Currently Scheduled Jobs (In-Memory List for this Sessi
             
             customer_name = customer.customer_name if customer else "N/A"
             boat_type = boat.boat_type if boat else "N/A"
-            boat_length = f"{boat.length_ft}ft" if boat and hasattr(boat, 'length_ft') else "N/A" # Added hasattr check
+            boat_length = f"{boat.boat_length}ft" if boat and hasattr(boat, 'boat_length') else "N/A" # Added hasattr check
             
             destination = "N/A"
             # Determine destination based on service type
