@@ -612,7 +612,25 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
             'j17_needed': needs_j17, 'type': slot_type, 'bumped_job_details': bumped_job_info,
             'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.boat_length}ft {boat.boat_type}"}
 
-# --- Section 11 (CORRECTED): find_available_job_slots (with 3 return values) ---
+It looks like there was a small mix-up, and the code you provided is the original version with the error still in it. The ValueError is happening for the exact same reason as before: the find_available_job_slots function is returning three values, but the app is only expecting two.
+
+The fix is still the same: you need to update the function to return only the slots and the message.
+
+The Correction Needed
+You need to change every return statement inside the find_available_job_slots function.
+
+For example, this incorrect line:
+return [], "Error: Invalid date format.", DEBUG_LOG_MESSAGES
+
+Must be changed to:
+return [], "Error: Invalid date format."
+
+To ensure all the return statements are fixed, please replace the entire find_available_job_slots function in your ecm_scheduler_logic.py file with the corrected version below.
+
+Corrected Code
+Python
+
+# --- Section 11 (CORRECTED): find_available_job_slots (with 2 return values) ---
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
                              selected_ramp_id=None, transport_dropoff_details=None,
@@ -625,13 +643,15 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError: 
         DEBUG_LOG_MESSAGES.append("Error: Invalid date format.")
-        return [], "Error: Invalid date format.", DEBUG_LOG_MESSAGES
+        # FIX: Return only 2 values
+        return [], "Error: Invalid date format."
     
     customer = get_customer_details(customer_id)
     boat = get_boat_details(boat_id)
     if not customer or not boat: 
         DEBUG_LOG_MESSAGES.append("Error: Invalid Cust/Boat ID.")
-        return [], "Error: Invalid Cust/Boat ID.", DEBUG_LOG_MESSAGES
+        # FIX: Return only 2 values
+        return [], "Error: Invalid Cust/Boat ID."
 
     today = TODAY_FOR_SIMULATION
     
@@ -657,7 +677,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     suitable_truck_ids = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
     if not suitable_truck_ids: 
         DEBUG_LOG_MESSAGES.append("Error: No suitable trucks."); 
-        return [], "Error: No suitable trucks.", DEBUG_LOG_MESSAGES
+        # FIX: Return only 2 values
+        return [], "Error: No suitable trucks."
     
     potential_slots_collected = []
     MAX_POOL_SIZE = 20
@@ -684,13 +705,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         if not daily_windows:
             current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
             
-        # --- NEW RULE LOGIC ---
         is_busy_month = get_season(current_search_date) == "Busy"
         is_launch_request = service_type == "Launch"
         is_non_ecm_cust = not customer.is_ecm_customer
         
         if is_busy_month and is_launch_request and is_non_ecm_cust:
-            # For non-ECM launches in busy months, their first available slot is delayed.
             DEBUG_LOG_MESSAGES.append(f"Applying 1.5hr delay for non-ECM launch on {current_search_date}")
             delayed_windows = []
             for window in daily_windows:
@@ -700,7 +719,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 if non_ecm_min_start_dt.time() < window['end_time']:
                     delayed_windows.append({'start_time': non_ecm_min_start_dt.time(), 'end_time': window['end_time']})
             daily_windows = delayed_windows
-        # --- END NEW RULE LOGIC ---
             
         for truck_id in suitable_truck_ids:
             if len(potential_slots_collected) >= MAX_POOL_SIZE: break
@@ -734,7 +752,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         current_search_date += datetime.timedelta(days=1); days_iterated += 1
     
     if not potential_slots_collected: 
-        return [], "No suitable slots found.", DEBUG_LOG_MESSAGES
+        # FIX: Return only 2 values
+        return [], "No suitable slots found."
 
     def sort_priority(slot):
         is_preferred = 1 if not (customer.preferred_truck_id and slot['truck_id'] == customer.preferred_truck_id) else 0
@@ -752,8 +771,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         if slot_datetime not in used_date_times:
             final_slots_to_present.append(slot)
             used_date_times.add(slot_datetime)
-
-    return final_slots_to_present, f"Showing top {len(final_slots_to_present)} prioritized slots.", DEBUG_LOG_MESSAGES
+    
+    # FIX: Return only 2 values
+    return final_slots_to_present, f"Showing top {len(final_slots_to_present)} prioritized slots."
 
 # --- Section 10 (Revisited): confirm_and_schedule_job ---
 def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
