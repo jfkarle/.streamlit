@@ -322,7 +322,7 @@ if st.session_state.slot_for_confirmation_preview:
         st.warning(f"This selection will BUMP Job ID: {selected_for_preview['bumped_job_details']['job_id']} "
                    f"for customer '{selected_for_preview['bumped_job_details']['customer_name']}'.")
     
-       st.write("Generating daily schedule preview data (raw output for now):") # This line was already here
+    st.write("Generating daily schedule preview data (raw output for now):") # This line was already here
     daily_schedule_preview_data = ecm.prepare_daily_schedule_data(
         display_date=selected_for_preview['date'],
         # MODIFIED ARGUMENT NAME TO MATCH FUNCTION DEFINITION
