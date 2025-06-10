@@ -205,7 +205,7 @@ if st.sidebar.button("Find Available Slots", key="find_initial_slots"):
         
         # Store the results in session state so they persist across the rerun
         st.session_state.info_message = message 
-        st.session_state.last_debug_messages = debug_messages
+        st.session_state.last_debug_messages = debug_log
 
         if slots:
             st.session_state.suggested_slot_history.append(slots)
