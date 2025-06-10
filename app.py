@@ -200,7 +200,7 @@ if st.sidebar.button("Find Available Slots", key="find_initial_slots"):
         # Call the logic function, which now returns a third item: debug messages
         slots, message, debug_log = ecm.find_available_job_slots(
             **st.session_state.current_job_request_details,
-           start_after_slot_details=start_after_slot_details
+            start_after_slot_details=None
         )
         
         # Store the results in session state so they persist across the rerun
