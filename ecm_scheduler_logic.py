@@ -504,17 +504,21 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     global original_job_request_details, DEBUG_LOG_MESSAGES
     DEBUG_LOG_MESSAGES = [f"FindSlots Start: Cust({customer_id}) Boat({boat_id}) Svc({service_type}) ReqDate({requested_date_str}) Ramp({selected_ramp_id})"]
     original_job_request_details = {'transport_dropoff_details': transport_dropoff_details, 'customer_id': customer_id, 'boat_id': boat_id, 'service_type': service_type, 'selected_ramp_id': selected_ramp_id, 'requested_date_str': requested_date_str}
-    try:
+    
+    try: 
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
-    except ValueError:
+    except ValueError: 
         DEBUG_LOG_MESSAGES.append("Error: Invalid date format.")
-        return [], "Error: Invalid date format."
+        return [], "Error: Invalid date format.", DEBUG_LOG_MESSAGES
+    
     customer = get_customer_details(customer_id)
     boat = get_boat_details(boat_id)
-    if not customer or not boat:
+    if not customer or not boat: 
         DEBUG_LOG_MESSAGES.append("Error: Invalid Cust/Boat ID.")
-        return [], "Error: Invalid Cust/Boat ID."
+        return [], "Error: Invalid Cust/Boat ID.", DEBUG_LOG_MESSAGES
+
     today = TODAY_FOR_SIMULATION
+    
     effective_search_start_date = requested_date_obj
     min_start_time_on_first_day = None
     if start_after_slot_details and start_after_slot_details.get('date'):
@@ -522,84 +526,104 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         if start_after_slot_details.get('time'):
             min_start_time_on_first_day = (datetime.datetime.combine(effective_search_start_date, start_after_slot_details['time']) + datetime.timedelta(minutes=1)).time()
     else:
-        if requested_date_obj >= today + datetime.timedelta(days=7):
+        if requested_date_obj >= today + datetime.timedelta(days=7): 
             effective_search_start_date = requested_date_obj - datetime.timedelta(days=3)
-        if effective_search_start_date < today:
+        if effective_search_start_date < today: 
             effective_search_start_date = today
     search_end_limit_date = requested_date_obj + datetime.timedelta(days=30)
     DEBUG_LOG_MESSAGES.append(f"Search Window: {effective_search_start_date} to {search_end_limit_date}" + (f" (after {min_start_time_on_first_day})" if min_start_time_on_first_day else ""))
+
     job_duration_hours = 3.0 if boat.boat_type in ["Sailboat MD", "Sailboat MT"] else 1.5
     needs_j17 = boat.boat_type in ["Sailboat MD", "Sailboat MT"]
     j17_actual_busy_duration_hours = 0
     if boat.boat_type == "Sailboat MD": j17_actual_busy_duration_hours = 1.0
     elif boat.boat_type == "Sailboat MT": j17_actual_busy_duration_hours = 1.5
     suitable_truck_ids = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
-    if not suitable_truck_ids:
-        DEBUG_LOG_MESSAGES.append("Error: No suitable trucks.");
-        return [], "Error: No suitable trucks."
+    if not suitable_truck_ids: 
+        DEBUG_LOG_MESSAGES.append("Error: No suitable trucks."); 
+        return [], "Error: No suitable trucks.", DEBUG_LOG_MESSAGES
+    
     potential_slots_collected = []
     MAX_POOL_SIZE = 20
+    
     current_search_date = effective_search_start_date
     days_iterated = 0
+
     while current_search_date <= search_end_limit_date and len(potential_slots_collected) < MAX_POOL_SIZE and days_iterated < 45:
         ecm_op_hours = get_ecm_operating_hours(current_search_date)
         if not ecm_op_hours or (boat.boat_type in ["Sailboat MD", "Sailboat MT"] and current_search_date.weekday() == 5 and current_search_date.month not in [5, 9]):
             current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
+        
         ramp_obj = None; daily_windows = []
         if service_type in ["Launch", "Haul"]:
             ramp_id_for_job = selected_ramp_id
             ramp_obj = ECM_RAMPS.get(ramp_id_for_job)
-            if not ramp_obj:
+            if not ramp_obj: 
                 DEBUG_LOG_MESSAGES.append(f"Error: Ramp ID '{ramp_id_for_job}' not found.")
                 break
             daily_windows = get_final_schedulable_ramp_times(ramp_obj, boat, current_search_date)
         elif service_type == "Transport":
             daily_windows = [{'start_time': ecm_op_hours['open'], 'end_time': ecm_op_hours['close']}]
+        
         if not daily_windows:
             current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
+            
         is_busy_month = get_season(current_search_date) == "Busy"
         is_launch_request = service_type == "Launch"
         is_non_ecm_cust = not customer.is_ecm_customer
+        
         if is_busy_month and is_launch_request and is_non_ecm_cust:
             DEBUG_LOG_MESSAGES.append(f"Applying 1.5hr delay for non-ECM launch on {current_search_date}")
             delayed_windows = []
             for window in daily_windows:
                 first_available_dt = datetime.datetime.combine(current_search_date, window['start_time'])
                 non_ecm_min_start_dt = first_available_dt + datetime.timedelta(hours=1.5)
+                
                 if non_ecm_min_start_dt.time() < window['end_time']:
                     delayed_windows.append({'start_time': non_ecm_min_start_dt.time(), 'end_time': window['end_time']})
             daily_windows = delayed_windows
+            
         for truck_id in suitable_truck_ids:
             if len(potential_slots_collected) >= MAX_POOL_SIZE: break
             for window in daily_windows:
                 if len(potential_slots_collected) >= MAX_POOL_SIZE: break
+                
                 iter_start_time = window['start_time']
                 if current_search_date == effective_search_start_date and min_start_time_on_first_day and min_start_time_on_first_day > iter_start_time:
                     iter_start_time = min_start_time_on_first_day
+                
                 potential_time = iter_start_time
                 while potential_time < window['end_time']:
                     if len(potential_slots_collected) >= MAX_POOL_SIZE: break
+                    
                     temp_dt = datetime.datetime.combine(current_search_date, potential_time)
                     if temp_dt.minute not in [0, 30]:
                         if temp_dt.minute < 30: temp_dt = temp_dt.replace(minute=30, second=0, microsecond=0)
                         else: temp_dt = (temp_dt + datetime.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
                         potential_time = temp_dt.time()
                     if potential_time >= window['end_time']: break
+
                     if not any(s['date'] == current_search_date and s['time'] == potential_time and s['truck_id'] == truck_id for s in potential_slots_collected):
                         slot_detail = _check_and_create_slot_detail(current_search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES)
                         if slot_detail:
                             potential_slots_collected.append(slot_detail)
                             break
+                    
                     potential_time = (datetime.datetime.combine(datetime.date.min, potential_time) + datetime.timedelta(minutes=30)).time()
+        
         if current_search_date == effective_search_start_date: min_start_time_on_first_day = None
         current_search_date += datetime.timedelta(days=1); days_iterated += 1
-    if not potential_slots_collected:
-        return [], "No suitable slots found."
+    
+    if not potential_slots_collected: 
+        return [], "No suitable slots found.", DEBUG_LOG_MESSAGES
+
     def sort_priority(slot):
         is_preferred = 1 if not (customer.preferred_truck_id and slot['truck_id'] == customer.preferred_truck_id) else 0
         j17_priority = 0 if "J17-Optimized" in slot.get('type', '') else 1
         return (slot['date'], slot['time'], j17_priority, is_preferred)
+
     potential_slots_collected.sort(key=sort_priority)
+
     final_slots_to_present = []
     used_date_times = set()
     for slot in potential_slots_collected:
@@ -609,7 +633,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         if slot_datetime not in used_date_times:
             final_slots_to_present.append(slot)
             used_date_times.add(slot_datetime)
-    return final_slots_to_present, f"Showing top {len(final_slots_to_present)} prioritized slots."
+    
+    return final_slots_to_present, f"Showing top {len(final_slots_to_present)} prioritized slots.", DEBUG_LOG_MESSAGES
 
 def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
     global JOB_ID_COUNTER, SCHEDULED_JOBS
