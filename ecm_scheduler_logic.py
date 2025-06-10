@@ -612,24 +612,6 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
             'j17_needed': needs_j17, 'type': slot_type, 'bumped_job_details': bumped_job_info,
             'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.boat_length}ft {boat.boat_type}"}
 
-It looks like there was a small mix-up, and the code you provided is the original version with the error still in it. The ValueError is happening for the exact same reason as before: the find_available_job_slots function is returning three values, but the app is only expecting two.
-
-The fix is still the same: you need to update the function to return only the slots and the message.
-
-The Correction Needed
-You need to change every return statement inside the find_available_job_slots function.
-
-For example, this incorrect line:
-return [], "Error: Invalid date format.", DEBUG_LOG_MESSAGES
-
-Must be changed to:
-return [], "Error: Invalid date format."
-
-To ensure all the return statements are fixed, please replace the entire find_available_job_slots function in your ecm_scheduler_logic.py file with the corrected version below.
-
-Corrected Code
-Python
-
 # --- Section 11 (CORRECTED): find_available_job_slots (with 2 return values) ---
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
