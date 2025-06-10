@@ -198,9 +198,9 @@ if st.sidebar.button("Find Available Slots", key="find_initial_slots"):
         }
         
         # Call the logic function, which now returns a third item: debug messages
-        slots, message, _ = ecm.find_available_job_slots(
+        slots, message, debug_log = ecm.find_available_job_slots(
             **st.session_state.current_job_request_details,
-            start_after_slot_details=start_after_details
+            start_after_slot_details=None  # ✅ this is correct
         )
         
         # Store the results in session state so they persist across the rerun
@@ -256,7 +256,7 @@ if col_nav2.button("Next 3 Slots (Roll Forward)", key="roll_forward", disabled=n
                     'time': last_slot['time'],
                     'truck_id': last_slot['truck_id']
                 }
-                slots, message = ecm.find_available_job_slots(
+                slots, message, debug_log = ecm.find_available_job_slots(
                     **st.session_state.current_job_request_details,
                     start_after_slot_details=start_after_details
                 )
