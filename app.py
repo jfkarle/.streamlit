@@ -322,16 +322,7 @@ if st.session_state.slot_for_confirmation_preview:
         st.warning(f"This selection will BUMP Job ID: {selected_for_preview['bumped_job_details']['job_id']} "
                    f"for customer '{selected_for_preview['bumped_job_details']['customer_name']}'.")
     
-    # --- INSERT DEBUG LINES HERE ---
-    st.write("--- DEBUG DATA FOR PREVIEW ---")
-    st.write("DEBUG: `original_request` (passed as `original_job_request_details_for_potential`):")
-    st.json(original_request if original_request is not None else "original_request is None") # Use st.json for better dict display
-    st.write("DEBUG: `selected_for_preview` (passed as `potential_job_slot_info`):")
-    st.json(selected_for_preview if selected_for_preview is not None else "selected_for_preview is None") # Use st.json
-    st.write("--- END DEBUG DATA ---")
-    # --- END INSERTED DEBUG LINES ---
-
-    st.write("Generating daily schedule preview data (raw output for now):") # This line was already here
+       st.write("Generating daily schedule preview data (raw output for now):") # This line was already here
     daily_schedule_preview_data = ecm.prepare_daily_schedule_data(
         display_date=selected_for_preview['date'],
         # MODIFIED ARGUMENT NAME TO MATCH FUNCTION DEFINITION
