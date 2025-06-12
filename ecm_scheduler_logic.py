@@ -531,7 +531,8 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
 # MODIFIED: Entire function replaced with new logic
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
                              selected_ramp_id=None, transport_dropoff_details=None,
-                             start_after_slot_details=None, priority="Preferred Date"): # Added priority
+                             start_after_slot_details=None,
+                             force_preferred_truck=True, relax_ramp_constraint=False): # MODIFIED
     
     # --- 1. SETUP AND VALIDATION ---
     customer = get_customer_details(customer_id)
