@@ -208,40 +208,6 @@ if st.sidebar.button("Find Best Slot (Strict)", key="find_strict"):
         st.session_state.info_message = message
         st.rerun()
 
-# --- Display Suggested Slots ---
-# (Your existing logic to display slots based on st.session_state.current_batch_index and st.session_state.suggested_slot_history)
-# (Make sure this section is robust enough to handle an empty current_slots_to_display list if no_more_slots_forward is true)
-if st.session_state.current_batch_index != -1 and st.session_state.suggested_slot_history:
-    # Check if current_batch_index is valid for the history list
-    if st.session_state.current_batch_index < len(st.session_state.suggested_slot_history):
-        current_slots_to_display = st.session_state.suggested_slot_history[st.session_state.current_batch_index]
-        st.subheader("Suggested Slots:")
-        if not current_slots_to_display: # Could be an empty list if find_available_slots returned empty for this batch
-             if st.session_state.no_more_slots_forward:
-                 st.write("No further slots available with the current criteria.")
-             else: # This case should ideally not be hit if roll forward properly manages no_more_slots_forward
-                 st.write("No slots to display for this batch, but more might be available.")
-
-        for i, slot in enumerate(current_slots_to_display):
-            col1_disp, col2_disp = st.columns([5, 2]) # Adjusted columns for better spacing
-            slot_time_str = ecm.format_time_for_display(slot['time'])
-            date_str = slot['date'].strftime('%Y-%m-%d %A')
-            truck_info = f"Truck: {slot['truck_id']}"
-                if slot['j17_needed']:
-
-# --- Section to Display Schedule Preview and Confirm Job ---
-if st.session_state.slot_for_confirmation_preview:
-    selected_for_preview = st.session_state.slot_for_confirmation_preview
-    original_request = st.session_state.current_job_request_details
-    st.subheader(f"Preview & Confirm Selection:")
-    preview_time_str = ecm.format_time_for_display(selected_for_preview['time'])
-    preview_date_str = selected_for_preview['date'].strftime('%Y-%m-%d %A')
-    st.write(f"You are considering: **{preview_date_str} at {preview_time_str}** with Truck {selected_for_preview['truck_id']}")
-    if selected_for_preview['j17_needed']: st.write("J17 Crane will also be assigned.")
-    if selected_for_preview['type'] != "Open" and selected_for_preview['bumped_job_details']:
-        st.warning(f"This selection will BUMP Job ID: {selected_for_preview['bumped_job_details']['job_id']} "
-                   f"for customer '{selected_for_preview['bumped_job_details']['customer_name']}'.")
-    
     st.write("Generating daily schedule preview data (raw output for now):") # This line was already here
     daily_schedule_preview_data = ecm.prepare_daily_schedule_data(
         display_date=selected_for_preview['date'],
