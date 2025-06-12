@@ -153,6 +153,26 @@ class OperatingHoursEntry:
         return (f"OpHours(Season: {self.season}, Day: {self.day_of_week}, "
                 f"Open: {format_time_for_display(self.open_time)}, Close: {format_time_for_display(self.close_time)})")
 
+def get_nearby_ramps(base_ramp_id, max_distance_miles=10):
+    """Finds all ramps within a given radius of a base ramp."""
+    nearby_ramps = {}
+    base_ramp = ECM_RAMPS.get(base_ramp_id)
+    if not base_ramp or not base_ramp.latitude:
+        return {base_ramp_id: base_ramp} # Return only the base ramp if it has no coordinates
+
+    base_coords = {'lat': base_ramp.latitude, 'lon': base_ramp.longitude}
+
+    for ramp_id, ramp in ECM_RAMPS.items():
+        if ramp.latitude and ramp.longitude:
+            ramp_coords = {'lat': ramp.latitude, 'lon': ramp.longitude}
+            # NOTE: Using a simple mock distance calculation for this example.
+            # A real implementation would use a proper geodesic distance library.
+            distance = calculate_distance_miles(base_coords, ramp_coords)
+            if distance <= max_distance_miles:
+                nearby_ramps[ramp_id] = ramp
+                
+    return nearby_ramps
+
 # --- Section 2: Business Configuration & Initial Data ---
 ECM_TRUCKS = {
     "S20/33": Truck(truck_id="S20/33", truck_name="S20 (aka S33)", max_boat_boat_length=60),
