@@ -568,14 +568,30 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         DEBUG_LOG_MESSAGES.append("Error: No suitable trucks.")
         return [], "Error: No suitable trucks.", DEBUG_LOG_MESSAGES
 
-    # TRUCK LEVER
+   # --- TRUCK LEVER (Corrected Logic) ---
     trucks_to_search = []
-    if force_preferred_truck and customer.preferred_truck_id and customer.preferred_truck_id in all_suitable_trucks:
-        trucks_to_search = [customer.preferred_truck_id]
-        DEBUG_LOG_MESSAGES.append(f"Lever Active: Forcing search to preferred truck: {customer.preferred_truck_id}")
-    else:
+    all_suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
+    
+    if force_preferred_truck:
+        DEBUG_LOG_MESSAGES.append(f"Lever Active: Forcing search to preferred truck.")
+        preferred_truck_id = customer.preferred_truck_id
+
+        if not preferred_truck_id:
+            return [], "No preferred truck is set for this customer. Cannot perform a strict truck search.", ["Strict search failed: No preferred truck."]
+        
+        # Check if the required preferred truck is actually suitable for the job
+        if preferred_truck_id in all_suitable_trucks:
+            # If it is suitable, it's the ONLY one we will search for.
+            trucks_to_search = [preferred_truck_id]
+        else:
+            # If the preferred truck is NOT suitable, the search MUST fail immediately.
+            return [], f"The customer's preferred truck ({preferred_truck_id}) is not suitable for this {boat.boat_length}ft boat. No slots can be found with the 'Strict Truck' constraint.", [f"Strict search failed: Preferred truck {preferred_truck_id} unsuitable."]
+    else: # This block runs when the "Relax Truck" lever is checked
         trucks_to_search = all_suitable_trucks
         DEBUG_LOG_MESSAGES.append(f"Lever Inactive: Searching all suitable trucks: {trucks_to_search}")
+
+    if not trucks_to_search:
+         return [], "Error: No suitable trucks found matching the criteria.", ["No suitable trucks found for search phase."]
 
     # RAMP LEVER
     ramps_to_search = []
