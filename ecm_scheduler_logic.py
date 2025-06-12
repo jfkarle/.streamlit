@@ -696,7 +696,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     else:
         # Check if the preferred truck was even suitable in the first place
         all_suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
-        if customer.preferred_truck_id not in all_suitable_trucks:
+        if customer.preferred_truck_id and customer.preferred_truck_id not in all_suitable_trucks:
              explanation += f" The customer's preferred truck ({customer.preferred_truck_id}) was not suitable for this boat, so the system chose the best alternative: {best_slot['truck_id']}."
         else:
              explanation += f" The customer's preferred truck ({customer.preferred_truck_id}) was not available, so the system chose the next best option: {best_slot['truck_id']}."
@@ -705,6 +705,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     final_slot_to_present = [best_slot]
 
     return final_slot_to_present, explanation, DEBUG_LOG_MESSAGES
+
 # --- END: OF REPLACEMENT BLOCK ---
 
 def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
