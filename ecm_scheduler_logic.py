@@ -672,7 +672,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         if current_search_date == effective_search_start_date: min_start_time_on_first_day = None
         current_search_date += datetime.timedelta(days=1); days_iterated += 1
     
-   if not potential_slots_collected: 
+if not potential_slots_collected: 
         return [], "No suitable slots found with the current criteria.", DEBUG_LOG_MESSAGES
 
     # Sort all found slots to find the absolute best one first
