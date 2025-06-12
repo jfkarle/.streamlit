@@ -227,7 +227,7 @@ if st.session_state.current_batch_index != -1 and st.session_state.suggested_slo
             slot_time_str = ecm.format_time_for_display(slot['time'])
             date_str = slot['date'].strftime('%Y-%m-%d %A')
             truck_info = f"Truck: {slot['truck_id']}"
-            if slot['j17_needed']:
+                if slot['j17_needed']:
 
 # --- Section to Display Schedule Preview and Confirm Job ---
 if st.session_state.slot_for_confirmation_preview:
