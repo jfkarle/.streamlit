@@ -524,9 +524,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     except ValueError:
         return [], "Error: Invalid date format.", ["Error: Invalid date format."]
 
-    rules = BOOKING_RULES.get(service_type)
+    # MODIFIED: Use the boat's type, not the service type, for rule lookup
+    boat_type_for_rules = boat.boat_type
+    # Handle the old 'Sailboat MD' type if it's still in your data
+    if boat_type_for_rules == "Sailboat MD":
+        boat_type_for_rules = "Sailboat DT" # Treat Mast Down the same as Deck Transport
+
+    rules = BOOKING_RULES.get(boat_type_for_rules)
     if not rules:
-        return [], "Error: No booking rules for this job type.", [f"No rules for {service_type}"]
+        # This error is now more specific and helpful
+        return [], f"Error: No booking rules for boat type '{boat_type_for_rules}'.", [f"No rules for {boat_type_for_rules}"]
 
     truck_duration = rules['truck_mins']
     crane_duration = rules['crane_mins']
