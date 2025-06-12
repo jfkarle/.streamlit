@@ -157,10 +157,6 @@ if selected_customer_id: # Proceed only if a customer was successfully identifie
 # --- Service Type, Requested Date, Ramp (Inputs remain similar) ---
 service_type_options = ["Launch", "Haul", "Transport"]
 service_type_input = st.sidebar.selectbox("Select Service Type:", service_type_options)
-# NEW: Add scheduling priority radio buttons
-priority_options = ["Preferred Date", "Preferred Ramp", "Preferred Truck"]
-priority_input = st.sidebar.radio("Select Scheduling Priority:", priority_options)
-# ... (rest of your date and ramp inputs - ensure they only appear if a customer/boat is successfully selected) ...
 
 if selected_customer_id and selected_boat_id: # Only show these if we have a customer/boat
     default_requested_date = ecm.TODAY_FOR_SIMULATION + datetime.timedelta(days=7)
@@ -180,7 +176,7 @@ if selected_customer_id and selected_boat_id: # Only show these if we have a cus
     st.sidebar.markdown("---")
 
 # MODIFIED: "Find Available Slots" button logic completely updated
-if st.sidebar.button("Find Available Slot", key="find_slot"):
+if st.sidebar.button("Find Best Slot (Strict)", key="find_strict"):
     if not selected_customer_id or not selected_boat_id:
         st.warning("Please select a customer and boat first.")
     else:
@@ -197,10 +193,11 @@ if st.sidebar.button("Find Available Slot", key="find_slot"):
             'transport_dropoff_details': {'address': transport_dropoff_input} if transport_dropoff_input else None
         }
         
-        # Call the logic function with the selected priority
+        # Call the logic function with STRICT lever settings
         slots, message, debug_log = ecm.find_available_job_slots(
             **job_request_details,
-            priority=priority_input # Pass the new priority value
+            force_preferred_truck=True,
+            relax_ramp_constraint=False
         )
         
         # Store the single result (if any) for preview
@@ -230,20 +227,7 @@ if st.session_state.current_batch_index != -1 and st.session_state.suggested_slo
             slot_time_str = ecm.format_time_for_display(slot['time'])
             date_str = slot['date'].strftime('%Y-%m-%d %A')
             truck_info = f"Truck: {slot['truck_id']}"
-            if slot['j17_needed']: truck_info += " with J17"
-            bump_info = f" (Potential Bump of Job ID: {slot['bumped_job_details']['job_id']} for {slot['bumped_job_details']['customer_name']})" if slot['type'] != "Open" and slot['bumped_job_details'] else ""
-            
-            col1_disp.write(f"**Option {st.session_state.current_batch_index * 3 + i + 1}:** {date_str} at **{slot_time_str}**")
-            col1_disp.write(f"   {truck_info} - Type: {slot['type']}{bump_info}")
-            col1_disp.caption(f"   Customer: {slot.get('customer_name', 'N/A')}, Boat: {slot.get('boat_details_summary', 'N/A')}") # Use .get for safety
-
-            if col2_disp.button(f"Preview & Confirm Slot {st.session_state.current_batch_index * 3 + i + 1}", key=f"select_slot_batch_{st.session_state.current_batch_index}_item_{i}"):
-                st.session_state.slot_for_confirmation_preview = slot
-                st.rerun() # Rerun to show the preview section immediately
-            st.markdown("---")
-    elif st.session_state.no_more_slots_forward:
-        st.subheader("Suggested Slots:")
-        st.write("No further slots available with the current criteria.")
+            if slot['j17_needed']:
 
 # --- Section to Display Schedule Preview and Confirm Job ---
 if st.session_state.slot_for_confirmation_preview:
