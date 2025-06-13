@@ -527,6 +527,7 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
     return {'date': current_search_date, 'time': current_potential_start_time_obj, 'truck_id': truck_id,
             'j17_needed': needs_j17, 'type': slot_type, 'bumped_job_details': bumped_job_info,
             'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.boat_length}ft {boat.boat_type}"}
+            'ramp_id': ramp_obj.ramp_id if ramp_obj else None}
 
 # MODIFIED: Entire function replaced with new logic
 # --- START: REPLACE THE ENTIRE find_available_job_slots FUNCTION WITH THIS ---
@@ -693,29 +694,17 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     potential_slots_collected.sort(key=lambda slot: (slot['date'], slot['time']))
     
-    best_slot = potential_slots_collected[0]
-    found_date = best_slot['date']
+    # Return up to the first 6 slots found
+    top_slots = potential_slots_collected[:6]
     
-    explanation = "Found the best available slot."
-
-    if found_date != requested_date_obj:
-        explanation += f" This differs from your requested date of {requested_date_obj.strftime('%Y-%m-%d')} because all earlier dates had conflicts with truck/crane schedules or ramp/tide restrictions."
+    # Create a dynamic explanation message
+    if top_slots:
+        explanation = f"Found {len(top_slots)} available slots starting from {top_slots[0]['date'].strftime('%A, %b %d')}."
     else:
-        explanation += " This matches your requested date."
-        
-    if best_slot['truck_id'] == customer.preferred_truck_id:
-        explanation += f" The customer's preferred truck ({best_slot['truck_id']}) was available."
-    else:
-        all_suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
-        if customer.preferred_truck_id and customer.preferred_truck_id not in all_suitable_trucks:
-            explanation += f" The customer's preferred truck ({customer.preferred_truck_id}) was not suitable for this boat, so the system chose the best alternative: {best_slot['truck_id']}."
-        else:
-            explanation += f" The customer's preferred truck ({customer.preferred_truck_id}) was not available, so the system chose the next best option: {best_slot['truck_id']}."
+        explanation = "No suitable slots found with the current criteria."
 
-    final_slot_to_present = [best_slot]
-
-    return final_slot_to_present, explanation, DEBUG_LOG_MESSAGES
-
+    return top_slots, explanation, DEBUG_LOG_MESSAGES
+                                 
 # --- END: OF REPLACEMENT BLOCK ---
 
 def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
