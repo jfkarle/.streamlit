@@ -1,5 +1,16 @@
+Excellent. You've correctly updated the app.py file with the new session state and the user interface for displaying multiple slots.
+
+To complete this section, we need to re-integrate the "Find Alternatives" levers into the sidebar. This will allow you to perform a wider search after an initial strict search fails to provide a suitable option.
+
+Below is the complete and final code for app.py. It includes the search levers and adapts their logic to the new multi-slot selection workflow.
+
+Section 2: Final app.py with Search Levers
+This code can replace the entirety of your existing app.py file.
+
+Python
+
 # app.py
-# FINAL VERSION with Lever-Based Scheduling
+# FINAL VERSION with Multi-Slot Selection & Levers
 
 import streamlit as st
 import datetime
@@ -15,7 +26,7 @@ if 'data_loaded' not in st.session_state:
         st.session_state.data_loaded = False
         st.error("Failed to load customer and boat data.")
 
-# We only need three state variables for this workflow
+# Initialize session state variables for the multi-slot workflow
 if 'info_message' not in st.session_state: st.session_state.info_message = ""
 if 'current_job_request' not in st.session_state: st.session_state.current_job_request = None
 if 'found_slots' not in st.session_state: st.session_state.found_slots = []
@@ -32,7 +43,6 @@ if st.session_state.info_message:
 # --- Sidebar for Job Request ---
 st.sidebar.header("New Job Request")
 
-# This is your full, detailed customer and boat selection logic. It should remain.
 # --- 1. Customer Name Search ---
 customer_name_search_input = st.sidebar.text_input("Enter Customer Name (or part of it):",
                                                    help="e.g., Olivia, James, Tho")
@@ -116,38 +126,77 @@ if selected_customer_id and selected_boat_id:
         st.session_state.selected_slot = None
         st.rerun()
 
-# --- Main Area for Displaying Results and Levers ---
-if st.session_state.found_slot:
-    slot = st.session_state.found_slot
-    original_request = st.session_state.current_job_request
-    
-    st.subheader("Best Available Slot Found:")
-    
-    slot_time_str = ecm.format_time_for_display(slot.get('time'))
-    date_str = slot.get('date').strftime('%Y-%m-%d %A')
-    ramp_name = ecm.get_ramp_details(slot.get('ramp_id')).ramp_name if slot.get('ramp_id') else "N/A"
-    
-    st.success(f"**{date_str} at {slot_time_str}** with Truck **{slot.get('truck_id', 'N/A')}** at **{ramp_name}**.")
-    st.markdown("---")
-
-    # --- Phase 2: Display Levers and "Find Alternatives" button ---
+    # --- Levers for Alternative Search ---
     st.sidebar.markdown("---")
     st.sidebar.subheader("Not soon enough? Widen your search:")
     
-    relax_truck = st.sidebar.checkbox("Relax Truck Constraint (use any suitable truck)", key="relax_truck")
-    relax_ramp = st.sidebar.checkbox("Relax Ramp Constraint (search nearby ramps)", key="relax_ramp")
+    relax_truck_input = st.sidebar.checkbox("Relax Truck Constraint (use any suitable truck)", key="relax_truck")
+    relax_ramp_input = st.sidebar.checkbox("Relax Ramp Constraint (search nearby ramps)", key="relax_ramp")
 
     if st.sidebar.button("Find Alternatives", key="find_relaxed"):
-        if original_request:
-            slots, message, _ = ecm.find_available_job_slots(**original_request, force_preferred_truck=(not relax_truck), relax_ramp_constraint=relax_ramp)
+        # We need a current job request to find alternatives for
+        if st.session_state.current_job_request:
+            # Use the existing job request but override the lever settings
+            slots, message, _ = ecm.find_available_job_slots(
+                **st.session_state.current_job_request, 
+                force_preferred_truck=(not relax_truck_input), 
+                relax_ramp_constraint=relax_ramp_input
+            )
             st.session_state.info_message = message
             st.session_state.found_slots = slots
-            st.session_state.selected_slot = None
+            st.session_state.selected_slot = None # Reset selection
             st.rerun()
+        else:
+            st.sidebar.warning("Please find a strict slot first before searching for alternatives.")
 
-    # --- Confirmation Section ---
+# --- Main Area for Displaying Results and Confirmation ---
+
+# This function will be called when a user clicks a "Select" button
+def handle_slot_selection(slot_data):
+    """Sets the chosen slot into the session state for confirmation."""
+    st.session_state.selected_slot = slot_data
+
+# --- Phase 2: Display Multiple Slot Options ---
+if st.session_state.found_slots and not st.session_state.selected_slot:
+    st.subheader("Please select your preferred slot:")
+    
+    # Create columns for a card-like layout
+    cols = st.columns(3)
+    
+    for i, slot in enumerate(st.session_state.found_slots):
+        col = cols[i % 3] # Cycle through the columns for layout
+        with col:
+            with st.container(border=True):
+                date_str = slot['date'].strftime('%a, %b %d, %Y')
+                time_str = ecm.format_time_for_display(slot.get('time'))
+                truck_id = slot.get('truck_id', 'N/A')
+                ramp_name = "N/A"
+                if slot.get('ramp_id'):
+                    ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                    if ramp_details:
+                        ramp_name = ramp_details.ramp_name
+
+                st.markdown(f"**Date:** {date_str}")
+                st.markdown(f"**Time:** {time_str}")
+                st.markdown(f"**Truck:** {truck_id}")
+                if ramp_name != "N/A":
+                    st.markdown(f"**Ramp:** {ramp_name}")
+                
+                # Button to select this specific slot
+                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+    st.markdown("---")
+
+
+# --- Phase 3: Display Confirmation Section for the CHOSEN Slot ---
+if st.session_state.selected_slot:
+    slot = st.session_state.selected_slot
+    original_request = st.session_state.current_job_request
+    
+    slot_time_str = ecm.format_time_for_display(slot.get('time'))
+    date_str = slot.get('date').strftime('%Y-%m-%d %A')
+    
     st.subheader(f"Preview & Confirm Selection:")
-    st.write(f"You are considering: **{date_str} at {slot_time_str}** with Truck {slot.get('truck_id')}")
+    st.success(f"You are considering: **{date_str} at {slot_time_str}** with Truck **{slot.get('truck_id')}**.")
     if slot.get('j17_needed'):
         st.write("J17 Crane will also be assigned.")
     
@@ -155,21 +204,24 @@ if st.session_state.found_slot:
         new_job_id, message = ecm.confirm_and_schedule_job(original_job_request_details=original_request, selected_slot_info=slot)
         if new_job_id:
             st.success(f"Job Confirmed! {message}")
-            st.session_state.found_slot = None
+            # Clear all state variables for a fresh start
+            st.session_state.found_slots = []
+            st.session_state.selected_slot = None
             st.session_state.current_job_request = None
             st.rerun()
         else:
             st.error(f"Failed to confirm job: {message}")
 
-elif st.session_state.get('current_job_request'):
+# Handle case where no slots were found
+elif st.session_state.get('current_job_request') and not st.session_state.found_slots:
     if st.session_state.info_message:
         st.warning(st.session_state.info_message)
 
 # --- Display All Scheduled Jobs (your existing logic) ---
+st.markdown("---")
 if st.checkbox("Show All Currently Scheduled Jobs (In-Memory List for this Session)"):
     st.subheader("All Scheduled Jobs (Current Session):")
     if ecm.SCHEDULED_JOBS:
-        # (Your full, detailed dataframe display logic should be pasted here)
-        st.dataframe([job.__dict__ for job in ecm.SCHEDULED_JOBS]) # A simplified display
+        st.dataframe([job.__dict__ for job in ecm.SCHEDULED_JOBS])
     else:
         st.write("No jobs scheduled in the current session yet.")
