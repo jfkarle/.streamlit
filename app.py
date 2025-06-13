@@ -18,7 +18,8 @@ if 'data_loaded' not in st.session_state:
 # We only need three state variables for this workflow
 if 'info_message' not in st.session_state: st.session_state.info_message = ""
 if 'current_job_request' not in st.session_state: st.session_state.current_job_request = None
-if 'found_slot' not in st.session_state: st.session_state.found_slot = None
+if 'found_slots' not in st.session_state: st.session_state.found_slots = []
+if 'selected_slot' not in st.session_state: st.session_state.selected_slot = None
 
 # --- Main App Layout ---
 st.title("ECM Boat Hauling - Availability Scheduler")
