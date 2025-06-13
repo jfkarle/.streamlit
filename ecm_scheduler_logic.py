@@ -524,10 +524,19 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
         if ex_job and ex_job.customer_id != customer.customer_id and not get_customer_details(ex_job.customer_id).is_ecm_customer and ex_job.service_type == "Haul":
             slot_type = "BumpNonECM_BusyHaul"
             bumped_job_info = {"job_id": ex_job.job_id, "customer_name": get_customer_details(ex_job.customer_id).customer_name}
-    return {'date': current_search_date, 'time': current_potential_start_time_obj, 'truck_id': truck_id,
-            'j17_needed': needs_j17, 'type': slot_type, 'bumped_job_details': bumped_job_info,
-            'customer_name': customer.customer_name, 'boat_details_summary': f"{boat.boat_length}ft {boat.boat_type}"}
-            'ramp_id': ramp_obj.ramp_id if ramp_obj else None}
+    
+    # --- CORRECTED RETURN STATEMENT ---
+    return {
+        'date': current_search_date, 
+        'time': current_potential_start_time_obj, 
+        'truck_id': truck_id,
+        'j17_needed': needs_j17, 
+        'type': slot_type, 
+        'bumped_job_details': bumped_job_info,
+        'customer_name': customer.customer_name, 
+        'boat_details_summary': f"{boat.boat_length}ft {boat.boat_type}",
+        'ramp_id': ramp_obj.ramp_id if ramp_obj else None
+    }
 
 # MODIFIED: Entire function replaced with new logic
 # --- START: REPLACE THE ENTIRE find_available_job_slots FUNCTION WITH THIS ---
@@ -553,8 +562,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         DEBUG_LOG_MESSAGES.append("Error: Invalid Cust/Boat ID.")
         return [], "Error: Invalid Cust/Boat ID.", DEBUG_LOG_MESSAGES
 
-    # --- THIS IS THE MODIFIED BLOCK ---
-    
     # 1. Use new centralized booking rules
     boat_type_for_rules = boat.boat_type
     if boat_type_for_rules == "Sailboat MD": boat_type_for_rules = "Sailboat DT" # Standardize
@@ -569,7 +576,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         DEBUG_LOG_MESSAGES.append("Error: No suitable trucks.")
         return [], "Error: No suitable trucks.", DEBUG_LOG_MESSAGES
 
-   # --- TRUCK LEVER (Corrected Logic) ---
+    # --- TRUCK LEVER (Corrected Logic) ---
     trucks_to_search = []
     all_suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
     
@@ -580,21 +587,18 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         if not preferred_truck_id:
             return [], "No preferred truck is set for this customer. Cannot perform a strict truck search.", ["Strict search failed: No preferred truck."]
         
-        # Check if the required preferred truck is actually suitable for the job
         if preferred_truck_id in all_suitable_trucks:
-            # If it is suitable, it's the ONLY one we will search for.
             trucks_to_search = [preferred_truck_id]
         else:
-            # If the preferred truck is NOT suitable, the search MUST fail immediately.
             return [], f"The customer's preferred truck ({preferred_truck_id}) is not suitable for this {boat.boat_length}ft boat. No slots can be found with the 'Strict Truck' constraint.", [f"Strict search failed: Preferred truck {preferred_truck_id} unsuitable."]
-    else: # This block runs when the "Relax Truck" lever is checked
+    else: 
         trucks_to_search = all_suitable_trucks
         DEBUG_LOG_MESSAGES.append(f"Lever Inactive: Searching all suitable trucks: {trucks_to_search}")
 
     if not trucks_to_search:
          return [], "Error: No suitable trucks found matching the criteria.", ["No suitable trucks found for search phase."]
 
-    # RAMP LEVER
+    # --- RAMP LEVER ---
     ramps_to_search = []
     if relax_ramp_constraint and selected_ramp_id:
         ramps_to_search = list(get_nearby_ramps(selected_ramp_id, max_distance_miles=10).keys())
@@ -605,8 +609,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     elif service_type == "Transport":
         ramps_to_search = [None] 
 
-    # --- END OF MODIFIED BLOCK ---
-
+    # --- Search Window Calculation ---
     today = TODAY_FOR_SIMULATION
     
     effective_search_start_date = requested_date_obj
@@ -620,6 +623,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             effective_search_start_date = requested_date_obj - datetime.timedelta(days=3)
         if effective_search_start_date < today: 
             effective_search_start_date = today
+            
     search_end_limit_date = requested_date_obj + datetime.timedelta(days=30)
     DEBUG_LOG_MESSAGES.append(f"Search Window: {effective_search_start_date} to {search_end_limit_date}" + (f" (after {min_start_time_on_first_day})" if min_start_time_on_first_day else ""))
 
@@ -682,6 +686,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                             slot_detail = _check_and_create_slot_detail(current_search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES)
                             if slot_detail:
                                 potential_slots_collected.append(slot_detail)
+                                # We break here to find the next available slot on a 30-min interval, rather than the first one in the window
                                 break
                         
                         potential_time = (datetime.datetime.combine(datetime.date.min, potential_time) + datetime.timedelta(minutes=30)).time()
@@ -689,6 +694,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         if current_search_date == effective_search_start_date: min_start_time_on_first_day = None
         current_search_date += datetime.timedelta(days=1); days_iterated += 1
     
+    # --- Sort and Return Multiple Slots ---
     if not potential_slots_collected:
         return [], "No suitable slots found with the current criteria.", DEBUG_LOG_MESSAGES
 
@@ -704,8 +710,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         explanation = "No suitable slots found with the current criteria."
 
     return top_slots, explanation, DEBUG_LOG_MESSAGES
-                                 
-# --- END: OF REPLACEMENT BLOCK ---
 
 def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
     global JOB_ID_COUNTER, SCHEDULED_JOBS
