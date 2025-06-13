@@ -4,6 +4,7 @@
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
+import pandas as pd
 
 st.set_page_config(layout="wide")
 
@@ -211,6 +212,48 @@ st.markdown("---")
 if st.checkbox("Show All Currently Scheduled Jobs (In-Memory List for this Session)"):
     st.subheader("All Scheduled Jobs (Current Session):")
     if ecm.SCHEDULED_JOBS:
-        st.dataframe([job.__dict__ for job in ecm.SCHEDULED_JOBS])
+        # Helper function to add suffix to day (e.g., 1st, 2nd, 3rd, 4th)
+        def get_day_with_suffix(d):
+            return str(d) + ("th" if 11 <= d <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(d % 10, "th"))
+
+        # Prepare a list of dictionaries with formatted and ordered data
+        display_data = []
+        for job in sorted(ecm.SCHEDULED_JOBS, key=lambda j: (j.scheduled_start_datetime is None, j.scheduled_start_datetime)):
+            customer = ecm.get_customer_details(job.customer_id)
+            
+            if job.scheduled_start_datetime:
+                day_str = get_day_with_suffix(job.scheduled_start_datetime.day)
+                date_formatted = job.scheduled_start_datetime.strftime(f"%B {day_str}, %Y")
+                time_formatted = ecm.format_time_for_display(job.scheduled_start_datetime.time())
+            else:
+                date_formatted = "Not Scheduled"
+                time_formatted = "N/A"
+            
+            ramp_name = "N/A"
+            ramp_id = job.pickup_ramp_id or job.dropoff_ramp_id
+            if ramp_id:
+                ramp = ecm.get_ramp_details(ramp_id)
+                if ramp:
+                    ramp_name = ramp.ramp_name
+
+            # Define the structure and order of our columns for each job
+            display_data.append({
+                "Job ID": job.job_id,
+                "Status": job.job_status,
+                "Scheduled Date": date_formatted,
+                "Scheduled Time": time_formatted,
+                "Service": job.service_type,
+                "Customer": customer.customer_name if customer else "N/A",
+                "Truck": job.assigned_hauling_truck_id,
+                "Crane": "Yes" if job.assigned_crane_truck_id else "No",
+                "Ramp": ramp_name,
+                "Notes": job.notes
+            })
+        
+        # Create a pandas DataFrame from our prepared list
+        df = pd.DataFrame(display_data)
+        
+        # Display the DataFrame in Streamlit, which respects the column order
+        st.dataframe(df, use_container_width=True)
     else:
         st.write("No jobs scheduled in the current session yet.")
