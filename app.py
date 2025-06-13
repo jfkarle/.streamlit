@@ -112,7 +112,8 @@ if selected_customer_id and selected_boat_id:
         slots, message, _ = ecm.find_available_job_slots(**job_request, force_preferred_truck=True, relax_ramp_constraint=False)
         
         st.session_state.info_message = message
-        st.session_state.found_slot = slots[0] if slots else None
+        st.session_state.found_slots = slots
+        st.session_state.selected_slot = None
         st.rerun()
 
 # --- Main Area for Displaying Results and Levers ---
@@ -140,7 +141,8 @@ if st.session_state.found_slot:
         if original_request:
             slots, message, _ = ecm.find_available_job_slots(**original_request, force_preferred_truck=(not relax_truck), relax_ramp_constraint=relax_ramp)
             st.session_state.info_message = message
-            st.session_state.found_slot = slots[0] if slots else None
+            st.session_state.found_slots = slots
+            st.session_state.selected_slot = None
             st.rerun()
 
     # --- Confirmation Section ---
