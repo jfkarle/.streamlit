@@ -1,251 +1,251 @@
 customer_name,boat_type,preferred_truck,boat_length,boat_draft,home_latitude,home_longitude,is_ecm_boat,preferred_ramp
-Liam Skidnoggin,Powerboat,S23/55,29,1.5,42.1124257225803,-70.7878049403164,False,Humarock
-Noah Hopwhistle,Powerboat,S23/55,29,1.5,42.018251685926,-70.6898221038189,False,Duxbury Town Ramp
-Olivia Tumblefeather,Powerboat,S21/77,51,1.5,42.09120481173,-70.7138629620311,False,Union Street Ramp
-Ethan Blisterquatch,Powerboat,S20/33,42,1.5,42.1124417029144,-70.3582610624587,False,Brant Rock
-Sophia Wigglehopper,Powerboat,S21/77,42,1.5,42.0621105694371,-70.754168842811,False,Duxbury Town Ramp
-Mason Grimknuckle,Powerboat,S21/77,57,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Ava Wagglewump,Powerboat,S20/33,44,1.5,41.8571583954984,-70.5574940989185,False,Great Herring Pond
-Lucas Zorpflint,Powerboat,S23/55,30,1.5,42.0075979081545,-70.8532911013342,False,Duxbury Town Ramp
-Isabella Crankbog,Powerboat,S23/55,29,1.5,42.0278078074542,-70.7108584817534,False,Duxbury Town Ramp
-Jackson Chubsnatch,Powerboat,S23/55,27,1.5,42.2056983855412,-70.5441744739466,False,Humarock
-Mia Skidquack,Powerboat,S21/77,46,5.0,42.129381770954,-70.2792234742992,False,Brant Rock
-Aiden Wobbleback,Powerboat,S21/77,57,5.0,42.071491,-70.809196,True,Duxbury Town Ramp
-Harper Wagglebluff,Powerboat,S23/55,21,5.0,42.1812081509975,-70.5124109109664,False,Humarock
-Evelyn Wigglesnort,Powerboat,S21/77,31,5.0,42.0255346706969,-70.464748678473,False,Brant Rock
-Sebastian Stumblewilligar,Powerboat,S23/55,22,1.5,42.0665456204397,-70.4660489101256,False,Brant Rock
-Charlotte Flapweather,Powerboat,S21/77,44,5.0,42.0545117232985,-70.546960723636,False,Brant Rock
-William Tumblewax,Powerboat,S23/55,30,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Liam Skidnoggin,Powerboat,S20/33 OR S21/77 OR S23/55,29,1.5,42.1124257225803,-70.7878049403164,False,Humarock
+Noah Hopwhistle,Powerboat,S20/33 OR S21/77 OR S23/55,29,1.5,42.018251685926,-70.6898221038189,False,Duxbury Town Ramp
+Olivia Tumblefeather,Powerboat,S20/33,51,1.5,42.09120481173,-70.7138629620311,False,Union Street Ramp
+Ethan Blisterquatch,Powerboat,S20/33 OR S21/77,42,1.5,42.1124417029144,-70.3582610624587,False,Brant Rock
+Sophia Wigglehopper,Powerboat,S20/33 OR S21/77,42,1.5,42.0621105694371,-70.754168842811,False,Duxbury Town Ramp
+Mason Grimknuckle,Powerboat,S20/33,57,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Ava Wagglewump,Powerboat,S20/33 OR S21/77,44,1.5,41.8571583954984,-70.5574940989185,False,Great Herring Pond
+Lucas Zorpflint,Powerboat,S20/33 OR S21/77 OR S23/55,30,1.5,42.0075979081545,-70.8532911013342,False,Duxbury Town Ramp
+Isabella Crankbog,Powerboat,S20/33 OR S21/77 OR S23/55,29,1.5,42.0278078074542,-70.7108584817534,False,Duxbury Town Ramp
+Jackson Chubsnatch,Powerboat,S20/33 OR S21/77 OR S23/55,27,1.5,42.2056983855412,-70.5441744739466,False,Humarock
+Mia Skidquack,Powerboat,S20/33,46,5.0,42.129381770954,-70.2792234742992,False,Brant Rock
+Aiden Wobbleback,Powerboat,S20/33,57,5.0,42.071491,-70.809196,True,Duxbury Town Ramp
+Harper Wagglebluff,Powerboat,S20/33 OR S21/77 OR S23/55,21,5.0,42.1812081509975,-70.5124109109664,False,Humarock
+Evelyn Wigglesnort,Powerboat,S20/33 OR S21/77,31,5.0,42.0255346706969,-70.464748678473,False,Brant Rock
+Sebastian Stumblewilligar,Powerboat,S20/33 OR S21/77 OR S23/55,22,1.5,42.0665456204397,-70.4660489101256,False,Brant Rock
+Charlotte Flapweather,Powerboat,S20/33 OR S21/77,44,5.0,42.0545117232985,-70.546960723636,False,Brant Rock
+William Tumblewax,Powerboat,S20/33 OR S21/77 OR S23/55,30,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
 Amelia Drizzlequatch,Powerboat,S20/33,59,1.5,41.9033905975353,-70.4247615187529,False,Great Herring Pond
-Daniel Bogbuckle,Powerboat,S23/55,21,1.5,42.1053239802334,-70.5149484234027,False,Brant Rock
-Scarlett Toadquatch,Powerboat,S23/55,27,1.5,42.0280427784902,-70.5480460074202,False,Brant Rock
-Henry Glumtwist,Powerboat,S21/77,34,5.0,42.1382350314206,-70.5030935787015,False,Brant Rock
-Chloe Lumpflap,Powerboat,S21/77,33,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Alexander Chubgruff,Powerboat,S23/55,20,1.5,42.0926100592389,-70.5860709774091,False,Brant Rock
-Madison Flintwhomp,Powerboat,S23/55,24,1.5,42.1907394270235,-70.4955233125928,False,Humarock
-Caleb Burnhandle,Powerboat,S23/55,24,1.5,42.0767658603288,-70.5565976821451,False,Brant Rock
-Grace Bitterwax,Powerboat,S23/55,21,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Samuel Clattersnatch,Powerboat,S23/55,21,1.5,41.9256777995133,-70.6522122582442,False,Plymouth Town Ramp
-Victoria Lumpbrass,Powerboat,S21/77,33,1.5,42.1532389127289,-70.6951548843137,False,Humarock
-Leo Thistlefeather,Powerboat,S23/55,23,1.5,42.086605653342,-70.5903481927278,False,Brant Rock
-Penelope Sludgewrench,Powerboat,S23/55,23,1.5,42.1193087357091,-70.6026979743944,False,Rexhame Beach
-Julian Thistlewobble,Powerboat,S23/55,28,5.0,41.9281356009389,-70.6819677782168,False,Plymouth Town Ramp
-Nora Tanglewump,Powerboat,S21/77,32,1.5,42.1476742514496,-70.9199781303221,False,Sunset Lake
-Gabriel Zorppot,Powerboat,S23/55,22,1.5,42.1514668485483,-70.6909733001203,False,Humarock
-Zoey Flintknuckle,Powerboat,S23/55,29,5.0,42.0749710446179,-70.6615333876899,False,Green Harbor
-Owen Zorptoaster,Powerboat,S23/55,25,1.5,42.2076647325756,-70.6676612129282,False,Mill Wharf
+Daniel Bogbuckle,Powerboat,S20/33 OR S21/77 OR S23/55,21,1.5,42.1053239802334,-70.5149484234027,False,Brant Rock
+Scarlett Toadquatch,Powerboat,S20/33 OR S21/77 OR S23/55,27,1.5,42.0280427784902,-70.5480460074202,False,Brant Rock
+Henry Glumtwist,Powerboat,S20/33 OR S21/77,34,5.0,42.1382350314206,-70.5030935787015,False,Brant Rock
+Chloe Lumpflap,Powerboat,S20/33 OR S21/77,33,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Alexander Chubgruff,Powerboat,S20/33 OR S21/77 OR S23/55,20,1.5,42.0926100592389,-70.5860709774091,False,Brant Rock
+Madison Flintwhomp,Powerboat,S20/33 OR S21/77 OR S23/55,24,1.5,42.1907394270235,-70.4955233125928,False,Humarock
+Caleb Burnhandle,Powerboat,S20/33 OR S21/77 OR S23/55,24,1.5,42.0767658603288,-70.5565976821451,False,Brant Rock
+Grace Bitterwax,Powerboat,S20/33 OR S21/77 OR S23/55,21,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Samuel Clattersnatch,Powerboat,S20/33 OR S21/77 OR S23/55,21,1.5,41.9256777995133,-70.6522122582442,False,Plymouth Town Ramp
+Victoria Lumpbrass,Powerboat,S20/33 OR S21/77,33,1.5,42.1532389127289,-70.6951548843137,False,Humarock
+Leo Thistlefeather,Powerboat,S20/33 OR S21/77 OR S23/55,23,1.5,42.086605653342,-70.5903481927278,False,Brant Rock
+Penelope Sludgewrench,Powerboat,S20/33 OR S21/77 OR S23/55,23,1.5,42.1193087357091,-70.6026979743944,False,Rexhame Beach
+Julian Thistlewobble,Powerboat,S20/33 OR S21/77 OR S23/55,28,5.0,41.9281356009389,-70.6819677782168,False,Plymouth Town Ramp
+Nora Tanglewump,Powerboat,S20/33 OR S21/77,32,1.5,42.1476742514496,-70.9199781303221,False,Sunset Lake
+Gabriel Zorppot,Powerboat,S20/33 OR S21/77 OR S23/55,22,1.5,42.1514668485483,-70.6909733001203,False,Humarock
+Zoey Flintknuckle,Powerboat,S20/33 OR S21/77 OR S23/55,29,5.0,42.0749710446179,-70.6615333876899,False,Green Harbor
+Owen Zorptoaster,Powerboat,S20/33 OR S21/77 OR S23/55,25,1.5,42.2076647325756,-70.6676612129282,False,Mill Wharf
 Lucy Zorpbuckle,Powerboat,S20/33,46,1.5,42.0515541187226,-70.3558095895373,False,Brant Rock
-Levi Pickleknuckle,Powerboat,S20/33,40,1.5,42.0520907130619,-70.5523138797815,False,Brant Rock
-Eleanor Glumweather,Powerboat,S23/55,21,1.5,42.1267564504674,-70.5346852238552,False,Brant Rock
+Levi Pickleknuckle,Powerboat,S20/33 OR S21/77,40,1.5,42.0520907130619,-70.5523138797815,False,Brant Rock
+Eleanor Glumweather,Powerboat,S20/33 OR S21/77 OR S23/55,21,1.5,42.1267564504674,-70.5346852238552,False,Brant Rock
 Silas Chubwax,Powerboat,S20/33,48,1.5,41.9693764315385,-70.6653624262962,False,Plymouth Town Ramp
-Stella Crankbark,Powerboat,S21/77,33,1.5,41.9305882726732,-70.6645071675003,False,Plymouth Town Ramp
-Asher Skidweather,Powerboat,S20/33,40,1.5,42.03280918104,-70.6319736596407,False,Duxbury Town Ramp
-Hazel Flintbucket,Powerboat,S23/55,27,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Arthur Muggruff,Powerboat,S21/77,54,1.5,42.2201065049988,-70.6689179881065,False,Scituate Town Ramp
-Ivy Tangleflint,Powerboat,S23/55,23,1.5,42.2212094388228,-70.6207235766209,False,Scituate Town Ramp
-Elliot Crankback,Powerboat,S21/77,47,5.0,42.0746313774023,-70.8164313854763,False,Union Street Ramp
-Freya Frogdraft,Powerboat,S21/77,57,1.5,42.0335707914595,-70.6568062877093,False,Duxbury Town Ramp
-Finn Waggleflint,Powerboat,S21/77,51,1.5,41.8978052156225,-70.4492898148967,False,Great Herring Pond
-Violet Thistleshaft,Powerboat,S20/33,32,1.5,42.0823681511393,-70.3062124319913,False,Brant Rock
-Ezra Blisterwrench,Powerboat,S21/77,56,1.5,42.3268835630361,-70.6723659694372,False,Captain Pierce Road
-Eliza Sludgewobble,Powerboat,S21/77,37,1.5,42.1437527591972,-70.5287770271876,False,Rexhame Beach
-Jasper Rattlebucket,Powerboat,S20/33,37,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Ruby Blisterthistle,Powerboat,S20/33,37,5.0,42.205583434246,-70.5221072096793,False,Humarock
-Cora Tanglehandle,Powerboat,S21/77,45,5.0,42.0892754193123,-70.5478923118826,False,Brant Rock
-Felix Mossfist,Powerboat,S21/77,48,1.5,42.204334809347,-70.5511682954888,False,Humarock
+Stella Crankbark,Powerboat,S20/33 OR S21/77,33,1.5,41.9305882726732,-70.6645071675003,False,Plymouth Town Ramp
+Asher Skidweather,Powerboat,S20/33 OR S21/77,40,1.5,42.03280918104,-70.6319736596407,False,Duxbury Town Ramp
+Hazel Flintbucket,Powerboat,S20/33 OR S21/77 OR S23/55,27,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Arthur Muggruff,Powerboat,S20/33,54,1.5,42.2201065049988,-70.6689179881065,False,Scituate Town Ramp
+Ivy Tangleflint,Powerboat,S20/33 OR S21/77 OR S23/55,23,1.5,42.2212094388228,-70.6207235766209,False,Scituate Town Ramp
+Elliot Crankback,Powerboat,S20/33,47,5.0,42.0746313774023,-70.8164313854763,False,Union Street Ramp
+Freya Frogdraft,Powerboat,S20/33,57,1.5,42.0335707914595,-70.6568062877093,False,Duxbury Town Ramp
+Finn Waggleflint,Powerboat,S20/33,51,1.5,41.8978052156225,-70.4492898148967,False,Great Herring Pond
+Violet Thistleshaft,Powerboat,S20/33 OR S21/77,32,1.5,42.0823681511393,-70.3062124319913,False,Brant Rock
+Ezra Blisterwrench,Powerboat,S20/33,56,1.5,42.3268835630361,-70.6723659694372,False,Captain Pierce Road
+Eliza Sludgewobble,Powerboat,S20/33 OR S21/77,37,1.5,42.1437527591972,-70.5287770271876,False,Rexhame Beach
+Jasper Rattlebucket,Powerboat,S20/33 OR S21/77,37,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Ruby Blisterthistle,Powerboat,S20/33 OR S21/77,37,5.0,42.205583434246,-70.5221072096793,False,Humarock
+Cora Tanglehandle,Powerboat,S20/33 OR S21/77,45,5.0,42.0892754193123,-70.5478923118826,False,Brant Rock
+Felix Mossfist,Powerboat,S20/33,48,1.5,42.204334809347,-70.5511682954888,False,Humarock
 Mila Zonksnort,Powerboat,S20/33,52,1.5,41.9702650200067,-70.4737445552422,False,Great Herring Pond
-Leo Skidflint,Powerboat,S23/55,24,1.5,42.2384753675092,-70.7614684286299,False,Taylors Lane
-Maya Tumbleshaft,Powerboat,S20/33,40,5.0,42.0139710838381,-70.5823515577554,False,Duxbury Town Ramp
-Milo Grimwump,Powerboat,S23/55,29,1.5,41.9751939914253,-70.6407624802577,False,Plymouth Town Ramp
+Leo Skidflint,Powerboat,S20/33 OR S21/77 OR S23/55,24,1.5,42.2384753675092,-70.7614684286299,False,Taylors Lane
+Maya Tumbleshaft,Powerboat,S20/33 OR S21/77,40,5.0,42.0139710838381,-70.5823515577554,False,Duxbury Town Ramp
+Milo Grimwump,Powerboat,S20/33 OR S21/77 OR S23/55,29,1.5,41.9751939914253,-70.6407624802577,False,Plymouth Town Ramp
 Ada Hobthistle,Powerboat,S20/33,50,1.5,42.0287971803704,-70.8772372142777,False,Duxbury Town Ramp
-Kai Puddleknuckle,Powerboat,S23/55,25,5.0,42.106194814701,-70.483192504163,False,Brant Rock
-Lena Chubknuckle,Powerboat,S21/77,50,5.0,42.1426008007554,-70.7285764653631,False,Humarock
-Jude Cranksnatch,Powerboat,S21/77,38,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Alice Thistledraft,Powerboat,S21/77,43,1.5,41.9624811689602,-70.5685482196341,False,Plymouth Town Ramp
+Kai Puddleknuckle,Powerboat,S20/33 OR S21/77 OR S23/55,25,5.0,42.106194814701,-70.483192504163,False,Brant Rock
+Lena Chubknuckle,Powerboat,S20/33,50,5.0,42.1426008007554,-70.7285764653631,False,Humarock
+Jude Cranksnatch,Powerboat,S20/33 OR S21/77,38,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Alice Thistledraft,Powerboat,S20/33 OR S21/77,43,1.5,41.9624811689602,-70.5685482196341,False,Plymouth Town Ramp
 Ezra Grimflap,Powerboat,S20/33,53,1.5,41.9545698098713,-70.5920188481181,False,Plymouth Town Ramp
-Hazel Dinglewhomp,Powerboat,S20/33,33,1.5,42.1444290642947,-70.648100031491,False,Humarock
-Finnian Splatterwobble,Powerboat,S23/55,25,1.5,42.216849292712,-70.7612248146901,False,Taylors Lane
-Chloe Bogwilligar,Powerboat,S21/77,50,5.0,42.0282368738717,-70.8551559614656,False,Duxbury Town Ramp
-Ivy Frogbucket,Powerboat,S20/33,42,1.5,41.9455549945128,-70.7740253034188,False,Plymouth Town Ramp
+Hazel Dinglewhomp,Powerboat,S20/33 OR S21/77,33,1.5,42.1444290642947,-70.648100031491,False,Humarock
+Finnian Splatterwobble,Powerboat,S20/33 OR S21/77 OR S23/55,25,1.5,42.216849292712,-70.7612248146901,False,Taylors Lane
+Chloe Bogwilligar,Powerboat,S20/33,50,5.0,42.0282368738717,-70.8551559614656,False,Duxbury Town Ramp
+Ivy Frogbucket,Powerboat,S20/33 OR S21/77,42,1.5,41.9455549945128,-70.7740253034188,False,Plymouth Town Ramp
 Asher Toadweather,Powerboat,S20/33,46,1.5,42.1955181431778,-70.7809625932436,False,Taylors Lane
 Elliot Blistershaft,Powerboat,S20/33,55,5.0,42.1613429448066,-70.7581667331259,False,Mill Wharf
-Freya Terhandle,Powerboat,S21/77,39,1.5,42.0048011665311,-70.7893736575801,False,Duxbury Town Ramp
-Jasper Thistleplank,Powerboat,S20/33,34,1.5,42.0004477830599,-70.7215574488716,False,Duxbury Town Ramp
-Ruby Sootington,Powerboat,S23/55,21,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Cora Flintskedaddle,Powerboat,S21/77,32,1.5,42.0592152144378,-70.781575398152,False,Duxbury Town Ramp
-Felix Croakbucket,Powerboat,S20/33,38,5.0,42.2184096563529,-70.7670391262894,False,Taylors Lane
-Mila Mosshandle,Powerboat,S20/33,38,1.5,41.9136921312665,-70.6061987870447,False,Great Herring Pond
-Leo Mugnoggin,Powerboat,S23/55,21,1.5,42.1520281561194,-70.514840852274,False,Rexhame Beach
-Maya Dinglenobbler,Powerboat,S21/77,32,1.5,42.0594607463698,-70.4694428097913,False,Brant Rock
-Milo Lumpbucket,Powerboat,S20/33,38,1.5,41.9075485593329,-70.7100992756148,False,Plymouth Town Ramp
-Ada Flintthistle,Powerboat,S23/55,23,1.5,42.1626138239294,-70.6033001289572,False,Humarock
-Kai Lumpbuckle,Powerboat,S23/55,24,1.5,42.2043750999488,-70.6068103886091,False,Mill Wharf
-Lena Stumblenoodle,Powerboat,S21/77,50,1.5,42.1249642783345,-70.6356560289123,False,Rexhame Beach
+Freya Terhandle,Powerboat,S20/33 OR S21/77,39,1.5,42.0048011665311,-70.7893736575801,False,Duxbury Town Ramp
+Jasper Thistleplank,Powerboat,S20/33 OR S21/77,34,1.5,42.0004477830599,-70.7215574488716,False,Duxbury Town Ramp
+Ruby Sootington,Powerboat,S20/33 OR S21/77 OR S23/55,21,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Cora Flintskedaddle,Powerboat,S20/33 OR S21/77,32,1.5,42.0592152144378,-70.781575398152,False,Duxbury Town Ramp
+Felix Croakbucket,Powerboat,S20/33 OR S21/77,38,5.0,42.2184096563529,-70.7670391262894,False,Taylors Lane
+Mila Mosshandle,Powerboat,S20/33 OR S21/77,38,1.5,41.9136921312665,-70.6061987870447,False,Great Herring Pond
+Leo Mugnoggin,Powerboat,S20/33 OR S21/77 OR S23/55,21,1.5,42.1520281561194,-70.514840852274,False,Rexhame Beach
+Maya Dinglenobbler,Powerboat,S20/33 OR S21/77,32,1.5,42.0594607463698,-70.4694428097913,False,Brant Rock
+Milo Lumpbucket,Powerboat,S20/33 OR S21/77,38,1.5,41.9075485593329,-70.7100992756148,False,Plymouth Town Ramp
+Ada Flintthistle,Powerboat,S20/33 OR S21/77 OR S23/55,23,1.5,42.1626138239294,-70.6033001289572,False,Humarock
+Kai Lumpbuckle,Powerboat,S20/33 OR S21/77 OR S23/55,24,1.5,42.2043750999488,-70.6068103886091,False,Mill Wharf
+Lena Stumblenoodle,Powerboat,S20/33,50,1.5,42.1249642783345,-70.6356560289123,False,Rexhame Beach
 Jude Thistlewhomp,Powerboat,S20/33,60,1.5,42.249896535014,-70.5718385700359,False,Scituate Town Ramp
 Alice Toadhopper,Powerboat,S20/33,46,5.0,42.1792243659081,-70.6845904967095,False,Mill Wharf
 Ezra Skidwhomp,Powerboat,S20/33,52,1.5,41.9828428258763,-70.4601298311688,False,Great Herring Pond
-Hazel Terberry,Powerboat,S21/77,56,1.5,42.0270406290803,-70.7447783054434,False,Duxbury Town Ramp
-Finnian Tricklefist,Powerboat,S21/77,47,1.5,41.9600164087516,-70.7337530946442,False,Plymouth Town Ramp
-Chloe Toadflint,Powerboat,S23/55,26,1.5,42.060077967702,-70.6046371426741,False,Brant Rock
-Ivy Tricklequatch,Powerboat,S21/77,34,5.0,42.1858348291015,-70.7125448212011,False,Mill Wharf
-Asher Wigglethorpe,Powerboat,S21/77,50,1.5,41.9293410230965,-70.703754361999,False,Plymouth Town Ramp
-Elliot Stumbletoaster,Powerboat,S20/33,38,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Freya Trickleknuckle,Powerboat,S20/33,31,1.5,42.2528925406758,-70.4936033879909,False,Scituate Town Ramp
+Hazel Terberry,Powerboat,S20/33,56,1.5,42.0270406290803,-70.7447783054434,False,Duxbury Town Ramp
+Finnian Tricklefist,Powerboat,S20/33,47,1.5,41.9600164087516,-70.7337530946442,False,Plymouth Town Ramp
+Chloe Toadflint,Powerboat,S20/33 OR S21/77 OR S23/55,26,1.5,42.060077967702,-70.6046371426741,False,Brant Rock
+Ivy Tricklequatch,Powerboat,S20/33 OR S21/77,34,5.0,42.1858348291015,-70.7125448212011,False,Mill Wharf
+Asher Wigglethorpe,Powerboat,S20/33,50,1.5,41.9293410230965,-70.703754361999,False,Plymouth Town Ramp
+Elliot Stumbletoaster,Powerboat,S20/33 OR S21/77,38,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Freya Trickleknuckle,Powerboat,S20/33 OR S21/77,31,1.5,42.2528925406758,-70.4936033879909,False,Scituate Town Ramp
 Jasper Snorthopper,Powerboat,S20/33,52,1.5,42.0811886491802,-70.4472435025349,False,Brant Rock
-Ruby Fizzleweather,Powerboat,S23/55,25,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Ruby Fizzleweather,Powerboat,S20/33 OR S21/77 OR S23/55,25,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
 Cora Sludgequatch,Powerboat,S20/33,51,1.5,42.0869672848088,-70.6934860418105,False,Union Street Ramp
-Felix Tumblecrank,Powerboat,S21/77,50,5.0,42.0332827320269,-70.5016853815712,False,Brant Rock
-Mila Tricklewump,Powerboat,S21/77,34,1.5,42.1498695175367,-70.7091548994266,False,Humarock
+Felix Tumblecrank,Powerboat,S20/33,50,5.0,42.0332827320269,-70.5016853815712,False,Brant Rock
+Mila Tricklewump,Powerboat,S20/33 OR S21/77,34,1.5,42.1498695175367,-70.7091548994266,False,Humarock
 Leo Mugbucket,Powerboat,S20/33,56,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Maya Thistleflax,Powerboat,S20/33,35,5.0,42.1581066182831,-70.7788518674227,False,Mill Wharf
+Maya Thistleflax,Powerboat,S20/33 OR S21/77,35,5.0,42.1581066182831,-70.7788518674227,False,Mill Wharf
 Milo Zorpwrench,Powerboat,S20/33,50,1.5,41.9630970128889,-70.7520286953855,False,Plymouth Town Ramp
-Ada Flintwobble,Powerboat,S21/77,57,1.5,42.0221155627464,-70.8832520096509,False,Duxbury Town Ramp
-Kai Chubthorpe,Powerboat,S20/33,35,1.5,41.8380832308074,-70.7892441347306,False,Plymouth Town Ramp
+Ada Flintwobble,Powerboat,S20/33,57,1.5,42.0221155627464,-70.8832520096509,False,Duxbury Town Ramp
+Kai Chubthorpe,Powerboat,S20/33 OR S21/77,35,1.5,41.8380832308074,-70.7892441347306,False,Plymouth Town Ramp
 Lena Grimgruff,Powerboat,S20/33,50,1.5,42.202189908401,-70.6733101855978,False,Mill Wharf
-Jude Hobbuckle,Powerboat,S20/33,45,1.5,42.2264906147157,-70.7582512600262,False,Taylors Lane
-Alice Cranksnout,Powerboat,S20/33,33,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Ezra Blunderquack,Powerboat,S21/77,56,1.5,42.0871064047372,-70.6908897963581,False,Union Street Ramp
-Hazel Wobblethistle,Powerboat,S23/55,25,1.5,41.8302700547319,-70.4465230283255,False,Great Herring Pond
+Jude Hobbuckle,Powerboat,S20/33 OR S21/77,45,1.5,42.2264906147157,-70.7582512600262,False,Taylors Lane
+Alice Cranksnout,Powerboat,S20/33 OR S21/77,33,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Ezra Blunderquack,Powerboat,S20/33,56,1.5,42.0871064047372,-70.6908897963581,False,Union Street Ramp
+Hazel Wobblethistle,Powerboat,S20/33 OR S21/77 OR S23/55,25,1.5,41.8302700547319,-70.4465230283255,False,Great Herring Pond
 Finnian Splatterwrench,Powerboat,S20/33,58,1.5,41.9679496069701,-70.808446410931,False,Plymouth Town Ramp
-Chloe Grimfeather,Powerboat,S21/77,51,1.5,41.9925543792787,-70.4595341645306,False,Great Herring Pond
+Chloe Grimfeather,Powerboat,S20/33,51,1.5,41.9925543792787,-70.4595341645306,False,Great Herring Pond
 Ivy Flintfist,Powerboat,S20/33,49,1.5,42.0488341098986,-70.5002144173466,False,Brant Rock
-Asher Blisterbuckle,Powerboat,S23/55,29,1.5,41.9241611790293,-70.5872052891038,False,Great Herring Pond
+Asher Blisterbuckle,Powerboat,S20/33 OR S21/77 OR S23/55,29,1.5,41.9241611790293,-70.5872052891038,False,Great Herring Pond
 Elliot Frogweather,Powerboat,S20/33,48,5.0,41.9436490822637,-70.8474056407154,False,Plymouth Town Ramp
-Freya Wigglenoggin,Powerboat,S21/77,59,1.5,42.2298527402489,-70.6308353909009,False,Scituate Town Ramp
-Jasper Tanglewhomp,Powerboat,S21/77,32,5.0,41.9547609846113,-70.8040714737921,False,Plymouth Town Ramp
-Ruby Bittersnout,Powerboat,S21/77,35,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Freya Wigglenoggin,Powerboat,S20/33,59,1.5,42.2298527402489,-70.6308353909009,False,Scituate Town Ramp
+Jasper Tanglewhomp,Powerboat,S20/33 OR S21/77,32,5.0,41.9547609846113,-70.8040714737921,False,Plymouth Town Ramp
+Ruby Bittersnout,Powerboat,S20/33 OR S21/77,35,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
 Cora Sludgecrank,Powerboat,S20/33,48,1.5,42.2168160159773,-70.5606527162728,False,Humarock
-Felix Glumwump,Powerboat,S23/55,23,1.5,42.1963196230142,-70.5736398533909,False,Humarock
-Mila Zonkwump,Powerboat,S23/55,30,1.5,42.1928775325131,-70.5011914449383,False,Humarock
-Leo Snortdraft,Powerboat,S23/55,21,1.5,42.1912805114602,-70.6589516792321,False,Mill Wharf
-Maya Brasspot,Powerboat,S23/55,29,1.5,41.9706305829728,-70.8251509521041,False,Plymouth Town Ramp
-Milo Rattleback,Powerboat,S23/55,21,1.5,41.9554750573756,-70.6181678867866,False,Plymouth Town Ramp
+Felix Glumwump,Powerboat,S20/33 OR S21/77 OR S23/55,23,1.5,42.1963196230142,-70.5736398533909,False,Humarock
+Mila Zonkwump,Powerboat,S20/33 OR S21/77 OR S23/55,30,1.5,42.1928775325131,-70.5011914449383,False,Humarock
+Leo Snortdraft,Powerboat,S20/33 OR S21/77 OR S23/55,21,1.5,42.1912805114602,-70.6589516792321,False,Mill Wharf
+Maya Brasspot,Powerboat,S20/33 OR S21/77 OR S23/55,29,1.5,41.9706305829728,-70.8251509521041,False,Plymouth Town Ramp
+Milo Rattleback,Powerboat,S20/33 OR S21/77 OR S23/55,21,1.5,41.9554750573756,-70.6181678867866,False,Plymouth Town Ramp
 Ada Sootwhistle,Powerboat,S20/33,53,1.5,41.9399572550474,-70.5686045266839,False,Great Herring Pond
-Kai Crankpot,Powerboat,S20/33,39,5.0,42.1980832625057,-70.6462797615502,False,Mill Wharf
-Lena Flappot,Powerboat,S21/77,52,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Jude Wobbleflint,Powerboat,S21/77,53,1.5,42.0865542664721,-70.8467268287015,False,Union Street Ramp
-Alice Mossbark,Powerboat,S21/77,42,1.5,42.1781315704028,-70.3655987726898,False,Brant Rock
-Ezra Tanglenoodle,Powerboat,S21/77,52,1.5,41.9606736588802,-70.5467029690464,False,Plymouth Town Ramp
-Hazel Blisterbark,Powerboat,S20/33,37,1.5,42.0976752136216,-70.836121575368,False,Humarock
-Finnian Hopknuckle,Powerboat,S21/77,60,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Chloe Lumpbark,Powerboat,S21/77,51,1.5,42.0135293744499,-70.4859985667636,False,Brant Rock
-Ivy Frogsnort,Powerboat,S23/55,30,1.5,41.9131998935048,-70.7333920985462,False,Plymouth Town Ramp
-Asher Tersnatch,Powerboat,S20/33,44,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Elliot Zonkwhistle,Powerboat,S23/55,25,1.5,42.0908459712837,-70.6900281294441,False,Union Street Ramp
+Kai Crankpot,Powerboat,S20/33 OR S21/77,39,5.0,42.1980832625057,-70.6462797615502,False,Mill Wharf
+Lena Flappot,Powerboat,S20/33,52,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Jude Wobbleflint,Powerboat,S20/33,53,1.5,42.0865542664721,-70.8467268287015,False,Union Street Ramp
+Alice Mossbark,Powerboat,S20/33 OR S21/77,42,1.5,42.1781315704028,-70.3655987726898,False,Brant Rock
+Ezra Tanglenoodle,Powerboat,S20/33,52,1.5,41.9606736588802,-70.5467029690464,False,Plymouth Town Ramp
+Hazel Blisterbark,Powerboat,S20/33 OR S21/77,37,1.5,42.0976752136216,-70.836121575368,False,Humarock
+Finnian Hopknuckle,Powerboat,S20/33,60,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Chloe Lumpbark,Powerboat,S20/33,51,1.5,42.0135293744499,-70.4859985667636,False,Brant Rock
+Ivy Frogsnort,Powerboat,S20/33 OR S21/77 OR S23/55,30,1.5,41.9131998935048,-70.7333920985462,False,Plymouth Town Ramp
+Asher Tersnatch,Powerboat,S20/33 OR S21/77,44,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Elliot Zonkwhistle,Powerboat,S20/33 OR S21/77 OR S23/55,25,1.5,42.0908459712837,-70.6900281294441,False,Union Street Ramp
 Freya Clatterbluff,Powerboat,S20/33,55,5.0,41.9976034050276,-70.7157871599351,False,Plymouth Town Ramp
-Jasper Zorpwobble,Powerboat,S21/77,57,1.5,41.9584078607411,-70.8234943090944,False,Plymouth Town Ramp
-Ruby Skidskedaddle,Powerboat,S21/77,53,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Jasper Zorpwobble,Powerboat,S20/33,57,1.5,41.9584078607411,-70.8234943090944,False,Plymouth Town Ramp
+Ruby Skidskedaddle,Powerboat,S20/33,53,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
 Cora Tricklewax,Powerboat,S20/33,53,1.5,42.0580287745446,-70.8725360535945,False,Duxbury Town Ramp
-Felix Puddleplank,Powerboat,S21/77,52,1.5,42.1667958333876,-70.720843199028,False,Mill Wharf
-Mila Snortplank,Powerboat,S21/77,38,1.5,42.2338993834422,-70.5244584600679,False,Humarock
-Leo Blisterbog,Powerboat,S23/55,28,1.5,42.203650617047,-70.6667315410426,False,Mill Wharf
-Maya Rattlebluff,Powerboat,S23/55,25,1.5,42.2262380684959,-70.5835034556846,False,Scituate Town Ramp
+Felix Puddleplank,Powerboat,S20/33,52,1.5,42.1667958333876,-70.720843199028,False,Mill Wharf
+Mila Snortplank,Powerboat,S20/33 OR S21/77,38,1.5,42.2338993834422,-70.5244584600679,False,Humarock
+Leo Blisterbog,Powerboat,S20/33 OR S21/77 OR S23/55,28,1.5,42.203650617047,-70.6667315410426,False,Mill Wharf
+Maya Rattlebluff,Powerboat,S20/33 OR S21/77 OR S23/55,25,1.5,42.2262380684959,-70.5835034556846,False,Scituate Town Ramp
 Milo Mosswhomp,Powerboat,S20/33,46,1.5,42.057991981365,-70.5339954110714,False,Brant Rock
-Ada Snickerbluff,Powerboat,S23/55,20,1.5,41.9778223818098,-70.8380735949166,False,Plymouth Town Ramp
+Ada Snickerbluff,Powerboat,S20/33 OR S21/77 OR S23/55,20,1.5,41.9778223818098,-70.8380735949166,False,Plymouth Town Ramp
 Kai Glumwax,Powerboat,S20/33,48,1.5,42.1771270073103,-70.5973101228962,False,Humarock
-Lena Dinglewump,Powerboat,S21/77,40,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Jude Grimwhistle,Powerboat,S23/55,30,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Alice Bognoodle,Powerboat,S21/77,37,5.0,41.8204348175252,-70.5618402538615,False,Great Herring Pond
-Ezra Thistlenoggin,Powerboat,S21/77,54,5.0,42.0173765618526,-70.9211129216424,False,Duxbury Town Ramp
-Hazel Skidbog,Powerboat,S21/77,45,1.5,42.0149587455152,-70.8660067495344,False,Duxbury Town Ramp
-Finnian Hobsnort,Powerboat,S20/33,41,1.5,42.0655477572974,-70.8173009822785,False,Duxbury Town Ramp
-Chloe Drizzlebucket,Powerboat,S20/33,44,1.5,42.0429245656678,-70.5971009726555,False,Brant Rock
-Ivy Croakbrass,Powerboat,S21/77,42,1.5,41.9525877423519,-70.3516951933326,False,Great Herring Pond
-Asher Tumblewhomp,Powerboat,S23/55,26,1.5,42.0942431951609,-70.5638954417109,False,Brant Rock
-Elliot Snickershaft,Powerboat,S23/55,25,1.5,42.1091996410838,-70.8727654923936,False,Sunset Lake
-Freya Fizzledraft,Powerboat,S23/55,27,1.5,42.0202605146143,-70.822601021491,False,Duxbury Town Ramp
-Jasper Hobnobbler,Powerboat,S21/77,51,1.5,42.116256425402,-70.7222857401067,False,Humarock
+Lena Dinglewump,Powerboat,S20/33 OR S21/77,40,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Jude Grimwhistle,Powerboat,S20/33 OR S21/77 OR S23/55,30,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Alice Bognoodle,Powerboat,S20/33 OR S21/77,37,5.0,41.8204348175252,-70.5618402538615,False,Great Herring Pond
+Ezra Thistlenoggin,Powerboat,S20/33,54,5.0,42.0173765618526,-70.9211129216424,False,Duxbury Town Ramp
+Hazel Skidbog,Powerboat,S20/33 OR S21/77,45,1.5,42.0149587455152,-70.8660067495344,False,Duxbury Town Ramp
+Finnian Hobsnort,Powerboat,S20/33 OR S21/77,41,1.5,42.0655477572974,-70.8173009822785,False,Duxbury Town Ramp
+Chloe Drizzlebucket,Powerboat,S20/33 OR S21/77,44,1.5,42.0429245656678,-70.5971009726555,False,Brant Rock
+Ivy Croakbrass,Powerboat,S20/33 OR S21/77,42,1.5,41.9525877423519,-70.3516951933326,False,Great Herring Pond
+Asher Tumblewhomp,Powerboat,S20/33 OR S21/77 OR S23/55,26,1.5,42.0942431951609,-70.5638954417109,False,Brant Rock
+Elliot Snickershaft,Powerboat,S20/33 OR S21/77 OR S23/55,25,1.5,42.1091996410838,-70.8727654923936,False,Sunset Lake
+Freya Fizzledraft,Powerboat,S20/33 OR S21/77 OR S23/55,27,1.5,42.0202605146143,-70.822601021491,False,Duxbury Town Ramp
+Jasper Hobnobbler,Powerboat,S20/33,51,1.5,42.116256425402,-70.7222857401067,False,Humarock
 Ruby Tanglewrench,Powerboat,S20/33,49,1.5,42.1306128356602,-70.5711567901144,False,Rexhame Beach
-Cora Splatternoodle,Powerboat,S23/55,30,5.0,42.0300038286586,-70.924290018703,False,Sunset Lake
-Felix Fizzlenobbler,Powerboat,S21/77,56,1.5,41.9608087172339,-70.5764274792172,False,Plymouth Town Ramp
-Mila Tumblewhistle,Powerboat,S23/55,21,1.5,42.1253125828103,-70.8593818054532,False,Cohasset Town Ramp
+Cora Splatternoodle,Powerboat,S20/33 OR S21/77 OR S23/55,30,5.0,42.0300038286586,-70.924290018703,False,Sunset Lake
+Felix Fizzlenobbler,Powerboat,S20/33,56,1.5,41.9608087172339,-70.5764274792172,False,Plymouth Town Ramp
+Mila Tumblewhistle,Powerboat,S20/33 OR S21/77 OR S23/55,21,1.5,42.1253125828103,-70.8593818054532,False,Cohasset Town Ramp
 Leo Crankhandle,Powerboat,S20/33,58,1.5,42.1763648192389,-70.7510743116922,False,Mill Wharf
-Maya Glumflint,Powerboat,S20/33,38,5.0,42.1917883008018,-70.4356455939633,False,Humarock
+Maya Glumflint,Powerboat,S20/33 OR S21/77,38,5.0,42.1917883008018,-70.4356455939633,False,Humarock
 Milo Thistlewhistle,Powerboat,S20/33,51,1.5,42.2191451143274,-70.5691495647607,False,Mill Wharf
-Ada Zonkflint,Powerboat,S21/77,39,1.5,41.9161917482598,-70.7134751848585,False,Plymouth Town Ramp
-Kai Tumblethistle,Powerboat,S20/33,37,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Lena Bitterfist,Powerboat,S21/77,47,1.5,42.1016358526774,-70.5399032706429,False,Brant Rock
-Jude Wagglenoggin,Powerboat,S23/55,22,1.5,41.9811936217312,-70.6707793615139,False,Plymouth Town Ramp
-Alice Chubtwig,Powerboat,S23/55,30,1.5,42.0783810384702,-70.8000860772692,False,Union Street Ramp
+Ada Zonkflint,Powerboat,S20/33 OR S21/77,39,1.5,41.9161917482598,-70.7134751848585,False,Plymouth Town Ramp
+Kai Tumblethistle,Powerboat,S20/33 OR S21/77,37,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Lena Bitterfist,Powerboat,S20/33,47,1.5,42.1016358526774,-70.5399032706429,False,Brant Rock
+Jude Wagglenoggin,Powerboat,S20/33 OR S21/77 OR S23/55,22,1.5,41.9811936217312,-70.6707793615139,False,Plymouth Town Ramp
+Alice Chubtwig,Powerboat,S20/33 OR S21/77 OR S23/55,30,1.5,42.0783810384702,-70.8000860772692,False,Union Street Ramp
 Ezra Tangledraft,Powerboat,S20/33,53,1.5,42.1571926054242,-70.7660346133276,False,Mill Wharf
 Hazel Lumptoaster,Powerboat,S20/33,49,1.5,42.1385859315317,-70.4873128518608,False,Brant Rock
-Finnian Dingleington,Powerboat,S20/33,44,1.5,42.0352930164722,-70.7001345772292,False,Duxbury Town Ramp
-Chloe Splattercrank,Powerboat,S21/77,43,1.5,42.1993187157562,-70.7004160234648,False,Mill Wharf
-Ivy Crankskedaddle,Powerboat,S21/77,50,1.5,42.3005658423156,-70.6654521579469,False,Captain Pierce Road
-Asher Toadington,Powerboat,S20/33,45,5.0,42.071491,-70.809196,True,Duxbury Town Ramp
-Elliot Hobtwig,Powerboat,S23/55,22,1.5,42.0505873031877,-70.7614383576542,False,Duxbury Town Ramp
-Freya Chubbrass,Powerboat,S23/55,28,5.0,42.1013269481234,-70.5366175572389,False,Brant Rock
+Finnian Dingleington,Powerboat,S20/33 OR S21/77,44,1.5,42.0352930164722,-70.7001345772292,False,Duxbury Town Ramp
+Chloe Splattercrank,Powerboat,S20/33 OR S21/77,43,1.5,42.1993187157562,-70.7004160234648,False,Mill Wharf
+Ivy Crankskedaddle,Powerboat,S20/33,50,1.5,42.3005658423156,-70.6654521579469,False,Captain Pierce Road
+Asher Toadington,Powerboat,S20/33 OR S21/77,45,5.0,42.071491,-70.809196,True,Duxbury Town Ramp
+Elliot Hobtwig,Powerboat,S20/33 OR S21/77 OR S23/55,22,1.5,42.0505873031877,-70.7614383576542,False,Duxbury Town Ramp
+Freya Chubbrass,Powerboat,S20/33 OR S21/77 OR S23/55,28,5.0,42.1013269481234,-70.5366175572389,False,Brant Rock
 Jasper Mugpot,Powerboat,S20/33,47,1.5,42.0313178112955,-70.4949755339341,False,Brant Rock
 Ruby Grimthistle,Powerboat,S20/33,52,1.5,42.1659051636236,-70.8451360750288,False,Cohasset Town Ramp
-Cora Sootfist,Powerboat,S21/77,38,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Felix Brasswhomp,Powerboat,S23/55,28,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Cora Sootfist,Powerboat,S20/33 OR S21/77,38,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Felix Brasswhomp,Powerboat,S20/33 OR S21/77 OR S23/55,28,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
 Mila Scrumskedaddle,Powerboat,S20/33,51,5.0,42.2219677377762,-70.6198952797445,False,Scituate Town Ramp
 Leo Sludgebluff,Powerboat,S20/33,52,1.5,41.9829759130341,-70.5206242977828,False,Plymouth Town Ramp
-Maya Sludgetoaster,Powerboat,S21/77,51,1.5,42.0835452479178,-70.4883160294079,False,Brant Rock
-Milo Crankbucket,Powerboat,S21/77,42,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Maya Sludgetoaster,Powerboat,S20/33,51,1.5,42.0835452479178,-70.4883160294079,False,Brant Rock
+Milo Crankbucket,Powerboat,S20/33 OR S21/77,42,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
 Ada Wigglewump,Powerboat,S20/33,49,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Kai Dingledraft,Powerboat,S21/77,47,1.5,42.2692613344089,-70.8839606726825,False,Shipyard Lane
+Kai Dingledraft,Powerboat,S20/33,47,1.5,42.2692613344089,-70.8839606726825,False,Shipyard Lane
 Lena Burnskedaddle,Powerboat,S20/33,52,5.0,42.1395813492168,-70.5832752668479,False,Rexhame Beach
-Jude Lumpthistle,Powerboat,S23/55,23,5.0,41.9496540424541,-70.760278307683,False,Plymouth Town Ramp
-Alice Zonkbrass,Powerboat,S20/33,32,1.5,42.0008628171482,-70.4933980132233,False,Brant Rock
-Ezra Fizzletwig,Powerboat,S23/55,30,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Hazel Glumbucket,Powerboat,S21/77,47,1.5,41.7907167558396,-70.706670280457,False,Great Herring Pond
-Finnian Lumpquack,Powerboat,S21/77,49,1.5,41.7890236151862,-70.6789127274103,False,Great Herring Pond
-Chloe Snortsnort,Powerboat,S23/55,23,5.0,42.0831658707506,-70.6866384189663,False,Union Street Ramp
-Ivy Dinglesnort,Powerboat,S21/77,36,1.5,42.0391358574408,-70.8441163808501,False,Duxbury Town Ramp
-Asher Tanglebrass,Powerboat,S23/55,30,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Elliot Wobblesnort,Powerboat,S23/55,25,1.5,42.2031187830059,-70.7121961982538,False,Mill Wharf
-Freya Dinglebark,Powerboat,S23/55,25,1.5,42.0398706937562,-70.535009441663,False,Brant Rock
-Jasper Mossberry,Powerboat,S23/55,25,5.0,41.9175871046263,-70.7683862130612,False,Plymouth Town Ramp
+Jude Lumpthistle,Powerboat,S20/33 OR S21/77 OR S23/55,23,5.0,41.9496540424541,-70.760278307683,False,Plymouth Town Ramp
+Alice Zonkbrass,Powerboat,S20/33 OR S21/77,32,1.5,42.0008628171482,-70.4933980132233,False,Brant Rock
+Ezra Fizzletwig,Powerboat,S20/33 OR S21/77 OR S23/55,30,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Hazel Glumbucket,Powerboat,S20/33,47,1.5,41.7907167558396,-70.706670280457,False,Great Herring Pond
+Finnian Lumpquack,Powerboat,S20/33,49,1.5,41.7890236151862,-70.6789127274103,False,Great Herring Pond
+Chloe Snortsnort,Powerboat,S20/33 OR S21/77 OR S23/55,23,5.0,42.0831658707506,-70.6866384189663,False,Union Street Ramp
+Ivy Dinglesnort,Powerboat,S20/33 OR S21/77,36,1.5,42.0391358574408,-70.8441163808501,False,Duxbury Town Ramp
+Asher Tanglebrass,Powerboat,S20/33 OR S21/77 OR S23/55,30,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Elliot Wobblesnort,Powerboat,S20/33 OR S21/77 OR S23/55,25,1.5,42.2031187830059,-70.7121961982538,False,Mill Wharf
+Freya Dinglebark,Powerboat,S20/33 OR S21/77 OR S23/55,25,1.5,42.0398706937562,-70.535009441663,False,Brant Rock
+Jasper Mossberry,Powerboat,S20/33 OR S21/77 OR S23/55,25,5.0,41.9175871046263,-70.7683862130612,False,Plymouth Town Ramp
 Ruby Blisterflint,Powerboat,S20/33,49,1.5,42.0142793675729,-70.625627510659,False,Duxbury Town Ramp
 Cora Burnfist,Powerboat,S20/33,48,5.0,42.2190385915269,-70.7664935754674,False,Taylors Lane
-Sally Splatterwhistle,Sailboat MT,S21/77,41,5.0,42.19280272537,-70.7173946294016,False,Mill Wharf
-Sally Burnington,Sailboat MT,S21/77,40,1.5,42.1778231272327,-70.6282294424688,False,Humarock
-Sally Drizzleberry,Sailboat MT,S20/33,38,1.5,42.1590105113512,-70.5928671318901,False,Humarock
-Sally Terwhomp,Sailboat MT,S20/33,31,1.5,42.0299383041551,-70.8120042601273,False,Duxbury Town Ramp
-Sally Wobblegruff,Sailboat MT,S23/55,26,1.5,42.0182049087847,-70.6969356007333,False,Duxbury Town Ramp
-Sally Snickerskedaddle,Sailboat MT,S20/33,38,5.0,41.9860349110104,-70.5787599648478,False,Plymouth Town Ramp
+Sally Splatterwhistle,Sailboat MT,S20/33 OR S21/77,41,5.0,42.19280272537,-70.7173946294016,False,Mill Wharf
+Sally Burnington,Sailboat MT,S20/33 OR S21/77,40,1.5,42.1778231272327,-70.6282294424688,False,Humarock
+Sally Drizzleberry,Sailboat MT,S20/33 OR S21/77,38,1.5,42.1590105113512,-70.5928671318901,False,Humarock
+Sally Terwhomp,Sailboat MT,S20/33 OR S21/77,31,1.5,42.0299383041551,-70.8120042601273,False,Duxbury Town Ramp
+Sally Wobblegruff,Sailboat MT,S20/33 OR S21/77 OR S23/55,26,1.5,42.0182049087847,-70.6969356007333,False,Duxbury Town Ramp
+Sally Snickerskedaddle,Sailboat MT,S20/33 OR S21/77,38,5.0,41.9860349110104,-70.5787599648478,False,Plymouth Town Ramp
 Sally Tumblesnout,Sailboat MT,S20/33,53,1.5,42.1295711427758,-70.8566888470436,False,Cohasset Town Ramp
-Sally Wobbleshaft,Sailboat MT,S23/55,26,5.0,42.1295515227092,-70.4439351143995,False,Brant Rock
-Sally Grimington,Sailboat MT,S21/77,48,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Sally Wobbleshaft,Sailboat MT,S20/33 OR S21/77 OR S23/55,26,5.0,42.1295515227092,-70.4439351143995,False,Brant Rock
+Sally Grimington,Sailboat MT,S20/33,48,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
 Sally Mugflint,Sailboat MT,S20/33,53,5.0,42.071491,-70.809196,True,Duxbury Town Ramp
-Sally Toadhandle,Sailboat MT,S21/77,52,5.0,42.2392729275621,-70.6887287254652,False,Captain Pierce Road
+Sally Toadhandle,Sailboat MT,S20/33,52,5.0,42.2392729275621,-70.6887287254652,False,Captain Pierce Road
 Sally Zorpfist,Sailboat MT,S20/33,46,5.0,42.1901657604425,-70.5977424337644,False,Humarock
-Sally Bogshaft,Sailboat MT,S21/77,46,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Sally Stumblequatch,Sailboat MT,S23/55,30,1.5,41.95976070532,-70.7441107028263,False,Plymouth Town Ramp
-Sally Stumblebucket,Sailboat MT,S21/77,47,1.5,42.1857041165745,-70.5973714031894,False,Humarock
-Sally Flapwump,Sailboat MT,S23/55,23,1.5,42.2352986903942,-70.6825860853726,False,Captain Pierce Road
-Sally Mugbrass,Sailboat MT,S23/55,25,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Sally Sootfeather,Sailboat MT,S20/33,38,1.5,42.1768111591848,-70.7012085556272,False,Mill Wharf
-Sally Burnquatch,Sailboat MT,S21/77,53,5.0,42.1693472026864,-70.8003905307416,False,Mill Wharf
-Sally Mosshopper,Sailboat MT,S20/33,33,1.5,42.0204668260455,-70.5114347456094,False,Brant Rock
-Sally Skidberry,Sailboat MT,S23/55,28,5.0,42.071491,-70.809196,True,Duxbury Town Ramp
-Sally Snickernobbler,Sailboat MT,S21/77,44,1.5,41.9803804510606,-70.9855474000894,False,Sunset Lake
-Sally Hobknuckle,Sailboat MT,S21/77,43,1.5,42.2186989350681,-70.6863988815767,False,Scituate Town Ramp
-Sally Dinglecrank,Sailboat MT,S20/33,33,1.5,42.1508303248875,-70.4969140208293,False,Brant Rock
-Sally Sootwilligar,Sailboat MT,S20/33,42,1.5,42.0797749158486,-70.4658620362227,False,Brant Rock
-Sadie Puddleskedaddle,Sailboat DT,S23/55,28,1.5,42.2362428672597,-70.6436852432941,False,Scituate Town Ramp
-Sadie Chubbog,Sailboat DT,S21/77,59,5.0,41.9979734032961,-70.5524641804333,False,Plymouth Town Ramp
-Sadie Rattlegruff,Sailboat DT,S21/77,55,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Sally Bogshaft,Sailboat MT,S20/33,46,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Sally Stumblequatch,Sailboat MT,S20/33 OR S21/77 OR S23/55,30,1.5,41.95976070532,-70.7441107028263,False,Plymouth Town Ramp
+Sally Stumblebucket,Sailboat MT,S20/33,47,1.5,42.1857041165745,-70.5973714031894,False,Humarock
+Sally Flapwump,Sailboat MT,S20/33 OR S21/77 OR S23/55,23,1.5,42.2352986903942,-70.6825860853726,False,Captain Pierce Road
+Sally Mugbrass,Sailboat MT,S20/33 OR S21/77 OR S23/55,25,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Sally Sootfeather,Sailboat MT,S20/33 OR S21/77,38,1.5,42.1768111591848,-70.7012085556272,False,Mill Wharf
+Sally Burnquatch,Sailboat MT,S20/33,53,5.0,42.1693472026864,-70.8003905307416,False,Mill Wharf
+Sally Mosshopper,Sailboat MT,S20/33 OR S21/77,33,1.5,42.0204668260455,-70.5114347456094,False,Brant Rock
+Sally Skidberry,Sailboat MT,S20/33 OR S21/77 OR S23/55,28,5.0,42.071491,-70.809196,True,Duxbury Town Ramp
+Sally Snickernobbler,Sailboat MT,S20/33 OR S21/77,44,1.5,41.9803804510606,-70.9855474000894,False,Sunset Lake
+Sally Hobknuckle,Sailboat MT,S20/33 OR S21/77,43,1.5,42.2186989350681,-70.6863988815767,False,Scituate Town Ramp
+Sally Dinglecrank,Sailboat MT,S20/33 OR S21/77,33,1.5,42.1508303248875,-70.4969140208293,False,Brant Rock
+Sally Sootwilligar,Sailboat MT,S20/33 OR S21/77,42,1.5,42.0797749158486,-70.4658620362227,False,Brant Rock
+Sadie Puddleskedaddle,Sailboat DT,S20/33 OR S21/77 OR S23/55,28,1.5,42.2362428672597,-70.6436852432941,False,Scituate Town Ramp
+Sadie Chubbog,Sailboat DT,S20/33,59,5.0,41.9979734032961,-70.5524641804333,False,Plymouth Town Ramp
+Sadie Rattlegruff,Sailboat DT,S20/33,55,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
 Sadie Sludgenoggin,Sailboat DT,S20/33,49,1.5,42.1271570275176,-70.3372766620461,False,Brant Rock
-Sadie Mossdraft,Sailboat DT,S23/55,22,1.5,42.0079018635192,-70.8120886492462,False,Duxbury Town Ramp
-Sadie Tumblewilligar,Sailboat DT,S23/55,28,1.5,42.0264271864292,-70.8015361007696,False,Duxbury Town Ramp
-Sadie Fizzlebucket,Sailboat DT,S21/77,35,1.5,42.1722055470648,-70.7997256270729,False,Mill Wharf
-Sadie Thistlebucket,Sailboat DT,S23/55,22,1.5,42.0296399964347,-70.5822512683659,False,Brant Rock
-Sadie Croakskedaddle,Sailboat DT,S21/77,51,1.5,41.9179430055655,-70.5497859479773,False,Great Herring Pond
-Sadie Zonkwilligar,Sailboat DT,S20/33,44,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Sadie Rattlesnatch,Sailboat DT,S23/55,22,1.5,42.0550606542523,-70.7816143985767,False,Duxbury Town Ramp
-Sadie Wobblequatch,Sailboat DT,S20/33,39,5.0,42.1024175210382,-70.4483483112885,False,Brant Rock
+Sadie Mossdraft,Sailboat DT,S20/33 OR S21/77 OR S23/55,22,1.5,42.0079018635192,-70.8120886492462,False,Duxbury Town Ramp
+Sadie Tumblewilligar,Sailboat DT,S20/33 OR S21/77 OR S23/55,28,1.5,42.0264271864292,-70.8015361007696,False,Duxbury Town Ramp
+Sadie Fizzlebucket,Sailboat DT,S20/33 OR S21/77,35,1.5,42.1722055470648,-70.7997256270729,False,Mill Wharf
+Sadie Thistlebucket,Sailboat DT,S20/33 OR S21/77 OR S23/55,22,1.5,42.0296399964347,-70.5822512683659,False,Brant Rock
+Sadie Croakskedaddle,Sailboat DT,S20/33,51,1.5,41.9179430055655,-70.5497859479773,False,Great Herring Pond
+Sadie Zonkwilligar,Sailboat DT,S20/33 OR S21/77,44,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Sadie Rattlesnatch,Sailboat DT,S20/33 OR S21/77 OR S23/55,22,1.5,42.0550606542523,-70.7816143985767,False,Duxbury Town Ramp
+Sadie Wobblequatch,Sailboat DT,S20/33 OR S21/77,39,5.0,42.1024175210382,-70.4483483112885,False,Brant Rock
 Sadie Rattleknuckle,Sailboat DT,S20/33,55,1.5,41.8388153401164,-70.5234817107779,False,Great Herring Pond
-Sadie Splatterdraft,Sailboat DT,S20/33,34,5.0,42.0203392244006,-70.4665458264332,False,Brant Rock
-Sadie Bogbark,Sailboat DT,S21/77,37,5.0,42.1175236681926,-70.5236272746705,False,Brant Rock
-Sadie Tumblebluff,Sailboat DT,S20/33,44,1.5,41.9904806162308,-70.5471083340129,False,Plymouth Town Ramp
-Sadie Grumblenoodle,Sailboat DT,S21/77,57,5.0,42.1015203875823,-70.5142486886274,False,Brant Rock
-Sadie Skidfist,Sailboat DT,S20/33,39,1.5,41.9578395535608,-70.3639170932409,False,Great Herring Pond
-Sadie Skidsnort,Sailboat DT,S20/33,35,1.5,42.0436035131645,-70.8436908194353,False,Duxbury Town Ramp
-Sadie Skidwhistle,Sailboat DT,S20/33,37,1.5,42.2030232154259,-70.5723513111302,False,Humarock
-Sadie Toadbluff,Sailboat DT,S21/77,42,1.5,42.0873909094439,-70.8116120428544,False,Union Street Ramp
-Sadie Cranknoodle,Sailboat DT,S23/55,27,1.5,42.1899122970224,-70.6970067744616,False,Mill Wharf
-Sadie Picklegruff,Sailboat DT,S21/77,49,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Sadie Clatterhopper,Sailboat DT,S21/77,49,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
-Sadie Rattlebrass,Sailboat DT,S21/77,52,1.5,42.0834332587069,-70.6666563267029,False,Green Harbor
+Sadie Splatterdraft,Sailboat DT,S20/33 OR S21/77,34,5.0,42.0203392244006,-70.4665458264332,False,Brant Rock
+Sadie Bogbark,Sailboat DT,S20/33 OR S21/77,37,5.0,42.1175236681926,-70.5236272746705,False,Brant Rock
+Sadie Tumblebluff,Sailboat DT,S20/33 OR S21/77,44,1.5,41.9904806162308,-70.5471083340129,False,Plymouth Town Ramp
+Sadie Grumblenoodle,Sailboat DT,S20/33,57,5.0,42.1015203875823,-70.5142486886274,False,Brant Rock
+Sadie Skidfist,Sailboat DT,S20/33 OR S21/77,39,1.5,41.9578395535608,-70.3639170932409,False,Great Herring Pond
+Sadie Skidsnort,Sailboat DT,S20/33 OR S21/77,35,1.5,42.0436035131645,-70.8436908194353,False,Duxbury Town Ramp
+Sadie Skidwhistle,Sailboat DT,S20/33 OR S21/77,37,1.5,42.2030232154259,-70.5723513111302,False,Humarock
+Sadie Toadbluff,Sailboat DT,S20/33 OR S21/77,42,1.5,42.0873909094439,-70.8116120428544,False,Union Street Ramp
+Sadie Cranknoodle,Sailboat DT,S20/33 OR S21/77 OR S23/55,27,1.5,42.1899122970224,-70.6970067744616,False,Mill Wharf
+Sadie Picklegruff,Sailboat DT,S20/33,49,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Sadie Clatterhopper,Sailboat DT,S20/33,49,1.5,42.071491,-70.809196,True,Duxbury Town Ramp
+Sadie Rattlebrass,Sailboat DT,S20/33,52,1.5,42.0834332587069,-70.6666563267029,False,Green Harbor
