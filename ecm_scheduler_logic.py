@@ -31,15 +31,12 @@ except Exception as e:
 TODAY_FOR_SIMULATION = datetime.date(2025, 6, 2)
 ECM_BASE_LOCATION = {"lat": 42.0762, "lon": -70.8069}
 JOB_ID_COUNTER = 3000
-
 SCHEDULED_JOBS = []
-
 BOOKING_RULES = {
     'Powerboat': {'truck_mins': 90, 'crane_mins': 0},
     'Sailboat DT': {'truck_mins': 180, 'crane_mins': 60},
     'Sailboat MT': {'truck_mins': 180, 'crane_mins': 90}
 }
-
 crane_daily_status = {}
 
 # --- Section 1: Data Models (Classes) ---
@@ -143,19 +140,13 @@ class OperatingHoursEntry:
         self.close_time = close_time
         self.notes = notes
 
-def get_nearby_ramps(base_ramp_id, max_distance_miles=10):
-    nearby_ramps = {}
-    base_ramp = ECM_RAMPS.get(base_ramp_id)
-    if not base_ramp or not base_ramp.latitude:
-        return {base_ramp_id: base_ramp}
-    base_coords = {'lat': base_ramp.latitude, 'lon': base_ramp.longitude}
-    for ramp_id, ramp in ECM_RAMPS.items():
-        if ramp.latitude and ramp.longitude:
-            ramp_coords = {'lat': ramp.latitude, 'lon': ramp.longitude}
-            distance = calculate_distance_miles(base_coords, ramp_coords)
-            if distance <= max_distance_miles:
-                nearby_ramps[ramp_id] = ramp
-    return nearby_ramps
+# --- Utility & Data Loading Functions ---
+def format_time_for_display(time_obj):
+    if not isinstance(time_obj, datetime.time): return "InvalidTime"
+    formatted_time = time_obj.strftime('%I:%M %p')
+    if formatted_time.startswith('0'):
+        return formatted_time[1:]
+    return formatted_time
 
 # --- Section 2: Business Configuration & Initial Data ---
 ECM_TRUCKS = {
@@ -265,13 +256,6 @@ def get_boat_details(boat_id):
 def get_ramp_details(ramp_id_or_name):
     return ECM_RAMPS.get(ramp_id_or_name)
 
-def format_time_for_display(time_obj):
-    if not isinstance(time_obj, datetime.time): return "InvalidTime"
-    formatted_time = time_obj.strftime('%I:%M %p')
-    if formatted_time.startswith('0'):
-        return formatted_time[1:]
-    return formatted_time
-
 def get_season(date_to_check):
     return "Busy" if date_to_check.month in [4, 5, 6, 9, 10] else "Standard"
 
@@ -299,12 +283,11 @@ def fetch_noaa_tides(station_id, date_to_check):
         return []
 
     # This block is necessary to handle non-numeric station IDs from certain ramps
-    # without crashing, but the station_id_int is not used in the filter below.
+    # without crashing, but the station_id is not used in the filter below.
     try:
         station_id_int = int(station_id)
     except (ValueError, TypeError):
-        # This allows ramps with non-numeric IDs to still get the default Scituate tide data
-        pass
+        pass # Allows ramps with non-numeric IDs to still get the default Scituate tide data
 
     # Define the time range for the requested day
     start_of_day = datetime.datetime.combine(date_to_check, datetime.time.min)
@@ -405,7 +388,6 @@ def get_suitable_trucks(boat_boat_length, preferred_truck_id=None):
         if truck_id not in suitable_trucks_list:
             if truck.max_boat_boat_length is None or boat_boat_length <= truck.max_boat_boat_length:
                 suitable_trucks_list.append(truck.truck_id)
-    if not suitable_trucks_list: print(f"Warning: No suitable hauler for boat {boat_boat_length}ft.")
     return suitable_trucks_list
 
 def check_truck_availability(truck_id_to_check, check_date, proposed_start_dt, proposed_end_dt):
