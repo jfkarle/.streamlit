@@ -17,13 +17,8 @@ def fetch_noaa_tides_debug(station_id, date_to_check):
     print(f"Attempting to call URL: {api_url}")
 
     try:
-        # Set a timeout to prevent the script from hanging indefinitely
         response = requests.get(api_url, timeout=10)
-        
-        # Print status code to see the raw response from the server
         print(f"Response Status Code: {response.status_code}")
-
-        # This will raise an error for 4xx/5xx responses, which will be caught below
         response.raise_for_status()
         
         data = response.json()
@@ -43,36 +38,39 @@ def fetch_noaa_tides_debug(station_id, date_to_check):
         return tide_events
 
     except requests.exceptions.HTTPError as e:
-        print(f"\n!!!!!!!!!! HTTP ERROR !!!!!!!!!!!")
-        print(f"The NOAA server returned an error code, which means it received our request but couldn't process it.")
-        print(f"Error: {e}")
-        print("This could be due to an invalid Station ID or a problem on the server's end.")
-        print("Response Body:", response.text)
+        print(f"!!!!!!!!!! HTTP ERROR !!!!!!!!!!! -> Error: {e}")
     except requests.exceptions.Timeout:
-        print(f"\n!!!!!!!!!! TIMEOUT ERROR !!!!!!!!!!!")
-        print("The request to the NOAA server timed out after 10 seconds.")
-        print("This often indicates a network issue, a firewall blocking the connection, or a slow server response.")
+        print(f"!!!!!!!!!! TIMEOUT ERROR !!!!!!!!!!!")
     except requests.exceptions.RequestException as e:
-        print(f"\n!!!!!!!!!! REQUEST ERROR !!!!!!!!!!!")
-        print("A general network error occurred (e.g., DNS failure, no internet connection, connection refused).")
-        print(f"Error: {e}")
+        print(f"!!!!!!!!!! REQUEST ERROR !!!!!!!!!!! -> Error: {e}")
     except Exception as e:
-        print(f"\n!!!!!!!!!! UNEXPECTED ERROR !!!!!!!!!!!")
-        print(f"An unexpected error occurred during the process: {e}")
+        print(f"!!!!!!!!!! UNEXPECTED ERROR !!!!!!!!!!! -> Error: {e}")
     
-    return None # Return None to indicate failure in the test
+    return None # Return None to indicate failure
 
 # --- Main test execution ---
 if __name__ == "__main__":
-    # Use the station ID and date from the failed scenario in your app
-    # Plymouth Harbor's station ID is "8446493"
-    test_station_id = "8446493" 
-    test_date = datetime.date(2025, 6, 17)
+    test_station_id = "8446493" # Plymouth Harbor
 
-    result = fetch_noaa_tides_debug(test_station_id, test_date)
-
-    print("\n--- TEST COMPLETE ---")
-    if result is not None:
-        print("Final Result:", result)
+    # --- TEST CASE 1: The date that previously failed ---
+    print("\n=======================================================")
+    print("=== TEST CASE 1: Requesting data for a FUTURE date ===")
+    print("=======================================================")
+    future_date = datetime.date(2025, 6, 17)
+    future_result = fetch_noaa_tides_debug(test_station_id, future_date)
+    
+    # --- TEST CASE 2: Today's date ---
+    print("\n\n=======================================================")
+    print("=== TEST CASE 2: Requesting data for the CURRENT date ===")
+    print("=======================================================")
+    current_date = datetime.date.today()
+    current_result = fetch_noaa_tides_debug(test_station_id, current_date)
+    
+    print("\n\n--- ALL TESTS COMPLETE ---")
+    if future_result is None and current_result is not None:
+         print("\nCONCLUSION: The API is working for current dates but failing for far-future dates.")
+         print("This confirms the issue is with the NOAA service itself, not our code or connection.")
+    elif future_result is None and current_result is None:
+         print("\nCONCLUSION: Both API calls failed. This suggests a persistent connection issue or a problem with the station ID.")
     else:
-        print("The function failed to return tide data due to an error.")
+         print("\nCONCLUSION: Both tests succeeded. Please review the results above.")
