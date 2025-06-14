@@ -293,17 +293,25 @@ def fetch_noaa_tides(station_id, date_to_check):
     """
     Retrieves tide data from the pre-loaded local file.
     NOTE: This version is corrected to use the same Scituate tide data (8445138) 
-    for ALL ramps by ignoring the station_id that is passed in.
+    for ALL ramps by ignoring the station_id in the final filter.
     """
     if TIDE_DATA.empty:
         return []
+
+    # This block is necessary to handle non-numeric station IDs from certain ramps
+    # without crashing, but the station_id_int is not used in the filter below.
+    try:
+        station_id_int = int(station_id)
+    except (ValueError, TypeError):
+        # This allows ramps with non-numeric IDs to still get the default Scituate tide data
+        pass
 
     # Define the time range for the requested day
     start_of_day = datetime.datetime.combine(date_to_check, datetime.time.min)
     end_of_day = datetime.datetime.combine(date_to_check, datetime.time.max)
 
     # Filter the DataFrame for the requested date ONLY.
-    # The station_id filter has been correctly removed to apply Scituate data to all ramps.
+    # The station_id filter is correctly removed to apply Scituate data to all ramps.
     day_tides = TIDE_DATA[
         (TIDE_DATA['datetime'] >= start_of_day) &
         (TIDE_DATA['datetime'] <= end_of_day)
