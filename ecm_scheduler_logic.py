@@ -352,7 +352,7 @@ def get_ecm_operating_hours(date_to_check):
             return {"open": rule.open_time, "close": rule.close_time}
     return None
 
-ef fetch_noaa_tides(station_id, date_to_check):
+def fetch_noaa_tides(station_id, date_to_check):
     """
     Retrieves tide data from the pre-loaded local file.
     NOTE: This version is modified to use the same Scituate tide data (8445138) 
