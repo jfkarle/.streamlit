@@ -290,24 +290,33 @@ def get_ecm_operating_hours(date_to_check):
     return None
 
 def fetch_noaa_tides(station_id, date_to_check):
+    """
+    Retrieves tide data from the pre-loaded local file.
+    NOTE: This version is corrected to use the same Scituate tide data (8445138) 
+    for ALL ramps by ignoring the station_id that is passed in.
+    """
     if TIDE_DATA.empty:
         return []
-    try:
-        station_id_int = int(station_id)
-    except (ValueError, TypeError):
-        return []
+
+    # Define the time range for the requested day
     start_of_day = datetime.datetime.combine(date_to_check, datetime.time.min)
     end_of_day = datetime.datetime.combine(date_to_check, datetime.time.max)
+
+    # Filter the DataFrame for the requested date ONLY.
+    # The station_id filter has been correctly removed to apply Scituate data to all ramps.
     day_tides = TIDE_DATA[
         (TIDE_DATA['datetime'] >= start_of_day) &
         (TIDE_DATA['datetime'] <= end_of_day)
     ]
+
+    # Format the filtered data into the simple list structure the app expects
     tide_events = []
     for index, row in day_tides.iterrows():
         tide_events.append({
             'type': row['type'],
             'time': row['datetime'].time()
         })
+        
     return tide_events
 
 def calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check):
