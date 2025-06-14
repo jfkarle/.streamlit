@@ -649,19 +649,30 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             
             if not daily_windows: continue
             
-            is_busy_month = get_season(current_search_date) == "Busy"
-            is_launch_request = service_type == "Launch"
+            # --- THIS ENTIRE BLOCK IS NOW CORRECTLY INDENTED ---
             is_non_ecm_cust = not customer.is_ecm_customer
-            
-            if is_busy_month and is_launch_request and is_non_ecm_cust:
+
+            # If the customer is NOT an ECM customer, restrict their start time.
+            if is_non_ecm_cust:
+                # Calculate the earliest allowed start time for any non-ECM job on this day.
+                day_open_dt = datetime.datetime.combine(current_search_date, ecm_op_hours['open'])
+                non_ecm_min_start_dt = day_open_dt + datetime.timedelta(hours=1.5)
+                non_ecm_min_start_time = non_ecm_min_start_dt.time()
+
+                # Adjust the daily windows to enforce the restriction.
                 delayed_windows = []
                 for window in daily_windows:
-                    first_available_dt = datetime.datetime.combine(current_search_date, window['start_time'])
-                    non_ecm_min_start_dt = first_available_dt + datetime.timedelta(hours=1.5)
-                    if non_ecm_min_start_dt.time() < window['end_time']:
-                        delayed_windows.append({'start_time': non_ecm_min_start_dt.time(), 'end_time': window['end_time']})
+                    # The new start time is the LATER of the window's original start or the non-ECM minimum time.
+                    new_start_time = max(window['start_time'], non_ecm_min_start_time)
+
+                    # Only keep the window if it's still valid after the adjustment.
+                    if new_start_time < window['end_time']:
+                        delayed_windows.append({'start_time': new_start_time, 'end_time': window['end_time']})
+                
+                # Overwrite the original windows with the newly calculated, restricted ones.
                 daily_windows = delayed_windows
-            
+            # --- END OF CORRECTED BLOCK ---
+
             for truck_id in trucks_to_search:
                 if len(potential_slots_collected) >= MAX_POOL_SIZE: break
                 for window in daily_windows:
@@ -710,7 +721,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         explanation = "No suitable slots found with the current criteria."
 
     return top_slots, explanation, DEBUG_LOG_MESSAGES
-
 def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
     global JOB_ID_COUNTER, SCHEDULED_JOBS
     customer = get_customer_details(original_job_request_details['customer_id'])
