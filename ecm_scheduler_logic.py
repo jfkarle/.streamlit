@@ -4,27 +4,50 @@
 import csv
 import datetime
 import pandas as pd
+import requests
 
-# --- Load Pre-Generated Tide Data from NOAA Annual Text File ---
-try:
-    col_names = ['Date', 'Day', 'Time', 'Pred_ft', 'High_Low']
-    TIDE_DATA = pd.read_csv(
-        "8445138_annual.txt",
-        comment='#',
-        delim_whitespace=True,
-        header=None,
-        names=col_names
-    )
-    TIDE_DATA['datetime'] = pd.to_datetime(TIDE_DATA['Date'] + ' ' + TIDE_DATA['Time'])
-    TIDE_DATA['type'] = TIDE_DATA['High_Low'].str[0]
-    TIDE_DATA['station_id'] = 8445138
-    print("Successfully loaded and processed local tide file: 8445138_annual.txt")
-except FileNotFoundError:
-    print("CRITICAL ERROR: The tide data file '8445138_annual.txt' was not found.")
-    TIDE_DATA = pd.DataFrame()
-except Exception as e:
-    print(f"CRITICAL ERROR: Failed to process tide data file '8445138_annual.txt'. Error: {e}")
-    TIDE_DATA = pd.DataFrame()
+def fetch_noaa_tides(station_id, date_to_check):
+    """
+    Fetches high/low tide predictions from the NOAA Tides and Currents API.
+    This function is based on your successful implementation.
+    """
+    date_str = date_to_check.strftime("%Y%m%d")
+    
+    base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
+    params = {
+        "product": "predictions",
+        "application": "ecm-boat-scheduler",
+        "begin_date": date_str,
+        "end_date": date_str,
+        "datum": "MLLW",
+        "station": station_id,  # Uses the station_id for the specific ramp
+        "time_zone": "lst_ldt",
+        "units": "english",
+        "interval": "hilo",
+        "format": "json",
+    }
+    
+    tide_events = []
+    try:
+        resp = requests.get(base, params=params, timeout=10)
+        resp.raise_for_status()  # Will raise an error for bad responses (4xx or 5xx)
+        data = resp.json().get("predictions", [])
+        
+        # Transform the API response into the format the rest of the app expects
+        for item in data:
+            t = datetime.strptime(item["t"], "%Y-%m-%d %H:%M")
+            typ = item["type"].upper()
+            if typ in ["H", "L"]:
+                tide_events.append({'type': typ, 'time': t.time()})
+                
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Could not fetch real-time NOAA tide data for station {station_id}. Error: {e}")
+        return [] # Return an empty list to indicate failure
+    except (KeyError, ValueError) as e:
+        print(f"ERROR: Could not parse NOAA tide data for station {station_id}. Error: {e}")
+        return []
+
+    return tide_events
 
 
 # --- Configuration & Global Context ---
