@@ -1,15 +1,13 @@
 # ecm_scheduler_logic.py
-# Consolidated Python script for ECM Boat Hauling Scheduler
+# FINAL VERSION with Local Tide File
 
 import csv
 import datetime
-import requests # Needed for real time NOAA tide fetch
+import pandas as pd
+
 # --- Load Pre-Generated Tide Data from NOAA Annual Text File ---
 try:
-    # Define column names as the file doesn't have a header row
     col_names = ['Date', 'Day', 'Time', 'Pred_ft', 'High_Low']
-    
-    # Read the text file, skipping header lines that start with '#'
     TIDE_DATA = pd.read_csv(
         "8445138_annual.txt",
         comment='#',
@@ -17,43 +15,32 @@ try:
         header=None,
         names=col_names
     )
-
-    # --- Data Cleaning and Preparation ---
-    # Combine Date and Time into a single datetime column for easy filtering
     TIDE_DATA['datetime'] = pd.to_datetime(TIDE_DATA['Date'] + ' ' + TIDE_DATA['Time'])
-    
-    # Standardize the 'High/Low' column to a single character: 'H' or 'L'
     TIDE_DATA['type'] = TIDE_DATA['High_Low'].str[0]
-    
-    # Add a station_id column for filtering based on the filename
     TIDE_DATA['station_id'] = 8445138
-    
     print("Successfully loaded and processed local tide file: 8445138_annual.txt")
-
 except FileNotFoundError:
     print("CRITICAL ERROR: The tide data file '8445138_annual.txt' was not found.")
-    TIDE_DATA = pd.DataFrame() # Create an empty DataFrame to prevent crashes
+    TIDE_DATA = pd.DataFrame()
 except Exception as e:
     print(f"CRITICAL ERROR: Failed to process tide data file '8445138_annual.txt'. Error: {e}")
     TIDE_DATA = pd.DataFrame()
 
-# --- Configuration & Global Context ---
-TODAY_FOR_SIMULATION = datetime.date(2025, 6, 2) # Monday, June 2, 2025 (for consistent testing)
-ECM_BASE_LOCATION = {"lat": 42.0762, "lon": -70.8069} # Approx. for 43 Mattakeeset St, Pembroke, MA
-JOB_ID_COUNTER = 3000 # Initial Job ID for new jobs
 
-# In-memory store for scheduled jobs (for this iteration)
+# --- Configuration & Global Context ---
+TODAY_FOR_SIMULATION = datetime.date(2025, 6, 2)
+ECM_BASE_LOCATION = {"lat": 42.0762, "lon": -70.8069}
+JOB_ID_COUNTER = 3000
+
 SCHEDULED_JOBS = []
 
-# NEW: Centralized booking rules with asymmetrical durations
 BOOKING_RULES = {
     'Powerboat': {'truck_mins': 90, 'crane_mins': 0},
     'Sailboat DT': {'truck_mins': 180, 'crane_mins': 60},
     'Sailboat MT': {'truck_mins': 180, 'crane_mins': 90}
 }
 
-# NEW: A data structure to manage the crane's daily state for the "one ramp change" rule.
-crane_daily_status = {} # Key: 'YYYY-MM-DD', Value: {'ramps_visited': set()}
+crane_daily_status = {}
 
 # --- Section 1: Data Models (Classes) ---
 class Truck:
@@ -62,92 +49,76 @@ class Truck:
         self.truck_name = truck_name
         self.max_boat_boat_length = max_boat_boat_length
         self.is_crane = is_crane
-        self.home_base_address = home_base_address # Added for consistency
-
-    def __repr__(self):
-        return f"Truck(ID: {self.truck_id}, Name: {self.truck_name}, MaxLen: {self.max_boat_boat_length}, Crane: {self.is_crane})"
+        self.home_base_address = home_base_address
 
 class Ramp:
     def __init__(self, ramp_id, ramp_name, town, tide_rule_description,
                  tide_calculation_method, noaa_station_id,
                  tide_offset_hours1=None, tide_offset_hours2=None,
-                 draft_restriction_ft=None, draft_restriction_tide_rule=None, # Specific rule for draft
+                 draft_restriction_ft=None, draft_restriction_tide_rule=None,
                  allowed_boat_types="Power and Sail", ramp_fee=None, operating_notes=None,
-                 latitude=None, longitude=None): # Added lat/lon
+                 latitude=None, longitude=None):
         self.ramp_id = ramp_id
         self.ramp_name = ramp_name
         self.town = town
         self.tide_rule_description = tide_rule_description
-        self.tide_calculation_method = tide_calculation_method # e.g., "HoursAroundHighTide", "AnyTide", "AnyTideWithDraftRule"
+        self.tide_calculation_method = tide_calculation_method
         self.noaa_station_id = noaa_station_id
-        self.tide_offset_hours1 = tide_offset_hours1 # Primary offset (e.g., hours before)
-        self.tide_offset_hours2 = tide_offset_hours2 if tide_offset_hours2 is not None else tide_offset_hours1 # Secondary offset (e.g., hours after)
+        self.tide_offset_hours1 = tide_offset_hours1
+        self.tide_offset_hours2 = tide_offset_hours2 if tide_offset_hours2 is not None else tide_offset_hours1
         self.draft_restriction_ft = draft_restriction_ft
-        self.draft_restriction_tide_rule = draft_restriction_tide_rule # Description of rule if draft met
+        self.draft_restriction_tide_rule = draft_restriction_tide_rule
         self.allowed_boat_types = allowed_boat_types
         self.ramp_fee = ramp_fee
         self.operating_notes = operating_notes
         self.latitude = latitude
         self.longitude = longitude
 
-    def __repr__(self):
-        return f"Ramp(ID: {self.ramp_id}, Name: {self.ramp_name}, Town: {self.town}, TideRule: {self.tide_rule_description})"
-
 class Customer:
     def __init__(self, customer_id, customer_name,
                  home_latitude=None, home_longitude=None,
-                 preferred_truck_id=None, is_ecm_customer=False, is_safe_harbor_customer=False): # is_safe_harbor_customer added
+                 preferred_truck_id=None, is_ecm_customer=False, is_safe_harbor_customer=False):
         self.customer_id = customer_id
         self.customer_name = customer_name
         self.home_latitude = home_latitude
         self.home_longitude = home_longitude
         self.preferred_truck_id = preferred_truck_id
-        self.is_ecm_customer = is_ecm_customer # True if ECM stores their boat [user input]
-        self.is_safe_harbor_customer = is_safe_harbor_customer # For Green Harbor Safe Harbor ramp rule
-
-    def __repr__(self):
-        return f"Customer(ID: {self.customer_id}, Name: {self.customer_name}, ECM_Cust: {self.is_ecm_customer})"
+        self.is_ecm_customer = is_ecm_customer
+        self.is_safe_harbor_customer = is_safe_harbor_customer
 
 class Boat:
     def __init__(self, boat_id, customer_id, boat_type, boat_length,
                  draft_ft=None, height_ft_keel_to_highest=None, keel_type=None, is_ecm_boat=None):
         self.boat_id = boat_id
         self.customer_id = customer_id
-        self.boat_type = boat_type # "Powerboat", "Sailboat MD" (Mast Down), "Sailboat MT" (Mast Trans.)
+        self.boat_type = boat_type
         self.boat_length = boat_length
         self.draft_ft = draft_ft
-        self.height_ft_keel_to_highest = height_ft_keel_to_highest # For over-height check [user input]
-        self.keel_type = keel_type # For sailboats: "Wing", "Bulb", "Full", "Centerboard" [user input]
-        # self.is_ecm_boat = is_ecm_boat # Indicates if boat is stored at ECM (from Customer data usually)
+        self.height_ft_keel_to_highest = height_ft_keel_to_highest
+        self.keel_type = keel_type
 
     @property
-    def is_ecm_boat(self): # Dynamically determine from customer if not set directly
+    def is_ecm_boat(self):
         customer = get_customer_details(self.customer_id)
         return customer.is_ecm_customer if customer else False
-
-    def __repr__(self):
-        return f"Boat(ID: {self.boat_id}, CustID: {self.customer_id}, Type: {self.boat_type}, Len: {self.boat_length}ft)"
 
 class Job:
     def __init__(self, job_id, customer_id, boat_id, service_type, requested_date,
                  scheduled_start_datetime=None, calculated_job_duration_hours=None,
-                 scheduled_end_datetime=None, # For the hauling truck
-                 assigned_hauling_truck_id=None,
-                 assigned_crane_truck_id=None, # Will be "J17" if crane is used
-                 j17_busy_end_datetime=None,   # Specific end time for J17's involvement
+                 scheduled_end_datetime=None, assigned_hauling_truck_id=None,
+                 assigned_crane_truck_id=None, j17_busy_end_datetime=None,
                  pickup_ramp_id=None, pickup_street_address=None,
                  dropoff_ramp_id=None, dropoff_street_address=None,
                  job_status="Pending", notes=None,
-                 pickup_loc_coords=None, dropoff_loc_coords=None): # For mock location tracking
-
+                 pickup_loc_coords=None, dropoff_loc_coords=None):
         self.job_id = job_id
         self.customer_id = customer_id
         self.boat_id = boat_id
-        self.service_type = service_type # "Launch", "Haul", "Transport"
+        self.service_type = service_type
         self.requested_date = requested_date
         self.scheduled_start_datetime = scheduled_start_datetime
         self.calculated_job_duration_hours = calculated_job_duration_hours
-        self.scheduled_end_datetime = scheduled_end_datetime # Hauler's end time
+        self.scheduled_end_datetime = scheduled_end_datetime
         self.assigned_hauling_truck_id = assigned_hauling_truck_id
         self.assigned_crane_truck_id = assigned_crane_truck_id
         self.j17_busy_end_datetime = j17_busy_end_datetime
@@ -155,53 +126,35 @@ class Job:
         self.pickup_street_address = pickup_street_address
         self.dropoff_ramp_id = dropoff_ramp_id
         self.dropoff_street_address = dropoff_street_address
-        self.job_status = job_status # "Pending", "Scheduled", "Completed", "Canceled", "Bumped - Needs Reschedule"
+        self.job_status = job_status
         self.notes = notes
-        self.is_ecm_priority_job = False # Can be set if it's an ECM boat getting priority
+        self.is_ecm_priority_job = False
         self.was_bumped = False
         self.bumped_from_job_id = None
         self.pickup_loc_coords = pickup_loc_coords
         self.dropoff_loc_coords = dropoff_loc_coords
 
-    def __repr__(self):
-        crane_info = f", Crane: {self.assigned_crane_truck_id}" if self.assigned_crane_truck_id else ""
-        j17_busy_info = f", J17 Free: {format_time_for_display(self.j17_busy_end_datetime.time())}" if self.j17_busy_end_datetime else ""
-        start_time_str = format_time_for_display(self.scheduled_start_datetime.time()) if self.scheduled_start_datetime else "Not Set"
-        return (f"Job(ID: {self.job_id}, Cust: {self.customer_id}, Svc: {self.service_type}, "
-                f"Start: {self.scheduled_start_datetime.strftime('%Y-%m-%d %H:%M') if self.scheduled_start_datetime else 'N/A'}, "
-                f"Truck: {self.assigned_hauling_truck_id}{crane_info}{j17_busy_info}, Status: {self.job_status})")
-
 class OperatingHoursEntry:
     def __init__(self, rule_id, season, day_of_week, open_time, close_time, notes=None):
         self.rule_id = rule_id
-        self.season = season # e.g., "Standard", "Peak", "MaySep"
-        self.day_of_week = day_of_week # Monday=0, Sunday=6
-        self.open_time = open_time  # datetime.time object
-        self.close_time = close_time # datetime.time object
+        self.season = season
+        self.day_of_week = day_of_week
+        self.open_time = open_time
+        self.close_time = close_time
         self.notes = notes
 
-    def __repr__(self):
-        return (f"OpHours(Season: {self.season}, Day: {self.day_of_week}, "
-                f"Open: {format_time_for_display(self.open_time)}, Close: {format_time_for_display(self.close_time)})")
-
 def get_nearby_ramps(base_ramp_id, max_distance_miles=10):
-    """Finds all ramps within a given radius of a base ramp."""
     nearby_ramps = {}
     base_ramp = ECM_RAMPS.get(base_ramp_id)
     if not base_ramp or not base_ramp.latitude:
-        return {base_ramp_id: base_ramp} # Return only the base ramp if it has no coordinates
-
+        return {base_ramp_id: base_ramp}
     base_coords = {'lat': base_ramp.latitude, 'lon': base_ramp.longitude}
-
     for ramp_id, ramp in ECM_RAMPS.items():
         if ramp.latitude and ramp.longitude:
             ramp_coords = {'lat': ramp.latitude, 'lon': ramp.longitude}
-            # NOTE: Using a simple mock distance calculation for this example.
-            # A real implementation would use a proper geodesic distance library.
             distance = calculate_distance_miles(base_coords, ramp_coords)
             if distance <= max_distance_miles:
                 nearby_ramps[ramp_id] = ramp
-                
     return nearby_ramps
 
 # --- Section 2: Business Configuration & Initial Data ---
@@ -219,7 +172,7 @@ ECM_RAMPS = {
     "DuxburyHarbor": Ramp("DuxburyHarbor", "Duxbury Harbor (Town Pier)", "Duxbury, MA", "1 hr before or after high tide", "HoursAroundHighTide", "8445672", tide_offset_hours1=1.0, allowed_boat_types="Power Boats Only"),
     "GreenHarborTaylors": Ramp("GreenHarborTaylors", "Green Harbor (Taylors)", "Marshfield, MA", "3 hrs before and after high tide", "HoursAroundHighTide", "8445071", tide_offset_hours1=3.0, allowed_boat_types="Power Boats"),
     "GreenHarborSafeHarbor": Ramp("GreenHarborSafeHarbor", "Safe Harbor (Green Harbor)", "Marshfield, MA", "1 hr before and after (only for Safe Harbor customers)", "HoursAroundHighTide", "8445071", tide_offset_hours1=1.0, allowed_boat_types="Power Boats only", operating_notes="Safe Harbor customers only"),
-    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor (Jericho Road)", "Scituate, MA", "Any tide; 5' draft or > needs 3 hrs around high tide", "AnyTideWithDraftRule", "8445138", draft_restriction_ft=5.0, draft_restriction_tide_rule="HoursAroundHighTide_Offset3"), # Special draft rule
+    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor (Jericho Road)", "Scituate, MA", "Any tide; 5' draft or > needs 3 hrs around high tide", "AnyTideWithDraftRule", "8445138", draft_restriction_ft=5.0, draft_restriction_tide_rule="HoursAroundHighTide_Offset3"),
     "CohassetParkerAve": Ramp("CohassetParkerAve", "Cohasset Harbor (Parker Ave)", "Cohasset, MA", "3 hrs before or after high tide", "HoursAroundHighTide", "8444672", tide_offset_hours1=3.0),
     "HullASt": Ramp("HullASt", "Hull (A St, Sunset, Steamboat)", "Hull, MA", "3 hrs before or after high tide; 1.5 hr tide for 6' or > draft", "HoursAroundHighTide_WithDraftRule", "8444009", tide_offset_hours1=3.0, draft_restriction_ft=6.0, draft_restriction_tide_rule="HoursAroundHighTide_Offset1.5"),
     "HinghamHarbor": Ramp("HinghamHarbor", "Hingham Harbor", "Hingham, MA", "3 hrs before and after high tide", "HoursAroundHighTide", "8443971", tide_offset_hours1=3.0),
@@ -227,26 +180,21 @@ ECM_RAMPS = {
 }
 
 operating_hours_rules = [
-    # Standard Season (e.g., Jan-Mar, Jul-Aug, Nov-Dec)
-    OperatingHoursEntry(1, "Standard", 0, datetime.time(8, 0), datetime.time(16, 0)), # Mon
-    OperatingHoursEntry(2, "Standard", 1, datetime.time(8, 0), datetime.time(16, 0)), # Tue
-    OperatingHoursEntry(3, "Standard", 2, datetime.time(8, 0), datetime.time(16, 0)), # Wed
-    OperatingHoursEntry(4, "Standard", 3, datetime.time(8, 0), datetime.time(16, 0)), # Thu
-    OperatingHoursEntry(5, "Standard", 4, datetime.time(8, 0), datetime.time(16, 0)), # Fri
-    OperatingHoursEntry(6, "Standard", 5, datetime.time(23, 58), datetime.time(23, 59), notes="Closed"), # Sat
-    OperatingHoursEntry(7, "Standard", 6, datetime.time(23, 58), datetime.time(23, 59), notes="Closed"), # Sun
-
-    # Busy Season (Apr, May, Jun, Sep, Oct)
-    OperatingHoursEntry(10, "Busy", 0, datetime.time(7, 30), datetime.time(17, 30)), # Mon
-    OperatingHoursEntry(11, "Busy", 1, datetime.time(7, 30), datetime.time(17, 30)), # Tue
-    OperatingHoursEntry(12, "Busy", 2, datetime.time(7, 30), datetime.time(17, 30)), # Wed
-    OperatingHoursEntry(13, "Busy", 3, datetime.time(7, 30), datetime.time(17, 30)), # Thu
-    OperatingHoursEntry(14, "Busy", 4, datetime.time(7, 30), datetime.time(17, 30)), # Fri
-    OperatingHoursEntry(15, "Busy", 5, datetime.time(23, 58), datetime.time(23, 59), notes="Closed unless May or Sep"), # Sat
-    OperatingHoursEntry(16, "Busy", 6, datetime.time(23, 58), datetime.time(23, 59), notes="Closed"), # Sun
-
-    # Rule for May & September Saturdays
-    OperatingHoursEntry(20, "BusySaturday", 5, datetime.time(7, 30), datetime.time(17, 30)), # Sat OPEN
+    OperatingHoursEntry(1, "Standard", 0, datetime.time(8, 0), datetime.time(16, 0)),
+    OperatingHoursEntry(2, "Standard", 1, datetime.time(8, 0), datetime.time(16, 0)),
+    OperatingHoursEntry(3, "Standard", 2, datetime.time(8, 0), datetime.time(16, 0)),
+    OperatingHoursEntry(4, "Standard", 3, datetime.time(8, 0), datetime.time(16, 0)),
+    OperatingHoursEntry(5, "Standard", 4, datetime.time(8, 0), datetime.time(16, 0)),
+    OperatingHoursEntry(6, "Standard", 5, datetime.time(23, 58), datetime.time(23, 59), notes="Closed"),
+    OperatingHoursEntry(7, "Standard", 6, datetime.time(23, 58), datetime.time(23, 59), notes="Closed"),
+    OperatingHoursEntry(10, "Busy", 0, datetime.time(7, 30), datetime.time(17, 30)),
+    OperatingHoursEntry(11, "Busy", 1, datetime.time(7, 30), datetime.time(17, 30)),
+    OperatingHoursEntry(12, "Busy", 2, datetime.time(7, 30), datetime.time(17, 30)),
+    OperatingHoursEntry(13, "Busy", 3, datetime.time(7, 30), datetime.time(17, 30)),
+    OperatingHoursEntry(14, "Busy", 4, datetime.time(7, 30), datetime.time(17, 30)),
+    OperatingHoursEntry(15, "Busy", 5, datetime.time(23, 58), datetime.time(23, 59), notes="Closed unless May or Sep"),
+    OperatingHoursEntry(16, "Busy", 6, datetime.time(23, 58), datetime.time(23, 59), notes="Closed"),
+    OperatingHoursEntry(20, "BusySaturday", 5, datetime.time(7, 30), datetime.time(17, 30)),
 ]
 
 LOADED_CUSTOMERS = {}
@@ -280,7 +228,8 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
                             home_latitude=float(row["home_latitude"]) if row.get("home_latitude") else None,
                             home_longitude=float(row["home_longitude"]) if row.get("home_longitude") else None,
                             preferred_truck_id=row.get("preferred_truck"),
-                            is_ecm_customer=is_ecm)
+                            is_ecm_customer=is_ecm
+                        )
                         LOADED_CUSTOMERS[current_cust_id] = customer
                         customer_name_to_id_map[cust_name] = current_cust_id
                         customer_id_for_this_boat = current_cust_id
@@ -308,22 +257,13 @@ def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
         return False
 
 def get_customer_details(customer_id):
-    customer = LOADED_CUSTOMERS.get(customer_id)
-    if not customer:
-        print(f"Warning: Customer ID {customer_id} not found in LOADED_CUSTOMERS.")
-    return customer
+    return LOADED_CUSTOMERS.get(customer_id)
 
 def get_boat_details(boat_id):
-    boat = LOADED_BOATS.get(boat_id)
-    if not boat:
-        print(f"Warning: Boat ID {boat_id} not found in LOADED_BOATS.")
-    return boat
+    return LOADED_BOATS.get(boat_id)
 
 def get_ramp_details(ramp_id_or_name):
-    ramp = ECM_RAMPS.get(ramp_id_or_name)
-    if not ramp:
-        print(f"Warning: Ramp ID/Name '{ramp_id_or_name}' not found in ECM_RAMPS.")
-    return ramp
+    return ECM_RAMPS.get(ramp_id_or_name)
 
 def format_time_for_display(time_obj):
     if not isinstance(time_obj, datetime.time): return "InvalidTime"
@@ -333,10 +273,7 @@ def format_time_for_display(time_obj):
     return formatted_time
 
 def get_season(date_to_check):
-    busy_months = [4, 5, 6, 9, 10]
-    if date_to_check.month in busy_months:
-        return "Busy"
-    return "Standard"
+    return "Busy" if date_to_check.month in [4, 5, 6, 9, 10] else "Standard"
 
 def get_ecm_operating_hours(date_to_check):
     day_of_week = date_to_check.weekday()
@@ -353,41 +290,25 @@ def get_ecm_operating_hours(date_to_check):
     return None
 
 def fetch_noaa_tides(station_id, date_to_check):
-    """
-    Retrieves tide data from the pre-loaded local file.
-    NOTE: This version is modified to use the same Scituate tide data (8445138) 
-    for ALL ramps, ignoring the station_id that is passed in.
-    """
     if TIDE_DATA.empty:
         return []
-
-    # Define the time range for the requested day
+    try:
+        station_id_int = int(station_id)
+    except (ValueError, TypeError):
+        return []
     start_of_day = datetime.datetime.combine(date_to_check, datetime.time.min)
     end_of_day = datetime.datetime.combine(date_to_check, datetime.time.max)
-
-    # Filter the DataFrame for the requested date ONLY.
-    # The station_id filter has been removed to apply Scituate data to all ramps.
     day_tides = TIDE_DATA[
         (TIDE_DATA['datetime'] >= start_of_day) &
         (TIDE_DATA['datetime'] <= end_of_day)
     ]
-
-    # Format the filtered data into the simple list structure the app expects
     tide_events = []
     for index, row in day_tides.iterrows():
         tide_events.append({
             'type': row['type'],
             'time': row['datetime'].time()
         })
-        
     return tide_events
-
-    except requests.exceptions.RequestException as e:
-        print(f"ERROR: Could not fetch NOAA tide data for station {station_id}. Details: {e}")
-        return [] # Return an empty list to prevent crashes; the system will show no tidal windows.
-    except (ValueError, KeyError) as e:
-        print(f"ERROR: Could not parse JSON response from NOAA for station {station_id}. Details: {e}")
-        return []
 
 def calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check):
     usable_windows = []
@@ -575,8 +496,6 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
         if ex_job and ex_job.customer_id != customer.customer_id and not get_customer_details(ex_job.customer_id).is_ecm_customer and ex_job.service_type == "Haul":
             slot_type = "BumpNonECM_BusyHaul"
             bumped_job_info = {"job_id": ex_job.job_id, "customer_name": get_customer_details(ex_job.customer_id).customer_name}
-    
-    # --- CORRECTED RETURN STATEMENT ---
     return {
         'date': current_search_date, 
         'time': current_potential_start_time_obj, 
@@ -589,55 +508,40 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
         'ramp_id': ramp_obj.ramp_id if ramp_obj else None
     }
 
-# MODIFIED: Entire function replaced with new logic
-# --- START: REPLACE THE ENTIRE find_available_job_slots FUNCTION WITH THIS ---
-
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
                              selected_ramp_id=None, transport_dropoff_details=None,
                              start_after_slot_details=None,
                              force_preferred_truck=True, relax_ramp_constraint=False):
-    
     global original_job_request_details, DEBUG_LOG_MESSAGES
     DEBUG_LOG_MESSAGES = [f"FindSlots Start: Cust({customer_id}) Boat({boat_id}) Svc({service_type}) ReqDate({requested_date_str}) Ramp({selected_ramp_id})"]
     original_job_request_details = {'transport_dropoff_details': transport_dropoff_details, 'customer_id': customer_id, 'boat_id': boat_id, 'service_type': service_type, 'selected_ramp_id': selected_ramp_id, 'requested_date_str': requested_date_str}
-    
     try: 
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError: 
         DEBUG_LOG_MESSAGES.append("Error: Invalid date format.")
         return [], "Error: Invalid date format.", DEBUG_LOG_MESSAGES
-    
     customer = get_customer_details(customer_id)
     boat = get_boat_details(boat_id)
     if not customer or not boat: 
         DEBUG_LOG_MESSAGES.append("Error: Invalid Cust/Boat ID.")
         return [], "Error: Invalid Cust/Boat ID.", DEBUG_LOG_MESSAGES
-
-    # 1. Use new centralized booking rules
     boat_type_for_rules = boat.boat_type
-    if boat_type_for_rules == "Sailboat MD": boat_type_for_rules = "Sailboat DT" # Standardize
+    if boat_type_for_rules == "Sailboat MD": boat_type_for_rules = "Sailboat DT"
     rules = BOOKING_RULES.get(boat_type_for_rules, {})
-    job_duration_hours = rules.get('truck_mins', 90) / 60.0 # Default to 90 mins if no rule
+    job_duration_hours = rules.get('truck_mins', 90) / 60.0
     needs_j17 = rules.get('crane_mins', 0) > 0
     j17_actual_busy_duration_hours = rules.get('crane_mins', 0) / 60.0
-
-    # 2. DETERMINE SEARCH PARAMETERS BASED ON LEVERS
     all_suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
     if not all_suitable_trucks:
         DEBUG_LOG_MESSAGES.append("Error: No suitable trucks.")
         return [], "Error: No suitable trucks.", DEBUG_LOG_MESSAGES
-
-    # --- TRUCK LEVER (Corrected Logic) ---
     trucks_to_search = []
     all_suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
-    
     if force_preferred_truck:
         DEBUG_LOG_MESSAGES.append(f"Lever Active: Forcing search to preferred truck.")
         preferred_truck_id = customer.preferred_truck_id
-
         if not preferred_truck_id:
             return [], "No preferred truck is set for this customer. Cannot perform a strict truck search.", ["Strict search failed: No preferred truck."]
-        
         if preferred_truck_id in all_suitable_trucks:
             trucks_to_search = [preferred_truck_id]
         else:
@@ -645,11 +549,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     else: 
         trucks_to_search = all_suitable_trucks
         DEBUG_LOG_MESSAGES.append(f"Lever Inactive: Searching all suitable trucks: {trucks_to_search}")
-
     if not trucks_to_search:
          return [], "Error: No suitable trucks found matching the criteria.", ["No suitable trucks found for search phase."]
-
-    # --- RAMP LEVER ---
     ramps_to_search = []
     if relax_ramp_constraint and selected_ramp_id:
         ramps_to_search = list(get_nearby_ramps(selected_ramp_id, max_distance_miles=10).keys())
@@ -658,11 +559,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         ramps_to_search = [selected_ramp_id]
         DEBUG_LOG_MESSAGES.append(f"Lever Inactive: Forcing search to ramp: {selected_ramp_id}")
     elif service_type == "Transport":
-        ramps_to_search = [None] 
-
-    # --- Search Window Calculation ---
+        ramps_to_search = [None]
     today = TODAY_FOR_SIMULATION
-    
     effective_search_start_date = requested_date_obj
     min_start_time_on_first_day = None
     if start_after_slot_details and start_after_slot_details.get('date'):
@@ -674,21 +572,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             effective_search_start_date = requested_date_obj - datetime.timedelta(days=3)
         if effective_search_start_date < today: 
             effective_search_start_date = today
-            
     search_end_limit_date = requested_date_obj + datetime.timedelta(days=30)
     DEBUG_LOG_MESSAGES.append(f"Search Window: {effective_search_start_date} to {search_end_limit_date}" + (f" (after {min_start_time_on_first_day})" if min_start_time_on_first_day else ""))
-
     potential_slots_collected = []
     MAX_POOL_SIZE = 20
-    
     current_search_date = effective_search_start_date
     days_iterated = 0
-
     while current_search_date <= search_end_limit_date and len(potential_slots_collected) < MAX_POOL_SIZE and days_iterated < 45:
         ecm_op_hours = get_ecm_operating_hours(current_search_date)
         if not ecm_op_hours or (boat.boat_type in ["Sailboat MD", "Sailboat MT"] and current_search_date.weekday() == 5 and current_search_date.month not in [5, 9]):
             current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
-        
         for current_ramp_id in ramps_to_search:
             ramp_obj = None; daily_windows = []
             if service_type in ["Launch", "Haul"]:
@@ -697,81 +590,52 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 daily_windows = get_final_schedulable_ramp_times(ramp_obj, boat, current_search_date)
             elif service_type == "Transport":
                 daily_windows = [{'start_time': ecm_op_hours['open'], 'end_time': ecm_op_hours['close']}]
-            
             if not daily_windows: continue
-            
-            # --- THIS ENTIRE BLOCK IS NOW CORRECTLY INDENTED ---
             is_non_ecm_cust = not customer.is_ecm_customer
-
-            # If the customer is NOT an ECM customer, restrict their start time.
             if is_non_ecm_cust:
-                # Calculate the earliest allowed start time for any non-ECM job on this day.
                 day_open_dt = datetime.datetime.combine(current_search_date, ecm_op_hours['open'])
                 non_ecm_min_start_dt = day_open_dt + datetime.timedelta(hours=1.5)
                 non_ecm_min_start_time = non_ecm_min_start_dt.time()
-
-                # Adjust the daily windows to enforce the restriction.
                 delayed_windows = []
                 for window in daily_windows:
-                    # The new start time is the LATER of the window's original start or the non-ECM minimum time.
                     new_start_time = max(window['start_time'], non_ecm_min_start_time)
-
-                    # Only keep the window if it's still valid after the adjustment.
                     if new_start_time < window['end_time']:
                         delayed_windows.append({'start_time': new_start_time, 'end_time': window['end_time']})
-                
-                # Overwrite the original windows with the newly calculated, restricted ones.
                 daily_windows = delayed_windows
-            # --- END OF CORRECTED BLOCK ---
-
             for truck_id in trucks_to_search:
                 if len(potential_slots_collected) >= MAX_POOL_SIZE: break
                 for window in daily_windows:
                     if len(potential_slots_collected) >= MAX_POOL_SIZE: break
-                    
                     iter_start_time = window['start_time']
                     if current_search_date == effective_search_start_date and min_start_time_on_first_day and min_start_time_on_first_day > iter_start_time:
                         iter_start_time = min_start_time_on_first_day
-                    
                     potential_time = iter_start_time
                     while potential_time < window['end_time']:
                         if len(potential_slots_collected) >= MAX_POOL_SIZE: break
-                        
                         temp_dt = datetime.datetime.combine(current_search_date, potential_time)
                         if temp_dt.minute not in [0, 30]:
                             if temp_dt.minute < 30: temp_dt = temp_dt.replace(minute=30, second=0, microsecond=0)
                             else: temp_dt = (temp_dt + datetime.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
                             potential_time = temp_dt.time()
                         if potential_time >= window['end_time']: break
-
                         if not any(s['date'] == current_search_date and s['time'] == potential_time and s['truck_id'] == truck_id for s in potential_slots_collected):
                             slot_detail = _check_and_create_slot_detail(current_search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES)
                             if slot_detail:
                                 potential_slots_collected.append(slot_detail)
-                                # We break here to find the next available slot on a 30-min interval, rather than the first one in the window
                                 break
-                        
                         potential_time = (datetime.datetime.combine(datetime.date.min, potential_time) + datetime.timedelta(minutes=30)).time()
-        
         if current_search_date == effective_search_start_date: min_start_time_on_first_day = None
         current_search_date += datetime.timedelta(days=1); days_iterated += 1
-    
-    # --- Sort and Return Multiple Slots ---
     if not potential_slots_collected:
         return [], "No suitable slots found with the current criteria.", DEBUG_LOG_MESSAGES
-
     potential_slots_collected.sort(key=lambda slot: (slot['date'], slot['time']))
-    
-    # Return up to the first 6 slots found
     top_slots = potential_slots_collected[:6]
-    
-    # Create a dynamic explanation message
     if top_slots:
         explanation = f"Found {len(top_slots)} available slots starting from {top_slots[0]['date'].strftime('%A, %b %d')}."
     else:
         explanation = "No suitable slots found with the current criteria."
-
     return top_slots, explanation, DEBUG_LOG_MESSAGES
+
 def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
     global JOB_ID_COUNTER, SCHEDULED_JOBS
     customer = get_customer_details(original_job_request_details['customer_id'])
@@ -825,13 +689,10 @@ def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
                 bumped_updated = True; break
         if not bumped_updated: bump_notification = f"WARNING: Bump failed - Job {bumped_job_id} not found or not in 'Scheduled' state."
     SCHEDULED_JOBS.append(new_job)
-    # NEW: Update crane daily status upon successful booking
     if new_job.assigned_crane_truck_id and new_job.scheduled_start_datetime:
         job_date_str = new_job.scheduled_start_datetime.strftime('%Y-%m-%d')
-        # Get or create the status entry for the day
         if job_date_str not in crane_daily_status:
             crane_daily_status[job_date_str] = {'ramps_visited': set()}
-        # Add the ramp for this job to the set of visited ramps
         if new_job.dropoff_ramp_id:
             crane_daily_status[job_date_str]['ramps_visited'].add(new_job.dropoff_ramp_id)
         elif new_job.pickup_ramp_id:
