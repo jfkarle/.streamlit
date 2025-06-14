@@ -172,6 +172,13 @@ def format_time_for_display(time_obj):
     return formatted_time
 
 # --- Section 2: Business Configuration & Initial Data ---
+ECM_TRUCKS = {
+    "S20/33": Truck(truck_id="S20/33", truck_name="S20 (aka S33)", max_boat_boat_length=60),
+    "S21/77": Truck(truck_id="S21/77", truck_name="S21 (aka S77)", max_boat_boat_length=45),
+    "S23/55": Truck(truck_id="S23/55", truck_name="S23 (aka S55)", max_boat_boat_length=30),
+    "J17": Truck(truck_id="J17", truck_name="J17 (Crane Truck)", max_boat_boat_length=None, is_crane=True)
+}
+
 ECM_RAMPS = {
     "SandwichBasin": Ramp("SandwichBasin", "Sandwich Basin", "Sandwich, MA", "Any tide", "AnyTide", "SandwichStation_mock", allowed_boat_types="Power Boats (RARE)"),
     "PlymouthHarbor": Ramp("PlymouthHarbor", "Plymouth Harbor", "Plymouth, MA", "3 hrs before and after high tide", "HoursAroundHighTide", "8446493", tide_offset_hours1=3.0),
