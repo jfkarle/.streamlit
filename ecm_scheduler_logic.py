@@ -4,6 +4,38 @@
 import csv
 import datetime
 import requests # Needed for real time NOAA tide fetch
+# --- Load Pre-Generated Tide Data from NOAA Annual Text File ---
+try:
+    # Define column names as the file doesn't have a header row
+    col_names = ['Date', 'Day', 'Time', 'Pred_ft', 'High_Low']
+    
+    # Read the text file, skipping header lines that start with '#'
+    TIDE_DATA = pd.read_csv(
+        "8445138_annual.txt",
+        comment='#',
+        delim_whitespace=True,
+        header=None,
+        names=col_names
+    )
+
+    # --- Data Cleaning and Preparation ---
+    # Combine Date and Time into a single datetime column for easy filtering
+    TIDE_DATA['datetime'] = pd.to_datetime(TIDE_DATA['Date'] + ' ' + TIDE_DATA['Time'])
+    
+    # Standardize the 'High/Low' column to a single character: 'H' or 'L'
+    TIDE_DATA['type'] = TIDE_DATA['High_Low'].str[0]
+    
+    # Add a station_id column for filtering based on the filename
+    TIDE_DATA['station_id'] = 8445138
+    
+    print("Successfully loaded and processed local tide file: 8445138_annual.txt")
+
+except FileNotFoundError:
+    print("CRITICAL ERROR: The tide data file '8445138_annual.txt' was not found.")
+    TIDE_DATA = pd.DataFrame() # Create an empty DataFrame to prevent crashes
+except Exception as e:
+    print(f"CRITICAL ERROR: Failed to process tide data file '8445138_annual.txt'. Error: {e}")
+    TIDE_DATA = pd.DataFrame()
 
 # --- Configuration & Global Context ---
 TODAY_FOR_SIMULATION = datetime.date(2025, 6, 2) # Monday, June 2, 2025 (for consistent testing)
@@ -187,7 +219,7 @@ ECM_RAMPS = {
     "DuxburyHarbor": Ramp("DuxburyHarbor", "Duxbury Harbor (Town Pier)", "Duxbury, MA", "1 hr before or after high tide", "HoursAroundHighTide", "8445672", tide_offset_hours1=1.0, allowed_boat_types="Power Boats Only"),
     "GreenHarborTaylors": Ramp("GreenHarborTaylors", "Green Harbor (Taylors)", "Marshfield, MA", "3 hrs before and after high tide", "HoursAroundHighTide", "8445071", tide_offset_hours1=3.0, allowed_boat_types="Power Boats"),
     "GreenHarborSafeHarbor": Ramp("GreenHarborSafeHarbor", "Safe Harbor (Green Harbor)", "Marshfield, MA", "1 hr before and after (only for Safe Harbor customers)", "HoursAroundHighTide", "8445071", tide_offset_hours1=1.0, allowed_boat_types="Power Boats only", operating_notes="Safe Harbor customers only"),
-    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor (Jericho Road)", "Scituate, MA", "Any tide; 5' draft or > needs 3 hrs around high tide", "AnyTideWithDraftRule", "8444992", draft_restriction_ft=5.0, draft_restriction_tide_rule="HoursAroundHighTide_Offset3"), # Special draft rule
+    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor (Jericho Road)", "Scituate, MA", "Any tide; 5' draft or > needs 3 hrs around high tide", "AnyTideWithDraftRule", "8445138", draft_restriction_ft=5.0, draft_restriction_tide_rule="HoursAroundHighTide_Offset3"), # Special draft rule
     "CohassetParkerAve": Ramp("CohassetParkerAve", "Cohasset Harbor (Parker Ave)", "Cohasset, MA", "3 hrs before or after high tide", "HoursAroundHighTide", "8444672", tide_offset_hours1=3.0),
     "HullASt": Ramp("HullASt", "Hull (A St, Sunset, Steamboat)", "Hull, MA", "3 hrs before or after high tide; 1.5 hr tide for 6' or > draft", "HoursAroundHighTide_WithDraftRule", "8444009", tide_offset_hours1=3.0, draft_restriction_ft=6.0, draft_restriction_tide_rule="HoursAroundHighTide_Offset1.5"),
     "HinghamHarbor": Ramp("HinghamHarbor", "Hingham Harbor", "Hingham, MA", "3 hrs before and after high tide", "HoursAroundHighTide", "8443971", tide_offset_hours1=3.0),
