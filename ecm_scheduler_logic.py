@@ -352,38 +352,35 @@ def get_ecm_operating_hours(date_to_check):
             return {"open": rule.open_time, "close": rule.close_time}
     return None
 
-def fetch_noaa_tides(station_id, date_to_check):
+ef fetch_noaa_tides(station_id, date_to_check):
     """
-    Fetches high/low tide predictions from the NOAA Tides and Currents API
-    for a specific station and date.
+    Retrieves tide data from the pre-loaded local file.
+    NOTE: This version is modified to use the same Scituate tide data (8445138) 
+    for ALL ramps, ignoring the station_id that is passed in.
     """
-    date_str = date_to_check.strftime('%Y%m%d')
-    api_url = (
-        f"https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?"
-        f"begin_date={date_str}&end_date={date_str}"
-        f"&station={station_id}"
-        f"&product=predictions&datum=MLLW&time_zone=lst_ldt&units=english&format=json"
-    )
+    if TIDE_DATA.empty:
+        return []
 
-    try:
-        response = requests.get(api_url, timeout=15)
-        response.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
-        data = response.json()
+    # Define the time range for the requested day
+    start_of_day = datetime.datetime.combine(date_to_check, datetime.time.min)
+    end_of_day = datetime.datetime.combine(date_to_check, datetime.time.max)
 
-        if 'predictions' not in data:
-            print(f"Warning: No 'predictions' key in API response for station {station_id} on {date_to_check}.")
-            return []
+    # Filter the DataFrame for the requested date ONLY.
+    # The station_id filter has been removed to apply Scituate data to all ramps.
+    day_tides = TIDE_DATA[
+        (TIDE_DATA['datetime'] >= start_of_day) &
+        (TIDE_DATA['datetime'] <= end_of_day)
+    ]
 
-        tide_events = []
-        for event in data.get('predictions', []):
-            if event['type'] in ['H', 'L']:
-                tide_dt = datetime.datetime.strptime(event['t'], '%Y-%m-%d %H:%M')
-                tide_events.append({'type': event['type'], 'time': tide_dt.time()})
-
-        if not tide_events:
-            print(f"Warning: No High/Low tide events found for station {station_id} on {date_to_check}.")
-
-        return tide_events
+    # Format the filtered data into the simple list structure the app expects
+    tide_events = []
+    for index, row in day_tides.iterrows():
+        tide_events.append({
+            'type': row['type'],
+            'time': row['datetime'].time()
+        })
+        
+    return tide_events
 
     except requests.exceptions.RequestException as e:
         print(f"ERROR: Could not fetch NOAA tide data for station {station_id}. Details: {e}")
