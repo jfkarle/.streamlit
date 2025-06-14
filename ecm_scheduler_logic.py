@@ -3,8 +3,7 @@
 
 import csv
 import datetime
-
-# import requests # Only needed for a live fetch_noaa_tides; using a mock for now.
+import requests # Needed for real time NOAA tide fetch
 
 # --- Configuration & Global Context ---
 TODAY_FOR_SIMULATION = datetime.date(2025, 6, 2) # Monday, June 2, 2025 (for consistent testing)
@@ -322,21 +321,44 @@ def get_ecm_operating_hours(date_to_check):
     return None
 
 def fetch_noaa_tides(station_id, date_to_check):
-    if station_id == "8446493":
-        return [
-            {'type': 'L', 'time': datetime.time(3, 15)},
-            {'type': 'H', 'time': datetime.time(9, 30)},
-            {'type': 'L', 'time': datetime.time(15, 45)},
-            {'type': 'H', 'time': datetime.time(21, 50)}]
-    elif station_id == "8445672":
-        return [
-            {'type': 'L', 'time': datetime.time(4, 0)},
-            {'type': 'H', 'time': datetime.time(10, 10)},
-            {'type': 'L', 'time': datetime.time(16, 20)},
-            {'type': 'H', 'time': datetime.time(22, 30)}]
-    return [
-        {'type': 'H', 'time': datetime.time(10, 0)},
-        {'type': 'H', 'time': datetime.time(22, 15)}]
+    """
+    Fetches high/low tide predictions from the NOAA Tides and Currents API
+    for a specific station and date.
+    """
+    date_str = date_to_check.strftime('%Y%m%d')
+    api_url = (
+        f"https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?"
+        f"begin_date={date_str}&end_date={date_str}"
+        f"&station={station_id}"
+        f"&product=predictions&datum=MLLW&time_zone=lst_ldt&units=english&format=json"
+    )
+
+    try:
+        response = requests.get(api_url, timeout=15)
+        response.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
+        data = response.json()
+
+        if 'predictions' not in data:
+            print(f"Warning: No 'predictions' key in API response for station {station_id} on {date_to_check}.")
+            return []
+
+        tide_events = []
+        for event in data.get('predictions', []):
+            if event['type'] in ['H', 'L']:
+                tide_dt = datetime.datetime.strptime(event['t'], '%Y-%m-%d %H:%M')
+                tide_events.append({'type': event['type'], 'time': tide_dt.time()})
+
+        if not tide_events:
+            print(f"Warning: No High/Low tide events found for station {station_id} on {date_to_check}.")
+
+        return tide_events
+
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Could not fetch NOAA tide data for station {station_id}. Details: {e}")
+        return [] # Return an empty list to prevent crashes; the system will show no tidal windows.
+    except (ValueError, KeyError) as e:
+        print(f"ERROR: Could not parse JSON response from NOAA for station {station_id}. Details: {e}")
+        return []
 
 def calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check):
     usable_windows = []
