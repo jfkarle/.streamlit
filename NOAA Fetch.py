@@ -1,19 +1,16 @@
+import streamlit as st
 import requests
 from datetime import datetime
 
 def get_tide_times_scituate(date_str):
-    """
-    Fetch high and low tide times for Scituate (station 8445138) on the given date (YYYYMMDD).
-    Returns a dict with 'high' and 'low' tide lists.
-    """
     base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
     params = {
         "product": "predictions",
-        "application": "python-script",
+        "application": "streamlit-tide-app",
         "begin_date": date_str,
         "end_date": date_str,
         "datum": "MLLW",
-        "station": "8445138",
+        "station": "8445138",  # Scituate Harbor, MA
         "time_zone": "lst_ldt",
         "units": "english",
         "interval": "hilo",
@@ -25,18 +22,31 @@ def get_tide_times_scituate(date_str):
     result = {"high": [], "low": []}
     for item in data:
         t = datetime.strptime(item["t"], "%Y-%m-%d %H:%M")
-        typ = item["type"].lower()  # "H" or "L"
+        typ = item["type"].lower()
         if typ == "h":
             result["high"].append((t, float(item["v"])))
         elif typ == "l":
             result["low"].append((t, float(item["v"])))
     return result
 
-if __name__ == "__main__":
-    date = input("Enter date (YYYYMMDD): ")
-    tides = get_tide_times_scituate(date)
-    print(f"Tide times for Scituate on {date}:")
-    for ht in tides["high"]:
-        print(f"  High tide at {ht[0].strftime('%I:%M %p')} ({ht[1]} ft)")
-    for lt in tides["low"]:
-        print(f"  Low tide at {lt[0].strftime('%I:%M %p')} ({lt[1]} ft)")
+# --- Streamlit UI ---
+st.title("NOAA High & Low Tides – Scituate, MA")
+
+date_input = st.date_input("Choose a date", datetime.today())
+date_str = date_input.strftime("%Y%m%d")
+
+if st.button("Get Tide Data"):
+    try:
+        tides = get_tide_times_scituate(date_str)
+        st.subheader(f"Tide Times for {date_input.strftime('%B %d, %Y')}")
+        
+        st.markdown("**High Tides:**")
+        for ht in tides["high"]:
+            st.write(f"🌊 {ht[0].strftime('%I:%M %p')} — {ht[1]} ft")
+
+        st.markdown("**Low Tides:**")
+        for lt in tides["low"]:
+            st.write(f"⬇️ {lt[0].strftime('%I:%M %p')} — {lt[1]} ft")
+
+    except Exception as e:
+        st.error(f"Failed to fetch tide data: {e}")
