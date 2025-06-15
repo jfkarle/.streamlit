@@ -611,19 +611,27 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     MAX_POOL_SIZE = 20
     current_search_date = effective_search_start_date
     days_iterated = 0
+
     while current_search_date <= search_end_limit_date and len(potential_slots_collected) < MAX_POOL_SIZE and days_iterated < 45:
-        ecm_op_hours = get_ecm_operating_hours(current_search_date)
-        if not ecm_hours or (boat.boat_type in ["Sailboat MD", "Sailboat MT"] and current_search_date.weekday() == 5 and current_search_date.month not in [5, 9]):
+        # Move ecm_hours definition and check outside the inner loop over ramps_to_search
+        # to ensure it's defined before used in the continue condition.
+        ecm_hours = get_ecm_operating_hours(current_search_date)
+        if not ecm_hours or \
+           (boat.boat_type in ["Sailboat MD", "Sailboat MT"] and \
+            current_search_date.weekday() == 5 and current_search_date.month not in [5, 9]):
             current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
+
         for current_ramp_id in ramps_to_search:
             ramp_obj = None; daily_windows = []
             if service_type in ["Launch", "Haul"]:
                 ramp_obj = get_ramp_details(current_ramp_id)
                 if not ramp_obj: continue
+                # get_final_schedulable_ramp_times already uses ecm_hours internally.
                 daily_windows = get_final_schedulable_ramp_times(ramp_obj, boat, current_search_date)
             elif service_type == "Transport":
-                daily_windows = [{'start_time': ecm_op_hours['open'], 'end_time': ecm_op_hours['close']}]
+                daily_windows = [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
             if not daily_windows: continue
+
             is_non_ecm_cust = not customer.is_ecm_customer
             if is_non_ecm_cust:
                 day_open_dt = datetime.datetime.combine(current_search_date, ecm_op_hours['open'])
@@ -635,6 +643,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     if new_start_time < window['end_time']:
                         delayed_windows.append({'start_time': new_start_time, 'end_time': window['end_time']})
                 daily_windows = delayed_windows
+
             for truck_id in trucks_to_search:
                 if len(potential_slots_collected) >= MAX_POOL_SIZE: break
                 for window in daily_windows:
