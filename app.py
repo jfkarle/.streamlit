@@ -6,11 +6,6 @@ import datetime
 import ecm_scheduler_logic as ecm
 import pandas as pd
 
-# Add this line:
-ecm.test_requests_get()
-
-# ... rest of your app.py code ...
-
 st.set_page_config(layout="wide")
 
 # --- Session State Initialization ---
