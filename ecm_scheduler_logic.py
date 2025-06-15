@@ -34,6 +34,7 @@ def fetch_noaa_tides(station_id, date_to_check):
         data = resp.json().get("predictions", [])
 
         if data:
+            # These print statements are fine for general debugging and can remain
             print(f"DEBUG: Successfully received {len(data)} tide predictions for station {station_id}.")
         else:
             print(f"DEBUG: Received no tide predictions for station {station_id}.")
@@ -182,22 +183,23 @@ def get_concise_tide_rule(ramp_obj, boat_obj):
     if ramp_obj.tide_calculation_method == "AnyTide":
         return "Any Tide"
     elif ramp_obj.tide_calculation_method == "AnyTideWithDraftRule":
-        if ramp_obj.draft_restriction_ft and boat_obj.draft_ft and boat_obj.draft_ft >= ramp_obj.draft_restriction_ft:
-            if ramp_obj.ramp_id == "ScituateHarborJericho":
-                return "3hrs +/- HT (>=5' draft)"
-            elif ramp_obj.ramp_id == "HullASt":
-                return "1.5hrs +/- HT (>=6' draft)"
-        return "Any Tide (unless draft > X)" # General for other ramps with draft rules
+        # Check specific ramps for custom draft rules
+        if ramp_obj.ramp_id == "ScituateHarborJericho" and boat_obj.draft_ft and boat_obj.draft_ft >= 5.0:
+            return "3hrs +/- HT (>=5' draft)"
+        elif ramp_obj.ramp_id == "HullASt" and boat_obj.draft_ft and boat_obj.draft_ft >= 6.0:
+            return "1.5hrs +/- HT (>=6' draft)"
+        # Default for AnyTideWithDraftRule if specific draft rule not met or no draft
+        return "Any Tide (check notes)"
     elif ramp_obj.tide_offset_hours1 is not None:
         offset_str = f"{float(ramp_obj.tide_offset_hours1):g}" # :g removes trailing .0 for whole numbers
         return f"{offset_str}hrs +/- HT"
-    return "Tide Rule N/A"
+    return "Tide Rule N/A" # Fallback if no rule matches
 
 # --- Section 2: Business Configuration & Initial Data ---
 ECM_TRUCKS = {
     "S20/33": Truck(truck_id="S20/33", truck_name="S20 (aka S33)", max_boat_boat_length=60),
     "S21/77": Truck(truck_id="S21/77", truck_name="S21 (aka S77)", max_boat_boat_length=45),
-    "S23/55": Truck(truck_id="S23/55", truck_name="S21 (aka S77)", max_boat_boat_length=30), # Corrected S23/55 max_boat_boat_length to 30.
+    "S23/55": Truck(truck_id="S23/55", truck_name="S23 (aka S55)", max_boat_boat_length=30),
     "J17": Truck(truck_id="J17", truck_name="J17 (Crane Truck)", max_boat_boat_length=None, is_crane=True)
 }
 
@@ -318,8 +320,6 @@ def get_ecm_operating_hours(date_to_check):
             return {"open": rule.open_time, "close": rule.close_time}
     return None
 
-# The fetch_noaa_tides function has been restored to its API-fetching version.
-# The previous version using TIDE_DATA was removed.
 
 def calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check):
     usable_windows = []
@@ -367,6 +367,14 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
     # This line now calls the API-fetching fetch_noaa_tides
     tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_to_check)
     tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data, date_to_check)
+
+    # NEW: Get high tide times for the display
+    high_tide_times_for_display = [format_time_for_display(event['time']) for event in tide_data if event['type'] == 'H']
+    high_tide_info_str = "HT: " + " / ".join(high_tide_times_for_display) if high_tide_times_for_display else "No High Tide Data"
+    
+    # NEW: Get concise tide rule description
+    concise_tide_rule_str = get_concise_tide_rule(ramp_obj, boat_obj)
+
     if not tidal_windows: return []
     for t_window in tidal_windows:
         tidal_start_dt = datetime.datetime.combine(date_to_check, t_window['start_time'])
@@ -375,12 +383,22 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
             overlap_start1 = max(tidal_start_dt, ecm_open_dt)
             overlap_end1 = min(datetime.datetime.combine(date_to_check, datetime.time.max), ecm_close_dt)
             if overlap_start1 < overlap_end1:
-                final_windows.append({'start_time': overlap_start1.time(), 'end_time': overlap_end1.time()})
+                final_windows.append({
+                    'start_time': overlap_start1.time(),
+                    'end_time': overlap_end1.time(),
+                    'high_tide_info': high_tide_info_str, # NEW
+                    'tide_rule_concise': concise_tide_rule_str # NEW
+                })
         else:
             overlap_start_dt = max(tidal_start_dt, ecm_open_dt)
             overlap_end_dt = min(tidal_end_dt, ecm_close_dt)
             if overlap_start_dt < overlap_end_dt:
-                final_windows.append({'start_time': overlap_start_dt.time(), 'end_time': overlap_end_dt.time()})
+                final_windows.append({
+                    'start_time': overlap_start_dt.time(),
+                    'end_time': overlap_end_dt.time(),
+                    'high_tide_info': high_tide_info_str, # NEW
+                    'tide_rule_concise': concise_tide_rule_str # NEW
+                })
     unique_final_windows = []
     if final_windows:
         final_windows.sort(key=lambda x: x['start_time'])
@@ -730,13 +748,12 @@ def _mark_slots_in_grid(schedule_grid_truck_col, time_slots_dt_list,
             schedule_grid_truck_col[i]["job_id"] = job_id_for_ref
             if not job_marked_as_started:
                 schedule_grid_truck_col[i]["display_text"] = job_display_text
-                schedule_grid_truck_col[i]["is_start_of_job"] = True # This line was missing 'is_start_of_job = True'
+                schedule_grid_truck_col[i]["is_start_of_job"] = True
                 job_marked_as_started = True
             else:
                 schedule_grid_truck_col[i]["display_text"] = " | | "
-                schedule_grid_truck_col[i]["is_start_of_job"] = False # This line was missing 'is_start_of_job = False'
-        # The problematic line was removed or correctly handled here.
-        # It's usually better to ensure is_start_of_job is set within the if/else for clarity.
+                schedule_grid_truck_col[i]["is_start_of_job"] = False
+
 
 def prepare_daily_schedule_data(display_date,
                                 original_job_request_details_for_potential=None,
