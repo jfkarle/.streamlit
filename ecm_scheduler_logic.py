@@ -488,7 +488,8 @@ def is_dropoff_at_ecm_base(dropoff_location_coords):
 def _check_and_create_slot_detail(current_search_date, current_potential_start_time_obj,
                                    truck_id, customer, boat, service_type, ramp_obj,
                                    ecm_op_hours, job_duration_hours, needs_j17,
-                                   j17_actual_busy_duration_hours, debug_log_list):
+                                   j17_actual_busy_duration_hours, debug_log_list,
+                                   window_details=None): # <--- ADD THIS ARGUMENT
     debug_log_list.append(f"C&CSD: Check: {current_search_date.strftime('%a %m-%d')} {current_potential_start_time_obj.strftime('%I:%M%p')} Truck:{truck_id}")
     proposed_start_dt = datetime.datetime.combine(current_search_date, current_potential_start_time_obj)
     proposed_end_dt_hauler = proposed_start_dt + datetime.timedelta(hours=job_duration_hours)
@@ -528,12 +529,10 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
         'date': current_search_date,
         'time': current_potential_start_time_obj,
         'truck_id': truck_id,
-        'j17_needed': needs_j17,
-        'type': slot_type,
-        'bumped_job_details': bumped_job_info,
-        'customer_name': customer.customer_name,
-        'boat_details_summary': f"{boat.boat_length}ft {boat.boat_type}",
-        'ramp_id': ramp_obj.ramp_id if ramp_obj else None
+        # ... other keys
+        'ramp_id': ramp_obj.ramp_id if ramp_obj else None,
+        'high_tide_info': tide_info,          # <--- ADD THIS LINE
+        'tide_rule_concise': tide_rule         # <--- ADD THIS LINE
     }
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
@@ -662,7 +661,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                             potential_time = temp_dt.time()
                         if potential_time >= window['end_time']: break
                         if not any(s['date'] == current_search_date and s['time'] == potential_time and s['truck_id'] == truck_id for s in potential_slots_collected):
-                            slot_detail = _check_and_create_slot_detail(current_search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES)
+                            slot_detail = _check_and_create_slot_detail(current_search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES, window_details=window)
                             if slot_detail:
                                 potential_slots_collected.append(slot_detail)
                                 break
