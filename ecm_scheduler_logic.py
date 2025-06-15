@@ -418,10 +418,10 @@ def check_truck_availability(truck_id_to_check, check_date, proposed_start_dt, p
             existing_job_start_dt = job.scheduled_start_datetime
             existing_job_true_end_dt = job.scheduled_end_datetime
             truck_is_involved = False
-            # THIS LINE HAS THE TYPO: 'truck_id_to_involved' should be 'truck_id_to_check'
-            if job.assigned_hauling_truck_id == truck_id_to_check: # CORRECTED LINE
+            # These lines have been cleaned of the problematic inline comments
+            if job.assigned_hauling_truck_id == truck_id_to_check:
                 truck_is_involved = True
-            elif job.assigned_crane_truck_id == truck_id_to_check and truck_id_to_check == "J17": # CORRECTED LINE
+            elif job.assigned_crane_truck_id == truck_id_to_check and truck_id_to_check == "J17":
                 truck_is_involved = True
                 if job.j17_busy_end_datetime:
                     existing_job_true_end_dt = job.j17_busy_end_datetime
