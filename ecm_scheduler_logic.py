@@ -525,14 +525,21 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
         if ex_job and ex_job.customer_id != customer.customer_id and not get_customer_details(ex_job.customer_id).is_ecm_customer and ex_job.service_type == "Haul":
             slot_type = "BumpNonECM_BusyHaul"
             bumped_job_info = {"job_id": ex_job.job_id, "customer_name": get_customer_details(ex_job.customer_id).customer_name}
+    tide_info = window_details.get('high_tide_info', '') if window_details else ''
+    tide_rule = window_details.get('tide_rule_concise', '') if window_details else ''
+    
     return {
         'date': current_search_date,
         'time': current_potential_start_time_obj,
         'truck_id': truck_id,
-        # ... other keys
+        'j17_needed': needs_j17,
+        'type': slot_type,
+        'bumped_job_details': bumped_job_info,
+        'customer_name': customer.customer_name,
+        'boat_details_summary': f"{boat.boat_length}ft {boat.boat_type}",
         'ramp_id': ramp_obj.ramp_id if ramp_obj else None,
-        'high_tide_info': tide_info,          # <--- ADD THIS LINE
-        'tide_rule_concise': tide_rule         # <--- ADD THIS LINE
+        'high_tide_info': tide_info,
+        'tide_rule_concise': tide_rule
     }
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
