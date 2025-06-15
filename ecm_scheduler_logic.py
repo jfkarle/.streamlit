@@ -7,45 +7,33 @@ import pandas as pd
 import requests
 
 def fetch_noaa_tides(station_id, date_to_check):
-    """
-    Fetches high/low tide predictions from the NOAA Tides and Currents API.
-    This function is based on your successful implementation.
-    """
     date_str = date_to_check.strftime("%Y%m%d")
 
-    base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-    params = {
-        "product": "predictions",
-        "application": "ecm-boat-scheduler",
-        "begin_date": date_str,
-        "end_date": date_str,
-        "datum": "MLLW",
-        "station": station_id,  # Uses the station_id for the specific ramp
-        "time_zone": "lst_ldt",
-        "units": "english",
-        "interval": "hilo",
-        "format": "json",
-    }
+    print(f"DEBUG: Attempting to fetch NOAA tides for station {station_id} on {date_str}") # Add this
+    # ... (rest of your base and params) ...
 
     tide_events = []
     try:
         resp = requests.get(base, params=params, timeout=10)
-        resp.raise_for_status()  # Will raise an error for bad responses (4xx or 5xx)
+        resp.raise_for_status()
         data = resp.json().get("predictions", [])
 
-        # Transform the API response into the format the rest of the app expects
+        if data: # Add this check
+            print(f"DEBUG: Successfully received {len(data)} tide predictions for station {station_id}.") # Add this
+        else: # Add this
+            print(f"DEBUG: Received no tide predictions for station {station_id}.") # Add this
+
         for item in data:
-            # Ensure correct import for strptime, if not already handled
-            # If you have 'from datetime import datetime' then use datetime.strptime
-            # If you only have 'import datetime' then use datetime.datetime.strptime
-            t = datetime.datetime.strptime(item["t"], "%Y-%m-%d %H:%M") # Use datetime.datetime.strptime
+            t = datetime.datetime.strptime(item["t"], "%Y-%m-%d %H:%M")
             typ = item["type"].upper()
             if typ in ["H", "L"]:
                 tide_events.append({'type': typ, 'time': t.time()})
 
+        print(f"DEBUG: Processed {len(tide_events)} high/low tide events for station {station_id}.") # Add this
+
     except requests.exceptions.RequestException as e:
         print(f"ERROR: Could not fetch real-time NOAA tide data for station {station_id}. Error: {e}")
-        return [] # Return an empty list to indicate failure
+        return []
     except (KeyError, ValueError) as e:
         print(f"ERROR: Could not parse NOAA tide data for station {station_id}. Error: {e}")
         return []
