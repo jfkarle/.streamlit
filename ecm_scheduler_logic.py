@@ -409,7 +409,7 @@ def get_suitable_trucks(boat_boat_length, preferred_truck_id=None):
             if truck.max_boat_boat_length is None or boat_boat_length <= truck.max_boat_boat_length:
                 suitable_trucks_list.append(truck.truck_id)
     return suitable_trucks_list
-    
+
 def check_truck_availability(truck_id_to_check, check_date, proposed_start_dt, proposed_end_dt):
     for job in SCHEDULED_JOBS:
         if job.scheduled_start_datetime is None or job.job_status != "Scheduled":
