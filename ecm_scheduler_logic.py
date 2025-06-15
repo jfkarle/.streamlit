@@ -6,6 +6,25 @@ import datetime
 import pandas as pd
 import requests
 
+# Add this to ecm_scheduler_logic.py
+def test_requests_get():
+    try:
+        print("DEBUG: Running test_requests_get...")
+        test_url = "https://www.google.com" # A known good URL
+        response = requests.get(test_url, timeout=5)
+        response.raise_for_status()
+        print(f"DEBUG: test_requests_get successful! Status code: {response.status_code}")
+        return True
+    except Exception as e:
+        print(f"ERROR: test_requests_get failed: {e}")
+        return False
+
+# You can call this function at the very beginning of your app.py
+# or even in ecm_scheduler_logic.py just after imports for a quick check.
+# For example, in app.py after 'import ecm_scheduler_logic as ecm':
+# ecm.test_requests_get()
+
+
 def fetch_noaa_tides(station_id, date_to_check):
     date_str = date_to_check.strftime("%Y%m%d")
 
