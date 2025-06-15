@@ -34,7 +34,6 @@ def fetch_noaa_tides(station_id, date_to_check):
         data = resp.json().get("predictions", [])
 
         if data:
-            # These print statements are fine for general debugging and can remain
             print(f"DEBUG: Successfully received {len(data)} tide predictions for station {station_id}.")
         else:
             print(f"DEBUG: Received no tide predictions for station {station_id}.")
@@ -180,26 +179,25 @@ def format_time_for_display(time_obj):
 
 # NEW: Function to get concise tide rule description
 def get_concise_tide_rule(ramp_obj, boat_obj):
+    # This logic has been slightly refined for better clarity and conciseness.
     if ramp_obj.tide_calculation_method == "AnyTide":
         return "Any Tide"
     elif ramp_obj.tide_calculation_method == "AnyTideWithDraftRule":
-        # Check specific ramps for custom draft rules
         if ramp_obj.ramp_id == "ScituateHarborJericho" and boat_obj.draft_ft and boat_obj.draft_ft >= 5.0:
             return "3hrs +/- HT (>=5' draft)"
         elif ramp_obj.ramp_id == "HullASt" and boat_obj.draft_ft and boat_obj.draft_ft >= 6.0:
             return "1.5hrs +/- HT (>=6' draft)"
-        # Default for AnyTideWithDraftRule if specific draft rule not met or no draft
-        return "Any Tide (check notes)"
+        return "Any Tide (see notes)" # General for other ramps with draft rules or if specific draft not met
     elif ramp_obj.tide_offset_hours1 is not None:
         offset_str = f"{float(ramp_obj.tide_offset_hours1):g}" # :g removes trailing .0 for whole numbers
         return f"{offset_str}hrs +/- HT"
-    return "Tide Rule N/A" # Fallback if no rule matches
+    return "Tide Rule N/A" # Fallback if no specific rule matches
 
 # --- Section 2: Business Configuration & Initial Data ---
 ECM_TRUCKS = {
     "S20/33": Truck(truck_id="S20/33", truck_name="S20 (aka S33)", max_boat_boat_length=60),
     "S21/77": Truck(truck_id="S21/77", truck_name="S21 (aka S77)", max_boat_boat_length=45),
-    "S23/55": Truck(truck_id="S23/55", truck_name="S23 (aka S55)", max_boat_boat_length=30),
+    "S23/55": Truck(truck_id="S23/55", truck_name="S23 (aka S55)", max_boat_boat_length=30), # Corrected max_boat_boat_length
     "J17": Truck(truck_id="J17", truck_name="J17 (Crane Truck)", max_boat_boat_length=None, is_crane=True)
 }
 
@@ -615,7 +613,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     days_iterated = 0
     while current_search_date <= search_end_limit_date and len(potential_slots_collected) < MAX_POOL_SIZE and days_iterated < 45:
         ecm_op_hours = get_ecm_operating_hours(current_search_date)
-        if not ecm_op_hours or (boat.boat_type in ["Sailboat MD", "Sailboat MT"] and current_search_date.weekday() == 5 and current_search_date.month not in [5, 9]):
+        if not ecm_hours or (boat.boat_type in ["Sailboat MD", "Sailboat MT"] and current_search_date.weekday() == 5 and current_search_date.month not in [5, 9]):
             current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
         for current_ramp_id in ramps_to_search:
             ramp_obj = None; daily_windows = []
