@@ -409,16 +409,17 @@ def get_suitable_trucks(boat_boat_length, preferred_truck_id=None):
             if truck.max_boat_boat_length is None or boat_boat_length <= truck.max_boat_boat_length:
                 suitable_trucks_list.append(truck.truck_id)
     return suitable_trucks_list
-
+    
 def check_truck_availability(truck_id_to_check, check_date, proposed_start_dt, proposed_end_dt):
     for job in SCHEDULED_JOBS:
-        if job.scheduled_start_datetime is None or job.job_status != "Scheduled": continue
+        if job.scheduled_start_datetime is None or job.job_status != "Scheduled":
+            continue
         job_date = job.scheduled_start_datetime.date()
         if job_date == check_date:
             existing_job_start_dt = job.scheduled_start_datetime
             existing_job_true_end_dt = job.scheduled_end_datetime
             truck_is_involved = False
-            # These lines have been cleaned of the problematic inline comments
+            # Ensure this entire if/elif block is perfectly clean.
             if job.assigned_hauling_truck_id == truck_id_to_check:
                 truck_is_involved = True
             elif job.assigned_crane_truck_id == truck_id_to_check and truck_id_to_check == "J17":
