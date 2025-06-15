@@ -539,7 +539,8 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
                              selected_ramp_id=None, transport_dropoff_details=None,
                              start_after_slot_details=None,
-                             force_preferred_truck=True, relax_ramp_constraint=False):
+                             force_preferred_truck=True, relax_ramp_constraint=False,
+                             ecm_op_hours=None): # <--- ADD THIS ARGUMENT
     global original_job_request_details, DEBUG_LOG_MESSAGES
     DEBUG_LOG_MESSAGES = [f"FindSlots Start: Cust({customer_id}) Boat({boat_id}) Svc({service_type}) ReqDate({requested_date_str}) Ramp({selected_ramp_id})"]
     original_job_request_details = {'transport_dropoff_details': transport_dropoff_details, 'customer_id': customer_id, 'boat_id': boat_id, 'service_type': service_type, 'selected_ramp_id': selected_ramp_id, 'requested_date_str': requested_date_str}
