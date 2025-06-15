@@ -13,26 +13,51 @@ def fetch_noaa_tides(station_id, date_to_check):
     """
     date_str = date_to_check.strftime("%Y%m%d")
 
-    # --- NEW DEBUGGING/DEFENSIVE CODE START ---
+    # The NEW DEBUGGING/DEFENSIVE CODE START/END block has been completely removed.
+    # It was causing a SyntaxError.
+
+    base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
+    params = {
+        "product": "predictions",
+        "application": "ecm-boat-scheduler",
+        "begin_date": date_str,
+        "end_date": date_str,
+        "datum": "MLLW",
+        "station": station_id,
+        "time_zone": "lst_ldt",
+        "units": "english",
+        "interval": "hilo",
+        "format": "json",
+    }
+
+    tide_events = []
     try:
-        # Check if requests.get is callable. If not, it will raise an AttributeError.
-        if not callable(requests.get):
-            raise AttributeError("requests.get is not callable")
-        print(f"DEBUG: requests.get is callable within fetch_noaa_tides. Proceeding for station {station_id}.")
-    except (NameError, AttributeError) as e:
-        print(f"CRITICAL ERROR: 'requests' module or 'requests.get' is not properly loaded/defined within fetch_noaa_tides. Attempting re-import. Error: {e}")
-        # Try to re-import requests specifically within the function, as a last resort
-        try:
-            import requests as requests_reimport # Use a different name to avoid conflict, if needed
-            global requests # Declare intent to modify global 'requests'
-            requests = requests_reimport # Reassign global 'requests'
-            if not callable(requests.get):
-                raise AttributeError("re-imported requests.get is still not callable")
-            print("CRITICAL DEBUG: Successfully re-imported requests within function.")
-        except Exception as re_e:
-            print(f"CRITICAL ERROR: Failed to re-import requests within function: {re_e}")
-            return [] # Cannot proceed without requests
-    # --- NEW DEBUGGING/DEFENSIVE CODE END ---
+        resp = requests.get(base, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json().get("predictions", [])
+
+        if data:
+            # These print statements are fine for general debugging and can remain
+            print(f"DEBUG: Successfully received {len(data)} tide predictions for station {station_id}.")
+        else:
+            print(f"DEBUG: Received no tide predictions for station {station_id}.")
+
+        for item in data:
+            t = datetime.datetime.strptime(item["t"], "%Y-%m-%d %H:%M")
+            typ = item["type"].upper()
+            if typ in ["H", "L"]:
+                tide_events.append({'type': typ, 'time': t.time()})
+
+        print(f"DEBUG: Processed {len(tide_events)} high/low tide events for station {station_id}.")
+
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Could not fetch real-time NOAA tide data for station {station_id}. Error: {e}")
+        return []
+    except (KeyError, ValueError) as e:
+        print(f"ERROR: Could not parse NOAA tide data for station {station_id}. Error: {e}")
+        return []
+
+    return tide_events
 
     base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
     params = {
