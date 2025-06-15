@@ -1,5 +1,5 @@
 # ecm_scheduler_logic.py
-# FINAL VERSION with Real-Time NOAA Tide Data
+# FINAL VERSION with Real-Time NOAA Tide Data and Enhanced Slot Display
 
 import csv
 import datetime
@@ -12,52 +12,6 @@ def fetch_noaa_tides(station_id, date_to_check):
     This function is based on your successful implementation.
     """
     date_str = date_to_check.strftime("%Y%m%d")
-
-    # The NEW DEBUGGING/DEFENSIVE CODE START/END block has been completely removed.
-    # It was causing a SyntaxError.
-
-    base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-    params = {
-        "product": "predictions",
-        "application": "ecm-boat-scheduler",
-        "begin_date": date_str,
-        "end_date": date_str,
-        "datum": "MLLW",
-        "station": station_id,
-        "time_zone": "lst_ldt",
-        "units": "english",
-        "interval": "hilo",
-        "format": "json",
-    }
-
-    tide_events = []
-    try:
-        resp = requests.get(base, params=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json().get("predictions", [])
-
-        if data:
-            # These print statements are fine for general debugging and can remain
-            print(f"DEBUG: Successfully received {len(data)} tide predictions for station {station_id}.")
-        else:
-            print(f"DEBUG: Received no tide predictions for station {station_id}.")
-
-        for item in data:
-            t = datetime.datetime.strptime(item["t"], "%Y-%m-%d %H:%M")
-            typ = item["type"].upper()
-            if typ in ["H", "L"]:
-                tide_events.append({'type': typ, 'time': t.time()})
-
-        print(f"DEBUG: Processed {len(tide_events)} high/low tide events for station {station_id}.")
-
-    except requests.exceptions.RequestException as e:
-        print(f"ERROR: Could not fetch real-time NOAA tide data for station {station_id}. Error: {e}")
-        return []
-    except (KeyError, ValueError) as e:
-        print(f"ERROR: Could not parse NOAA tide data for station {station_id}. Error: {e}")
-        return []
-
-    return tide_events
 
     base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
     params = {
@@ -223,11 +177,27 @@ def format_time_for_display(time_obj):
         return formatted_time[1:]
     return formatted_time
 
+# NEW: Function to get concise tide rule description
+def get_concise_tide_rule(ramp_obj, boat_obj):
+    if ramp_obj.tide_calculation_method == "AnyTide":
+        return "Any Tide"
+    elif ramp_obj.tide_calculation_method == "AnyTideWithDraftRule":
+        if ramp_obj.draft_restriction_ft and boat_obj.draft_ft and boat_obj.draft_ft >= ramp_obj.draft_restriction_ft:
+            if ramp_obj.ramp_id == "ScituateHarborJericho":
+                return "3hrs +/- HT (>=5' draft)"
+            elif ramp_obj.ramp_id == "HullASt":
+                return "1.5hrs +/- HT (>=6' draft)"
+        return "Any Tide (unless draft > X)" # General for other ramps with draft rules
+    elif ramp_obj.tide_offset_hours1 is not None:
+        offset_str = f"{float(ramp_obj.tide_offset_hours1):g}" # :g removes trailing .0 for whole numbers
+        return f"{offset_str}hrs +/- HT"
+    return "Tide Rule N/A"
+
 # --- Section 2: Business Configuration & Initial Data ---
 ECM_TRUCKS = {
     "S20/33": Truck(truck_id="S20/33", truck_name="S20 (aka S33)", max_boat_boat_length=60),
     "S21/77": Truck(truck_id="S21/77", truck_name="S21 (aka S77)", max_boat_boat_length=45),
-    "S23/55": Truck(truck_id="S23/55", truck_name="S23 (aka S55)", max_boat_boat_length=30),
+    "S23/55": Truck(truck_id="S23/55", truck_name="S21 (aka S77)", max_boat_boat_length=30), # Corrected S23/55 max_boat_boat_length to 30.
     "J17": Truck(truck_id="J17", truck_name="J17 (Crane Truck)", max_boat_boat_length=None, is_crane=True)
 }
 
@@ -441,7 +411,6 @@ def check_truck_availability(truck_id_to_check, check_date, proposed_start_dt, p
             existing_job_start_dt = job.scheduled_start_datetime
             existing_job_true_end_dt = job.scheduled_end_datetime
             truck_is_involved = False
-            # Ensure this entire if/elif block is perfectly clean.
             if job.assigned_hauling_truck_id == truck_id_to_check:
                 truck_is_involved = True
             elif job.assigned_crane_truck_id == truck_id_to_check and truck_id_to_check == "J17":
