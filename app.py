@@ -168,31 +168,37 @@ if st.session_state.found_slots and not st.session_state.selected_slot:
     cols = st.columns(3)
     
     for i, slot in enumerate(st.session_state.found_slots):
-        col = cols[i % 3] # Cycle through the columns for layout
+        col = cols[i % 3]  # Cycle through the columns for layout
         with col:
             with st.container(border=True):
-                # ... date, time, truck, ramp ...
-                st.markdown(f"**Truck:** {truck_id}")
-                if ramp_name != "N/A":
-                    st.markdown(f"**Ramp:** {ramp_name}")
-
-                # --- ADD THESE TWO LINES ---
-                if slot.get('tide_rule_concise'):
-                    st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
-                if slot.get('high_tide_info'):
-                    st.markdown(f"**{slot['high_tide_info']}**")
+                # --- Define all variables from the slot dictionary FIRST ---
+                date_str = slot['date'].strftime('%a, %b %d, %Y')
+                time_str = ecm.format_time_for_display(slot.get('time'))
+                truck_id = slot.get('truck_id', 'N/A')
                 
-                # Button to select this specific slot
-                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+                ramp_name = "N/A"  # Default value
+                if slot.get('ramp_id'):
+                    ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                    if ramp_details:
+                        ramp_name = ramp_details.ramp_name
 
+                # --- Now, display the information in a logical order ---
                 st.markdown(f"**Date:** {date_str}")
                 st.markdown(f"**Time:** {time_str}")
                 st.markdown(f"**Truck:** {truck_id}")
+
                 if ramp_name != "N/A":
                     st.markdown(f"**Ramp:** {ramp_name}")
                 
-                # Button to select this specific slot
+                if slot.get('tide_rule_concise'):
+                    st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
+                
+                if slot.get('high_tide_info'):
+                    st.markdown(f"**{slot['high_tide_info']}**")
+                
+                # --- Finally, add the button to select this slot ---
                 st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+    
     st.markdown("---")
 
 
