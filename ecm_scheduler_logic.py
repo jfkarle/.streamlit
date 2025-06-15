@@ -545,8 +545,7 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
                              selected_ramp_id=None, transport_dropoff_details=None,
                              start_after_slot_details=None,
-                             force_preferred_truck=True, relax_ramp_constraint=False,
-                             ecm_op_hours=None): # <--- ADD THIS ARGUMENT
+                             force_preferred_truck=True, relax_ramp_constraint=False): # <--- ARGUMENT REMOVED
     global original_job_request_details, DEBUG_LOG_MESSAGES
     DEBUG_LOG_MESSAGES = [f"FindSlots Start: Cust({customer_id}) Boat({boat_id}) Svc({service_type}) ReqDate({requested_date_str}) Ramp({selected_ramp_id})"]
     original_job_request_details = {'transport_dropoff_details': transport_dropoff_details, 'customer_id': customer_id, 'boat_id': boat_id, 'service_type': service_type, 'selected_ramp_id': selected_ramp_id, 'requested_date_str': requested_date_str}
@@ -641,7 +640,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
             is_non_ecm_cust = not customer.is_ecm_customer
             if is_non_ecm_cust:
-                day_open_dt = datetime.datetime.combine(current_search_date, ecm_op_hours['open'])
+                day_open_dt = datetime.datetime.combine(current_search_date, ecm_hours['open'])
                 non_ecm_min_start_dt = day_open_dt + datetime.timedelta(hours=1.5)
                 non_ecm_min_start_time = non_ecm_min_start_dt.time()
                 delayed_windows = []
@@ -668,7 +667,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                             potential_time = temp_dt.time()
                         if potential_time >= window['end_time']: break
                         if not any(s['date'] == current_search_date and s['time'] == potential_time and s['truck_id'] == truck_id for s in potential_slots_collected):
-                            slot_detail = _check_and_create_slot_detail(current_search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES, window_details=window)
+                            slot_detail = _check_and_create_slot_detail(current_search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES, window_details=window)
                             if slot_detail:
                                 potential_slots_collected.append(slot_detail)
                                 break
