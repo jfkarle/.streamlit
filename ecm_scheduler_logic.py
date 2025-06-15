@@ -6,41 +6,61 @@ import datetime
 import pandas as pd
 import requests
 
-# Add this to ecm_scheduler_logic.py
-def test_requests_get():
-    try:
-        print("DEBUG: Running test_requests_get...")
-        test_url = "https://www.google.com" # A known good URL
-        response = requests.get(test_url, timeout=5)
-        response.raise_for_status()
-        print(f"DEBUG: test_requests_get successful! Status code: {response.status_code}")
-        return True
-    except Exception as e:
-        print(f"ERROR: test_requests_get failed: {e}")
-        return False
-
-# You can call this function at the very beginning of your app.py
-# or even in ecm_scheduler_logic.py just after imports for a quick check.
-# For example, in app.py after 'import ecm_scheduler_logic as ecm':
-# ecm.test_requests_get()
-
-
 def fetch_noaa_tides(station_id, date_to_check):
+    """
+    Fetches high/low tide predictions from the NOAA Tides and Currents API.
+    This function is based on your successful implementation.
+    """
     date_str = date_to_check.strftime("%Y%m%d")
 
-    print(f"DEBUG: Attempting to fetch NOAA tides for station {station_id} on {date_str}") # Add this
-    # ... (rest of your base and params) ...
+    # --- NEW DEBUGGING/DEFENSIVE CODE START ---
+    # Add these lines at the very beginning of the function
+    try:
+        # Check if requests.get is callable. If not, it will raise an AttributeError.
+        if not callable(requests.get):
+            raise AttributeError("requests.get is not callable")
+        print(f"DEBUG: requests.get is callable within fetch_noaa_tides. Proceeding for station {station_id}.")
+    except (NameError, AttributeError) as e:
+        print(f"CRITICAL ERROR: 'requests' module or 'requests.get' is not properly loaded/defined within fetch_noaa_tides. Attempting re-import. Error: {e}")
+        # Try to re-import requests specifically within the function, as a last resort
+        try:
+            import requests as requests_reimport # Use a different name to avoid conflict, if needed
+            global requests # Declare intent to modify global 'requests'
+            requests = requests_reimport # Reassign global 'requests'
+            if not callable(requests.get):
+                raise AttributeError("re-imported requests.get is still not callable")
+            print("CRITICAL DEBUG: Successfully re-imported requests within function.")
+        except Exception as re_e:
+            print(f"CRITICAL ERROR: Failed to re-import requests within function: {re_e}")
+            return [] # Cannot proceed without requests
+
+    # --- NEW DEBUGGING/DEFENSIVE CODE END ---
+
+    base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
+    params = {
+        "product": "predictions",
+        "application": "ecm-boat-scheduler",
+        "begin_date": date_str,
+        "end_date": date_str,
+        "datum": "MLLW",
+        "station": station_id,
+        "time_zone": "lst_ldt",
+        "units": "english",
+        "interval": "hilo",
+        "format": "json",
+    }
 
     tide_events = []
     try:
-        resp = requests.get(base, params=params, timeout=10)
+        # The error points here:
+        resp = requests.get(base, params=params, timeout=10) # This is line 36 in your current code structure
         resp.raise_for_status()
         data = resp.json().get("predictions", [])
 
-        if data: # Add this check
-            print(f"DEBUG: Successfully received {len(data)} tide predictions for station {station_id}.") # Add this
-        else: # Add this
-            print(f"DEBUG: Received no tide predictions for station {station_id}.") # Add this
+        if data:
+            print(f"DEBUG: Successfully received {len(data)} tide predictions for station {station_id}.")
+        else:
+            print(f"DEBUG: Received no tide predictions for station {station_id}.")
 
         for item in data:
             t = datetime.datetime.strptime(item["t"], "%Y-%m-%d %H:%M")
@@ -48,7 +68,7 @@ def fetch_noaa_tides(station_id, date_to_check):
             if typ in ["H", "L"]:
                 tide_events.append({'type': typ, 'time': t.time()})
 
-        print(f"DEBUG: Processed {len(tide_events)} high/low tide events for station {station_id}.") # Add this
+        print(f"DEBUG: Processed {len(tide_events)} high/low tide events for station {station_id}.")
 
     except requests.exceptions.RequestException as e:
         print(f"ERROR: Could not fetch real-time NOAA tide data for station {station_id}. Error: {e}")
