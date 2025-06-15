@@ -170,7 +170,7 @@ if st.session_state.found_slots and not st.session_state.selected_slot:
     for i, slot in enumerate(st.session_state.found_slots):
         col = cols[i % 3] # Cycle through the columns for layout
         with col:
-            wwith st.container(border=True):
+            with st.container(border=True):
                 # ... date, time, truck, ramp ...
                 st.markdown(f"**Truck:** {truck_id}")
                 if ramp_name != "N/A":
