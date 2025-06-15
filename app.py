@@ -86,7 +86,6 @@ if selected_customer_id:
     else:
         st.sidebar.error(f"No boat found for customer: {selected_customer_obj.customer_name}")
 
-# --- Inputs for the Job Request ---
 if selected_customer_id and selected_boat_id:
     service_type_input = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
     default_date = ecm.TODAY_FOR_SIMULATION + datetime.timedelta(days=7)
@@ -108,8 +107,18 @@ if selected_customer_id and selected_boat_id:
             'selected_ramp_id': selected_ramp_id_input,
         }
         st.session_state.current_job_request = job_request
+
+        # ADD THIS: Define your operating hours. This is correct.
+        operating_hours = {'open': datetime.time(9, 0), 'close': datetime.time(17, 0)}
+
+        # This is your corrected line. It's perfect.
+        slots, message, _ = ecm.find_available_job_slots(**job_request,
+                                                         force_preferred_truck=True,
+                                                         relax_ramp_constraint=False,
+                                                         ecm_op_hours=operating_hours)
         
-        slots, message, _ = ecm.find_available_job_slots(**job_request, force_preferred_truck=True, relax_ramp_constraint=False)
+        # --- FIX #1: DELETE THE DUPLICATE LINE BELOW ---
+        # slots, message, _ = ecm.find_available_job_slots(**job_request, force_preferred_truck=True, relax_ramp_constraint=False)
         
         st.session_state.info_message = message
         st.session_state.found_slots = slots
@@ -126,11 +135,16 @@ if selected_customer_id and selected_boat_id:
     if st.sidebar.button("Find Alternatives", key="find_relaxed"):
         # We need a current job request to find alternatives for
         if st.session_state.current_job_request:
-            # Use the existing job request but override the lever settings
+            
+            # You need the operating hours here as well!
+            operating_hours = {'open': datetime.time(9, 0), 'close': datetime.time(17, 0)}
+
+            # --- FIX #2: ADD 'ecm_op_hours' TO THIS FUNCTION CALL ---
             slots, message, _ = ecm.find_available_job_slots(
                 **st.session_state.current_job_request, 
                 force_preferred_truck=(not relax_truck_input), 
-                relax_ramp_constraint=relax_ramp_input
+                relax_ramp_constraint=relax_ramp_input,
+                ecm_op_hours=operating_hours  # <--- ADD THIS ARGUMENT
             )
             st.session_state.info_message = message
             st.session_state.found_slots = slots
