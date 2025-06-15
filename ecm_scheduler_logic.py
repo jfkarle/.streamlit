@@ -14,7 +14,6 @@ def fetch_noaa_tides(station_id, date_to_check):
     date_str = date_to_check.strftime("%Y%m%d")
 
     # --- NEW DEBUGGING/DEFENSIVE CODE START ---
-    # Add these lines at the very beginning of the function
     try:
         # Check if requests.get is callable. If not, it will raise an AttributeError.
         if not callable(requests.get):
@@ -33,7 +32,6 @@ def fetch_noaa_tides(station_id, date_to_check):
         except Exception as re_e:
             print(f"CRITICAL ERROR: Failed to re-import requests within function: {re_e}")
             return [] # Cannot proceed without requests
-
     # --- NEW DEBUGGING/DEFENSIVE CODE END ---
 
     base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
@@ -52,8 +50,7 @@ def fetch_noaa_tides(station_id, date_to_check):
 
     tide_events = []
     try:
-        # The error points here:
-        resp = requests.get(base, params=params, timeout=10) # This is line 36 in your current code structure
+        resp = requests.get(base, params=params, timeout=10)
         resp.raise_for_status()
         data = resp.json().get("predictions", [])
 
