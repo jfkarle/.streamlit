@@ -366,9 +366,11 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
     tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_to_check)
     tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data, date_to_check)
 
-    # NEW: Get high tide times for the display
-    high_tide_times_for_display = [format_time_for_display(event['time']) for event in tide_data if event['type'] == 'H']
-    high_tide_info_str = "HT: " + " / ".join(high_tide_times_for_display) if high_tide_times_for_display else "No High Tide Data"
+    # Get the raw high tide times (list of datetime.time objects)
+    high_tides_list = [event['time'] for event in tide_data if event['type'] == 'H']
+    
+    # Get concise tide rule description
+    concise_tide_rule_str = get_concise_tide_rule(ramp_obj, boat_obj)
     
     # NEW: Get concise tide rule description
     concise_tide_rule_str = get_concise_tide_rule(ramp_obj, boat_obj)
@@ -382,10 +384,10 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
             overlap_end1 = min(datetime.datetime.combine(date_to_check, datetime.time.max), ecm_close_dt)
             if overlap_start1 < overlap_end1:
                 final_windows.append({
-                    'start_time': overlap_start1.time(),
-                    'end_time': overlap_end1.time(),
-                    'high_tide_info': high_tide_info_str, # NEW
-                    'tide_rule_concise': concise_tide_rule_str # NEW
+                    'start_time': overlap_start_dt.time(),
+                    'end_time': overlap_end_dt.time(),
+                    'high_tide_times': high_tides_list, # CHANGED KEY and VALUE
+                    'tide_rule_concise': concise_tide_rule_str
                 })
         else:
             overlap_start_dt = max(tidal_start_dt, ecm_open_dt)
@@ -485,11 +487,24 @@ def is_dropoff_at_ecm_base(dropoff_location_coords):
     return dropoff_location_coords.get('lat') == ECM_BASE_LOCATION['lat'] and \
            dropoff_location_coords.get('lon') == ECM_BASE_LOCATION['lon']
 
+You have correctly added the two lines to define tide_times and tide_rule. That part is perfect.
+
+However, the final return block at the end of the function is now malformed. It looks like the old and new versions were accidentally combined, which creates a SyntaxError.
+
+You need to replace the entire jumbled return section with a single, clean dictionary that includes all the necessary keys.
+
+Corrected Code for _check_and_create_slot_detail
+To avoid any more confusion, here is the complete and final version of the _check_and_create_slot_detail function. It includes the sailboat prioritization logic we will need for Step 2.
+
+Please replace your entire existing function with this one.
+
+Python
+
 def _check_and_create_slot_detail(current_search_date, current_potential_start_time_obj,
-                                   truck_id, customer, boat, service_type, ramp_obj,
-                                   ecm_op_hours, job_duration_hours, needs_j17,
-                                   j17_actual_busy_duration_hours, debug_log_list,
-                                   window_details=None): # <--- ADD THIS ARGUMENT
+                                  truck_id, customer, boat, service_type, ramp_obj,
+                                  ecm_op_hours, job_duration_hours, needs_j17,
+                                  j17_actual_busy_duration_hours, debug_log_list,
+                                  window_details=None):
     debug_log_list.append(f"C&CSD: Check: {current_search_date.strftime('%a %m-%d')} {current_potential_start_time_obj.strftime('%I:%M%p')} Truck:{truck_id}")
     proposed_start_dt = datetime.datetime.combine(current_search_date, current_potential_start_time_obj)
     proposed_end_dt_hauler = proposed_start_dt + datetime.timedelta(hours=job_duration_hours)
@@ -525,9 +540,21 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
         if ex_job and ex_job.customer_id != customer.customer_id and not get_customer_details(ex_job.customer_id).is_ecm_customer and ex_job.service_type == "Haul":
             slot_type = "BumpNonECM_BusyHaul"
             bumped_job_info = {"job_id": ex_job.job_id, "customer_name": get_customer_details(ex_job.customer_id).customer_name}
-    tide_info = window_details.get('high_tide_info', '') if window_details else ''
-    tide_rule = window_details.get('tide_rule_concise', '') if window_details else ''
     
+    # --- This is the corrected section ---
+    
+    # Get the raw list of tide times and the rule
+    tide_times = window_details.get('high_tide_times', []) if window_details else []
+    tide_rule = window_details.get('tide_rule_concise', '') if window_details else ''
+
+    # Add priority score logic for Step 2
+    priority_score = 0 # Default priority
+    if boat.boat_type in ["Sailboat DT", "Sailboat MT"] and ramp_obj:
+        # This check will be used by the new helper function we will add later
+        if is_j17_at_ramp(current_search_date, ramp_obj.ramp_id):
+            priority_score = 1
+
+    # This is the single, correct return statement
     return {
         'date': current_search_date,
         'time': current_potential_start_time_obj,
@@ -538,10 +565,10 @@ def _check_and_create_slot_detail(current_search_date, current_potential_start_t
         'customer_name': customer.customer_name,
         'boat_details_summary': f"{boat.boat_length}ft {boat.boat_type}",
         'ramp_id': ramp_obj.ramp_id if ramp_obj else None,
-        'high_tide_info': tide_info,
-        'tide_rule_concise': tide_rule
+        'tide_rule_concise': tide_rule,
+        'high_tide_times': tide_times,
+        'priority_score': priority_score
     }
-
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
                              selected_ramp_id=None, transport_dropoff_details=None,
                              start_after_slot_details=None,
