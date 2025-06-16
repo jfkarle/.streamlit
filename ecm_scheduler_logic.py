@@ -621,7 +621,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
             if not customer.is_ecm_customer:
                 non_ecm_min_start_time = (datetime.datetime.combine(current_search_date, ecm_hours['open']) + datetime.timedelta(hours=1.5)).time()
-                daily_windows = [{'start_time': max(w['start_time'], non_ecm_min_start_time), 'end_time': w['end_time'], **w} for w in daily_windows if max(w['start_time'], non_ecm_min_start_time) < w['end_time']]
+                daily_windows = [{**w, 'start_time': max(w['start_time'], non_ecm_min_start_time)} for w in daily_windows if max(w['start_time'], non_ecm_min_start_time) < w['end_time']]
 
             for truck_id in trucks_to_search:
                 if len(slots_before_requested) >= 2: break
@@ -658,7 +658,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
             if not customer.is_ecm_customer:
                 non_ecm_min_start_time = (datetime.datetime.combine(current_search_date, ecm_hours['open']) + datetime.timedelta(hours=1.5)).time()
-                daily_windows = [{'start_time': max(w['start_time'], non_ecm_min_start_time), 'end_time': w['end_time'], **w} for w in daily_windows if max(w['start_time'], non_ecm_min_start_time) < w['end_time']]
+                daily_windows = [{**w, 'start_time': max(w['start_time'], non_ecm_min_start_time)} for w in daily_windows if max(w['start_time'], non_ecm_min_start_time) < w['end_time']]
 
             for truck_id in trucks_to_search:
                 if len(slots_on_or_after_requested) >= 4: break
