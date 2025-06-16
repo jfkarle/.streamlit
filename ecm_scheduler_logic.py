@@ -396,7 +396,7 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
                 final_windows.append({
                     'start_time': overlap_start_dt.time(),
                     'end_time': overlap_end_dt.time(),
-                    'high_tide_info': high_tide_info_str, # NEW
+                    'high_tide_times': high_tides_list,
                     'tide_rule_concise': concise_tide_rule_str # NEW
                 })
     unique_final_windows = []
