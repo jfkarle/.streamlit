@@ -206,24 +206,28 @@ if st.session_state.found_slots and not st.session_state.selected_slot:
         col = cols[i % 3]
         with col:
             with st.container(border=True):
+                # --- NEW: Check if this slot's date is the requested date ---
+                # Note: This assumes 'requested_date_input' is the variable name for your sidebar date widget
+                if 'requested_date_input' in locals() and slot['date'] == requested_date_input:
+                    st.markdown("⭐ **Requested Date**")
+
                 # --- Define all variables FIRST ---
                 date_str = slot['date'].strftime('%a, %b %d, %Y')
                 time_str = ecm.format_time_for_display(slot.get('time'))
                 truck_id = slot.get('truck_id', 'N/A')
                 ramp_name = ecm.get_ramp_details(slot.get('ramp_id')).ramp_name if slot.get('ramp_id') else "N/A"
                 
-                # Get operating hours for the slot's date to format tides correctly
                 ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
                 tide_display_str = format_tides_for_display(slot, ecm_hours)
 
-                # --- Display in the NEW desired order ---
+                # --- Display in the desired order ---
                 st.markdown(f"**Date:** {date_str}")
                 
                 if slot.get('tide_rule_concise'):
                     st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
                 
                 if tide_display_str:
-                    st.markdown(tide_display_str) # Display the specially formatted tide string
+                    st.markdown(tide_display_str)
                 
                 st.markdown(f"**Time:** {time_str}")
                 st.markdown(f"**Truck:** {truck_id}")
