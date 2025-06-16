@@ -206,10 +206,17 @@ if st.session_state.found_slots and not st.session_state.selected_slot:
         col = cols[i % 3]
         with col:
             with st.container(border=True):
-                # --- NEW: Check if this slot's date is the requested date ---
-                # Note: This assumes 'requested_date_input' is the variable name for your sidebar date widget
+                
+                # --- NEW: Check if this is the requested date and add a prominent banner ---
                 if 'requested_date_input' in locals() and slot['date'] == requested_date_input:
-                    st.markdown("⭐ **Requested Date**")
+                    st.markdown(
+                        """
+                        <div style="background-color: #e6ffed; border-left: 5px solid #006400; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                            <h5 style="color: #006400; margin: 0; font-weight: bold;">⭐ Requested Date</h5>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
                 # --- Define all variables FIRST ---
                 date_str = slot['date'].strftime('%a, %b %d, %Y')
