@@ -572,6 +572,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     boat = get_boat_details(boat_id)
     if not customer or not boat:
         return [], "Error: Invalid Cust/Boat ID.", DEBUG_LOG_MESSAGES
+        # --- INSERT THE NEW VALIDATION BLOCK HERE ---
+if selected_ramp_id:
+    ramp_obj = get_ramp_details(selected_ramp_id)
+    if ramp_obj and "Power Boats Only" in ramp_obj.allowed_boat_types and "Sailboat" in boat.boat_type:
+        error_message = f"The selected ramp '{ramp_obj.ramp_name}' only allows Power Boats. Cannot schedule a Sailboat."
+        DEBUG_LOG_MESSAGES.append(error_message)
+        return [], error_message, DEBUG_LOG_MESSAGES
+# --- END OF NEW BLOCK ---
     boat_type_for_rules = boat.boat_type
     if boat_type_for_rules == "Sailboat MD": boat_type_for_rules = "Sailboat DT"
     rules = BOOKING_RULES.get(boat_type_for_rules, {})
