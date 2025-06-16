@@ -205,14 +205,15 @@ if st.session_state.found_slots and not st.session_state.selected_slot:
     for i, slot in enumerate(st.session_state.found_slots):
         col = cols[i % 3]
         with col:
+            # The st.container still provides the main card border
             with st.container(border=True):
                 
-                # --- NEW: Check if this is the requested date and add a prominent banner ---
+                # --- This block adds the prominent green highlight ---
                 if 'requested_date_input' in locals() and slot['date'] == requested_date_input:
                     st.markdown(
                         """
-                        <div style="background-color: #e6ffed; border-left: 5px solid #006400; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                            <h5 style="color: #006400; margin: 0; font-weight: bold;">⭐ Requested Date</h5>
+                        <div style="background-color: #F0FFF0; border-left: 6px solid #2E8B57; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                            <h5 style="color: #2E8B57; margin: 0; font-weight: bold;">⭐ Requested Date</h5>
                         </div>
                         """,
                         unsafe_allow_html=True
