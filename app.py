@@ -8,6 +8,49 @@ import pandas as pd
 
 st.set_page_config(layout="wide")
 
+def format_tides_for_display(slot, ecm_hours):
+    """
+    Formats the tide display to emphasize the most relevant high tide.
+    """
+    tide_times = slot.get('high_tide_times', [])
+    if not tide_times:
+        return ""
+
+    if not ecm_hours or not ecm_hours.get('open'):
+        # Fallback if operating hours aren't available
+        return "HT: " + " / ".join([ecm.format_time_for_display(t) for t in tide_times])
+
+    op_open = ecm_hours['open']
+    op_close = ecm_hours['close']
+    
+    # Function to calculate how close a tide is to operating hours
+    def get_tide_relevance_score(tide_time):
+        tide_dt = datetime.datetime.combine(datetime.date.today(), tide_time)
+        open_dt = datetime.datetime.combine(datetime.date.today(), op_open)
+        close_dt = datetime.datetime.combine(datetime.date.today(), op_close)
+
+        if open_dt <= tide_dt <= close_dt:
+            return 0, abs((tide_dt - open_dt).total_seconds()) # In hours is best
+        
+        # Calculate minimum distance to the operating window
+        dist_to_open = abs((tide_dt - open_dt).total_seconds())
+        dist_to_close = abs((tide_dt - close_dt).total_seconds())
+        return 1, min(dist_to_open, dist_to_close)
+
+    # Sort tides by relevance (in hours, then by distance)
+    sorted_tides = sorted(tide_times, key=get_tide_relevance_score)
+
+    primary_tide_str = ecm.format_time_for_display(sorted_tides[0])
+    
+    if len(sorted_tides) == 1:
+        return f"**HIGH TIDE: {primary_tide_str}**"
+
+    secondary_tides = [ecm.format_time_for_display(t) for t in sorted_tides[1:]]
+    secondary_tides_str = " / ".join(secondary_tides)
+
+    return f"**HIGH TIDE: {primary_tide_str}** (and {secondary_tides_str.lower()})"
+    
+
 # --- Session State Initialization ---
 if 'data_loaded' not in st.session_state:
     if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"):
@@ -157,43 +200,38 @@ def handle_slot_selection(slot_data):
 if st.session_state.found_slots and not st.session_state.selected_slot:
     st.subheader("Please select your preferred slot:")
     
-    # Create columns for a card-like layout
     cols = st.columns(3)
     
     for i, slot in enumerate(st.session_state.found_slots):
-        col = cols[i % 3]  # Cycle through the columns for layout
+        col = cols[i % 3]
         with col:
             with st.container(border=True):
-                # --- Define all variables from the slot dictionary FIRST ---
+                # --- Define all variables FIRST ---
                 date_str = slot['date'].strftime('%a, %b %d, %Y')
                 time_str = ecm.format_time_for_display(slot.get('time'))
                 truck_id = slot.get('truck_id', 'N/A')
+                ramp_name = ecm.get_ramp_details(slot.get('ramp_id')).ramp_name if slot.get('ramp_id') else "N/A"
                 
-                ramp_name = "N/A"  # Default value
-                if slot.get('ramp_id'):
-                    ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
-                    if ramp_details:
-                        ramp_name = ramp_details.ramp_name
+                # Get operating hours for the slot's date to format tides correctly
+                ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
+                tide_display_str = format_tides_for_display(slot, ecm_hours)
 
-                # --- Now, display the information in a logical order ---
+                # --- Display in the NEW desired order ---
                 st.markdown(f"**Date:** {date_str}")
-                st.markdown(f"**Time:** {time_str}")
-                st.markdown(f"**Truck:** {truck_id}")
-
-                if ramp_name != "N/A":
-                    st.markdown(f"**Ramp:** {ramp_name}")
                 
                 if slot.get('tide_rule_concise'):
                     st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
                 
-                if slot.get('high_tide_info'):
-                    st.markdown(f"**{slot['high_tide_info']}**")
+                if tide_display_str:
+                    st.markdown(tide_display_str) # Display the specially formatted tide string
                 
-                # --- Finally, add the button to select this slot ---
+                st.markdown(f"**Time:** {time_str}")
+                st.markdown(f"**Truck:** {truck_id}")
+                st.markdown(f"**Ramp:** {ramp_name}")
+                
                 st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
     
     st.markdown("---")
-
 
 # --- Phase 3: Display Confirmation Section for the CHOSEN Slot ---
 if st.session_state.selected_slot:
