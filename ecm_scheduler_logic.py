@@ -699,6 +699,102 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         explanation = "No suitable slots found with the current criteria."
     return top_slots, explanation, DEBUG_LOG_MESSAGES
 
+
+def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
+    global JOB_ID_COUNTER, SCHEDULED_JOBS
+    
+    customer = get_customer_details(original_job_request_details['customer_id'])
+    boat = get_boat_details(original_job_request_details['boat_id'])
+    if not customer or not boat:
+        return None, "Error: Confirm - Cust/Boat details missing."
+
+    service_type = original_job_request_details['service_type']
+    selected_ramp_id = original_job_request_details.get('selected_ramp_id')
+    ramp_obj = ECM_RAMPS.get(selected_ramp_id) if selected_ramp_id else None
+
+    if service_type in ["Launch", "Haul"] and not ramp_obj:
+        return None, f"Error: A ramp must be selected for a '{service_type}' job. Confirmation failed."
+
+    new_job_id = JOB_ID_COUNTER
+    JOB_ID_COUNTER += 1
+    
+    scheduled_start_datetime = datetime.datetime.combine(selected_slot_info['date'], selected_slot_info['time'])
+    
+    # Determine job duration based on boat type
+    rules = BOOKING_RULES.get(boat.boat_type, {})
+    if boat.boat_type == "Sailboat MD": # Handle alias
+        rules = BOOKING_RULES.get("Sailboat DT", {})
+    job_duration_hours_hauler = rules.get('truck_mins', 90) / 60.0
+    
+    scheduled_end_datetime_hauler = scheduled_start_datetime + datetime.timedelta(hours=job_duration_hours_hauler)
+    
+    assigned_hauling_truck_id = selected_slot_info['truck_id']
+    assigned_crane_truck_id = "J17" if selected_slot_info['j17_needed'] else None
+    
+    final_j17_busy_end_datetime = None
+    if assigned_crane_truck_id == "J17":
+        j17_busy_hours = rules.get('crane_mins', 0) / 60.0
+        if j17_busy_hours > 0:
+            final_j17_busy_end_datetime = scheduled_start_datetime + datetime.timedelta(hours=j17_busy_hours)
+
+    pickup_desc, dropoff_desc = "Default Pickup", "Default Dropoff"
+    pickup_r_id, dropoff_r_id = None, None
+
+    if service_type == "Launch":
+        pickup_desc = f"Cust: {customer.customer_name} Home"
+        dropoff_desc = ramp_obj.ramp_name if ramp_obj else "Selected Ramp"
+        dropoff_r_id = selected_ramp_id
+    elif service_type == "Haul":
+        pickup_desc = ramp_obj.ramp_name if ramp_obj else "Selected Ramp"
+        pickup_r_id = selected_ramp_id
+        mock_dropoff_coords = determine_job_location_coordinates("dropoff", service_type, customer, boat, ramp_obj)
+        dropoff_desc = ECM_TRUCKS[assigned_hauling_truck_id].home_base_address if is_dropoff_at_ecm_base(mock_dropoff_coords) else f"Cust: {customer.customer_name} Home"
+    elif service_type == "Transport":
+        pickup_desc = f"Cust: {customer.customer_name} Home"
+        dropoff_desc = original_job_request_details.get('transport_dropoff_details', {}).get('address', "Cust Alt. Address")
+
+    new_job = Job(job_id=new_job_id, customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
+                  requested_date=datetime.datetime.strptime(original_job_request_details['requested_date_str'], '%Y-%m-%d').date(),
+                  scheduled_start_datetime=scheduled_start_datetime, calculated_job_duration_hours=job_duration_hours_hauler,
+                  scheduled_end_datetime=scheduled_end_datetime_hauler, assigned_hauling_truck_id=assigned_hauling_truck_id,
+                  assigned_crane_truck_id=assigned_crane_truck_id, j17_busy_end_datetime=final_j17_busy_end_datetime,
+                  pickup_ramp_id=pickup_r_id, pickup_street_address=pickup_desc,
+                  dropoff_ramp_id=dropoff_r_id, dropoff_street_address=dropoff_desc,
+                  job_status="Scheduled", notes=f"Booked via type: {selected_slot_info['type']}. ECM Boat: {customer.is_ecm_customer}")
+    
+    bump_notification = ""
+    if selected_slot_info['type'] != "Open" and selected_slot_info.get('bumped_job_details'):
+        bumped_job_id = selected_slot_info['bumped_job_details']['job_id']
+        bumped_cust_name = selected_slot_info['bumped_job_details']['customer_name']
+        bumped_updated = False
+        for i, job in enumerate(SCHEDULED_JOBS):
+            if job.job_id == bumped_job_id and job.job_status == "Scheduled":
+                SCHEDULED_JOBS[i].job_status = "Bumped - Needs Reschedule"
+                SCHEDULED_JOBS[i].notes = f"{job.notes or ''} Bumped by Job {new_job_id}."
+                bump_notification = f"ALERT: Job {bumped_job_id} for {bumped_cust_name} now 'Bumped - Needs Reschedule'."
+                bumped_updated = True
+                break
+        if not bumped_updated:
+            bump_notification = f"WARNING: Bump failed - Job {bumped_job_id} not found or not in 'Scheduled' state."
+    
+    SCHEDULED_JOBS.append(new_job)
+    
+    if new_job.assigned_crane_truck_id and new_job.scheduled_start_datetime:
+        job_date_str = new_job.scheduled_start_datetime.strftime('%Y-%m-%d')
+        if job_date_str not in crane_daily_status:
+            crane_daily_status[job_date_str] = {'ramps_visited': set()}
+        if new_job.dropoff_ramp_id:
+            crane_daily_status[job_date_str]['ramps_visited'].add(new_job.dropoff_ramp_id)
+        elif new_job.pickup_ramp_id:
+            crane_daily_status[job_date_str]['ramps_visited'].add(new_job.pickup_ramp_id)
+            
+    success_msg = f"SUCCESS: Job {new_job_id} for {customer.customer_name} scheduled for {format_time_for_display(new_job.scheduled_start_datetime.time())} on {new_job.scheduled_start_datetime.date()}."
+    final_msg = f"{success_msg} {bump_notification}".strip()
+    
+    return new_job.job_id, final_msg
+
+
+
 def _mark_slots_in_grid(schedule_grid_truck_col, time_slots_dt_list,
                         job_actual_start_dt, job_actual_end_dt,
                         job_display_text, slot_status, job_id_for_ref,
