@@ -166,40 +166,84 @@ if selected_customer_obj:
 
 # --- Main Area for Displaying Results and Confirmation ---
 def handle_slot_selection(slot_data):
+    """Sets the chosen slot into the session state for confirmation."""
     st.session_state.selected_slot = slot_data
 
+# This block handles the new two-tiered display logic
 if st.session_state.found_slots and not st.session_state.selected_slot:
-    st.subheader("Please select your preferred slot:")
-    cols = st.columns(3)
-    for i, slot in enumerate(st.session_state.found_slots):
-        with cols[i % 3]:
-            with st.container(border=True):
-                if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
-                    st.markdown(
-                        """
-                        <div style="background-color: #F0FFF0; border-left: 6px solid #2E8B57; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                            <h5 style="color: #2E8B57; margin: 0; font-weight: bold;">⭐ Requested Date</h5>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                date_str = slot['date'].strftime('%a, %b %d, %Y')
-                time_str = ecm.format_time_for_display(slot.get('time'))
-                truck_id = slot.get('truck_id', 'N/A')
-                ramp_name = ecm.get_ramp_details(slot.get('ramp_id')).ramp_name if slot.get('ramp_id') else "N/A"
-                ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
-                tide_display_str = format_tides_for_display(slot, ecm_hours)
+    
+    # --- 1. Separate slots into 'requested' and 'other' groups ---
+    requested_date_slots = []
+    other_slots = []
+    requested_date = st.session_state.get('search_requested_date')
 
-                st.markdown(f"**Date:** {date_str}")
-                if slot.get('tide_rule_concise'):
-                    st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
-                if tide_display_str:
-                    st.markdown(tide_display_str)
-                st.markdown(f"**Time:** {time_str}")
-                st.markdown(f"**Truck:** {truck_id}")
-                st.markdown(f"**Ramp:** {ramp_name}")
-                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
-    st.markdown("---")
+    if requested_date:
+        for slot in st.session_state.found_slots:
+            if slot['date'] == requested_date:
+                requested_date_slots.append(slot)
+            else:
+                other_slots.append(slot)
+    else:
+        other_slots = st.session_state.found_slots
+
+    # --- 2. Display the prominent "Requested Date" slot ---
+    if requested_date_slots:
+        st.subheader("Your Requested Date is Available:")
+        with st.container(border=True):
+            st.markdown(
+                """
+                <div style="background-color: #F0FFF0; border-left: 6px solid #2E8B57; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                    <h5 style="color: #2E8B57; margin: 0; font-weight: bold;">⭐ Requested Date</h5>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            
+            slot = requested_date_slots[0]
+            date_str = slot['date'].strftime('%a, %b %d, %Y')
+            time_str = ecm.format_time_for_display(slot.get('time'))
+            truck_id = slot.get('truck_id', 'N/A')
+            ramp_name = ecm.get_ramp_details(slot.get('ramp_id')).ramp_name if slot.get('ramp_id') else "N/A"
+            ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
+            tide_display_str = format_tides_for_display(slot, ecm_hours)
+
+            st.markdown(f"**Date:** {date_str}")
+            if slot.get('tide_rule_concise'):
+                st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
+            if tide_display_str:
+                st.markdown(tide_display_str)
+            st.markdown(f"**Time:** {time_str}")
+            st.markdown(f"**Truck:** {truck_id}")
+            st.markdown(f"**Ramp:** {ramp_name}")
+            st.button("Select this slot", key="select_slot_requested", on_click=handle_slot_selection, args=(slot,))
+        st.markdown("---")
+
+    # --- 3. Display other available slots in a grid ---
+    if other_slots:
+        st.subheader("Other Available Slots:")
+        num_columns = min(len(other_slots), 5)
+        cols = st.columns(num_columns)
+
+        for i, slot in enumerate(other_slots):
+            with cols[i % num_columns]:
+                with st.container(border=True):
+                    date_str = slot['date'].strftime('%a, %b %d, %Y')
+                    time_str = ecm.format_time_for_display(slot.get('time'))
+                    truck_id = slot.get('truck_id', 'N/A')
+                    ramp_name = ecm.get_ramp_details(slot.get('ramp_id')).ramp_name if slot.get('ramp_id') else "N/A"
+                    ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
+                    tide_display_str = format_tides_for_display(slot, ecm_hours)
+
+                    st.markdown(f"**Date:** {date_str}")
+                    if slot.get('tide_rule_concise'):
+                        st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
+                    if tide_display_str:
+                        st.markdown(tide_display_str)
+                    st.markdown(f"**Time:** {time_str}")
+                    st.markdown(f"**Truck:** {truck_id}")
+                    st.markdown(f"**Ramp:** {ramp_name}")
+                    st.button("Select this slot", key=f"select_slot_other_{i}", on_click=handle_slot_selection, args=(slot,))
+
 
 elif st.session_state.selected_slot:
     slot = st.session_state.selected_slot
