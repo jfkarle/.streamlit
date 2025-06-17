@@ -6,6 +6,7 @@ import datetime
 import requests
 
 # --- Utility Functions ---
+
 def fetch_noaa_tides(station_id, date_to_check):
     date_str = date_to_check.strftime("%Y%m%d")
     base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
@@ -17,6 +18,15 @@ def fetch_noaa_tides(station_id, date_to_check):
     except Exception as e:
         print(f"ERROR fetching tides for station {station_id}: {e}")
         return []
+
+def format_time_for_display(time_obj):
+    """Formats a time object for display, e.g., 8:00 AM."""
+    if not isinstance(time_obj, datetime.time):
+        return "InvalidTime"
+    # Use '%-I' on Linux/macOS or '%#I' on Windows to remove leading zero
+    # A more portable way is to use lstrip
+    return time_obj.strftime('%I:%M %p').lstrip('0')
+
 
 def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide": return "Any Tide"
