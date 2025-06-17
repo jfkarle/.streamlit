@@ -133,25 +133,40 @@ if selected_customer_obj:
             st.session_state.selected_slot = None
             st.rerun()
 
-        # Levers and "Find Alternatives" button
-        st.sidebar.subheader("Not soon enough? Widen your search:")
-        relax_truck_input = st.sidebar.checkbox("Relax Truck Constraint", key="relax_truck")
-        relax_ramp_input = st.sidebar.checkbox("Relax Ramp Constraint", key="relax_ramp")
-        if st.sidebar.button("Find Alternatives", key="find_relaxed"):
-            if st.session_state.current_job_request:
-                slots, message, _ = ecm.find_available_job_slots(
-                    **st.session_state.current_job_request,
-                    force_preferred_truck=(not relax_truck_input),
-                    relax_ramp_constraint=relax_ramp_input
-                )
-                st.session_state.info_message = message
-                st.session_state.found_slots = slots
-                st.session_state.selected_slot = None
-                st.rerun()
-            else:
-                st.sidebar.warning("Please find a strict slot first.")
-    else:
-        st.sidebar.error(f"No boat found for customer: {selected_customer_obj.customer_name}")
+        # --- Levers for Alternative Search ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Not soon enough? Widen your search:")
+    
+    relax_truck_input = st.sidebar.checkbox("Relax Truck Constraint (use any suitable truck)", key="relax_truck")
+    relax_ramp_input = st.sidebar.checkbox("Relax Ramp Constraint (search nearby ramps)", key="relax_ramp")
+
+    if st.sidebar.button("Find Alternatives", key="find_relaxed"):
+        # We need a current job request to find alternatives for
+        if st.session_state.current_job_request:
+            
+            # Use the existing job request from session state
+            req = st.session_state.current_job_request
+
+            # --- THIS IS THE CORRECTED FUNCTION CALL ---
+            slots, message, _ = ecm.find_available_job_slots(
+                customer_id=req['customer_id'],
+                boat_id=req['boat_id'],
+                service_type=req['service_type'],
+                requested_date_str=req['requested_date_str'],
+                selected_ramp_id=req['selected_ramp_id'],
+                force_preferred_truck=(not relax_truck_input), 
+                relax_ramp_constraint=relax_ramp_input
+            )
+
+            st.session_state.info_message = message
+            st.session_state.found_slots = slots
+            st.session_state.selected_slot = None # Reset selection
+            # Also save the date so highlighting works correctly on this search
+            st.session_state.search_requested_date = datetime.datetime.strptime(req['requested_date_str'], '%Y-%m-%d').date()
+            st.rerun()
+        else:
+            st.sidebar.warning("Please find a strict slot first before searching for alternatives.")
+
 
 # --- Main Area for Displaying Results and Confirmation ---
 def handle_slot_selection(slot_data):
