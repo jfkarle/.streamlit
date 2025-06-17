@@ -179,8 +179,46 @@ elif st.session_state.get('current_job_request') and not st.session_state.found_
     if st.session_state.info_message:
         st.warning(st.session_state.info_message)
 
-# Display Scheduled Jobs Table
+# In app.py, replace the final section with this code block
+
+# --- Display All Scheduled Jobs ---
 st.markdown("---")
 if st.checkbox("Show All Currently Scheduled Jobs"):
-    # (Your existing scheduled jobs display logic)
-    st.write("Display for scheduled jobs...")
+    st.subheader("All Scheduled Jobs (Current Session)")
+    if ecm.SCHEDULED_JOBS:
+        def get_day_with_suffix(d):
+            return str(d) + ("th" if 11 <= d <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(d % 10, "th"))
+
+        display_data = []
+        # Sort jobs by their scheduled time, putting unscheduled ones last
+        for job in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max):
+            customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
+            
+            if getattr(job, 'scheduled_start_datetime', None):
+                day_str = get_day_with_suffix(job.scheduled_start_datetime.day)
+                date_formatted = job.scheduled_start_datetime.strftime(f"%B {day_str}, %Y")
+                time_formatted = ecm.format_time_for_display(job.scheduled_start_datetime.time())
+            else:
+                date_formatted, time_formatted = "Not Scheduled", "N/A"
+
+            ramp_id = getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None)
+            ramp_details = ecm.get_ramp_details(ramp_id) if ramp_id else None
+            ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
+
+            display_data.append({
+                "Job ID": getattr(job, 'job_id', 'N/A'),
+                "Status": getattr(job, 'job_status', 'N/A'),
+                "Scheduled Date": date_formatted,
+                "Scheduled Time": time_formatted,
+                "Service": getattr(job, 'service_type', 'N/A'),
+                "Customer": customer.customer_name if customer else "N/A",
+                "Truck": getattr(job, 'assigned_hauling_truck_id', 'N/A'),
+                "Crane": "Yes" if getattr(job, 'assigned_crane_truck_id', None) else "No",
+                "Ramp": ramp_name,
+                "Notes": getattr(job, 'notes', '')
+            })
+        
+        df = pd.DataFrame(display_data)
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.write("No jobs scheduled in this session yet.")
