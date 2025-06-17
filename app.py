@@ -205,11 +205,16 @@ if st.session_state.found_slots and not st.session_state.selected_slot:
     for i, slot in enumerate(st.session_state.found_slots):
         col = cols[i % 3]
         with col:
-            # The st.container still provides the main card border
             with st.container(border=True):
                 
-                # --- This block adds the prominent green highlight ---
-                if slot['date'] == requested_date_input:
+                # --- THIS IS THE CORRECTED LOGIC ---
+                # 1. Get the requested date string from session state
+                requested_date_str = st.session_state.current_job_request.get('requested_date_str')
+                # 2. Convert it to a date object for comparison
+                requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
+
+                # 3. Now compare the slot's date to the correct date object
+                if slot['date'] == requested_date_obj:
                     st.markdown(
                         """
                         <div style="background-color: #F0FFF0; border-left: 6px solid #2E8B57; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
