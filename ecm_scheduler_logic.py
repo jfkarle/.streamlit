@@ -47,6 +47,35 @@ def is_j17_at_ramp(check_date, ramp_id):
         return ramp_id in crane_daily_status[date_str].get('ramps_visited', set())
     return False
 
+def calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check):
+    usable_windows = []
+    tide_calc_method = ramp_obj.tide_calculation_method
+    
+    if tide_calc_method == "AnyTide":
+        usable_windows.append({'start_time': datetime.time.min, 'end_time': datetime.time.max})
+        return usable_windows
+
+    if not tide_data_for_day:
+        return []
+
+    if "HoursAroundHighTide" in tide_calc_method:
+        offset_val = ramp_obj.tide_offset_hours1
+        if offset_val is None: return []
+        
+        offset_delta = datetime.timedelta(hours=float(offset_val))
+        high_tides = [event['time'] for event in tide_data_for_day if event['type'] == 'H']
+        
+        for ht_time_obj in high_tides:
+            high_tide_dt = datetime.datetime.combine(date_to_check, ht_time_obj)
+            start_dt = high_tide_dt - offset_delta
+            end_dt = high_tide_dt + offset_delta
+            usable_windows.append({'start_time': start_dt.time(), 'end_time': end_dt.time()})
+            
+    usable_windows.sort(key=lambda x: x['start_time'])
+    return usable_windows
+
+
+
 # --- Configuration & Data Models ---
 TODAY_FOR_SIMULATION = datetime.date.today()
 JOB_ID_COUNTER = 3000
