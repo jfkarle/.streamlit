@@ -115,23 +115,30 @@ if selected_customer_obj:
         
         st.sidebar.markdown("---")
 
-        if st.sidebar.button("Find Best Slot (Strict)", key="find_strict"):
-    job_request = {
-        'customer_id': selected_customer_obj.customer_id,
-        'boat_id': selected_boat_obj.boat_id,
-        'service_type': service_type_input,
-        'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
-        'selected_ramp_id': selected_ramp_id_input,
-    }
-    st.session_state.current_job_request = job_request
-    st.session_state.search_requested_date = requested_date_input
+       if st.sidebar.button("Find Best Slot (Strict)", key="find_strict"):
+        # --- THIS ENTIRE BLOCK IS NOW CORRECTLY INDENTED ---
+        job_request = {
+            'customer_id': selected_customer_obj.customer_id,
+            'boat_id': selected_boat_obj.boat_id,
+            'service_type': service_type_input,
+            'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
+            'selected_ramp_id': selected_ramp_id_input,
+        }
+        st.session_state.current_job_request = job_request
+        st.session_state.search_requested_date = requested_date_input
 
-    # Receive the new 'was_forced' flag
-    slots, message, _, was_forced = ecm.find_available_job_slots(
-        **job_request, 
-        force_preferred_truck=True, 
-        relax_ramp_constraint=False
-    )
+        # Receive the new 'was_forced' flag
+        slots, message, _, was_forced = ecm.find_available_job_slots(
+            **job_request, 
+            force_preferred_truck=True, 
+            relax_ramp_constraint=False
+        )
+        
+        st.session_state.info_message = message
+        st.session_state.found_slots = slots
+        st.session_state.selected_slot = None
+        st.session_state.was_forced_search = was_forced # Save the flag
+        st.rerun()
     
     st.session_state.info_message = message
     st.session_state.found_slots = slots
