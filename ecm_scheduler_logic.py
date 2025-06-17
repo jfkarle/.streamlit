@@ -7,7 +7,6 @@ import pandas as pd
 import requests
 
 # --- Utility Functions ---
-
 def fetch_noaa_tides(station_id, date_to_check):
     """Fetches high/low tide predictions from the NOAA Tides and Currents API."""
     date_str = date_to_check.strftime("%Y%m%d")
@@ -32,31 +31,23 @@ def fetch_noaa_tides(station_id, date_to_check):
     return tide_events
 
 def format_time_for_display(time_obj):
-    """Formats a time object for display, e.g., 8:00 AM."""
     if not isinstance(time_obj, datetime.time): return "InvalidTime"
     return time_obj.strftime('%I:%M %p').lstrip('0')
 
 def get_concise_tide_rule(ramp_obj, boat_obj):
-    """Gets a short description of the tide rule for a given ramp and boat."""
     if ramp_obj.tide_calculation_method == "AnyTide": return "Any Tide"
-    if ramp_obj.tide_calculation_method == "AnyTideWithDraftRule":
-        if ramp_obj.ramp_id == "ScituateHarborJericho" and boat_obj.draft_ft and boat_obj.draft_ft >= 5.0:
-            return "3hrs +/- HT (>=5' draft)"
-        return "Any Tide (see notes)"
     if ramp_obj.tide_offset_hours1 is not None:
-        offset_str = f"{float(ramp_obj.tide_offset_hours1):g}"
-        return f"{offset_str}hrs +/- HT"
+        return f"{float(ramp_obj.tide_offset_hours1):g}hrs +/- HT"
     return "Tide Rule N/A"
 
 def is_j17_at_ramp(check_date, ramp_id):
-    """Checks if the J17 crane is scheduled to be at a specific ramp on a given date."""
     if not ramp_id: return False
     date_str = check_date.strftime('%Y-%m-%d')
     if date_str in crane_daily_status:
         return ramp_id in crane_daily_status[date_str].get('ramps_visited', set())
     return False
 
-# --- Configuration & Global Context ---
+# --- Configuration & Data Models ---
 TODAY_FOR_SIMULATION = datetime.date.today()
 JOB_ID_COUNTER = 3000
 SCHEDULED_JOBS = []
@@ -68,26 +59,21 @@ BOOKING_RULES = {
 crane_daily_status = {}
 ECM_BASE_LOCATION = {"lat": 42.0762, "lon": -70.8069}
 
-# --- Data Models (Classes) ---
 class Truck:
-    def __init__(self, truck_id, truck_name, max_boat_length, home_base_address="43 Mattakeeset St, Pembroke MA"):
+    def __init__(self, truck_id, truck_name, max_boat_length):
         self.truck_id = truck_id; self.truck_name = truck_name
         self.max_boat_length = max_boat_length; self.is_crane = "Crane" in truck_name
-        self.home_base_address = home_base_address
 
 class Ramp:
-    def __init__(self, ramp_id, ramp_name, town, tide_rule_description, tide_calculation_method, noaa_station_id, tide_offset_hours1=None, tide_offset_hours2=None, draft_restriction_ft=None, allowed_boat_types="Power and Sail", latitude=None, longitude=None):
-        self.ramp_id = ramp_id; self.ramp_name = ramp_name; self.town = town
-        self.tide_rule_description = tide_rule_description; self.tide_calculation_method = tide_calculation_method
-        self.noaa_station_id = noaa_station_id; self.tide_offset_hours1 = tide_offset_hours1
-        self.tide_offset_hours2 = tide_offset_hours2; self.draft_restriction_ft = draft_restriction_ft
-        self.allowed_boat_types = allowed_boat_types; self.latitude = latitude; self.longitude = longitude
+    def __init__(self, ramp_id, ramp_name, noaa_station_id, tide_calculation_method="AnyTide", tide_offset_hours1=None, allowed_boat_types=["Powerboat", "Sailboat DT", "Sailboat MT"]):
+        self.ramp_id = ramp_id; self.ramp_name = ramp_name; self.noaa_station_id = noaa_station_id
+        self.tide_calculation_method = tide_calculation_method; self.tide_offset_hours1 = tide_offset_hours1
+        self.allowed_boat_types = allowed_boat_types
 
 class Customer:
-    def __init__(self, customer_id, customer_name, preferred_truck_id=None, is_ecm_customer=False, home_latitude=None, home_longitude=None):
+    def __init__(self, customer_id, customer_name, preferred_truck_id=None, is_ecm_customer=False):
         self.customer_id = customer_id; self.customer_name = customer_name
         self.preferred_truck_id = preferred_truck_id; self.is_ecm_customer = is_ecm_customer
-        self.home_latitude = home_latitude; self.home_longitude = home_longitude
 
 class Boat:
     def __init__(self, boat_id, customer_id, boat_type, boat_length, draft_ft=None):
@@ -95,167 +81,150 @@ class Boat:
         self.boat_length = boat_length; self.draft_ft = draft_ft
 
 class Job:
-    def __init__(self, job_id, customer_id, boat_id, service_type, requested_date, scheduled_start_datetime, calculated_job_duration_hours, scheduled_end_datetime, assigned_hauling_truck_id, assigned_crane_truck_id, j17_busy_end_datetime, pickup_ramp_id, pickup_street_address, dropoff_ramp_id, dropoff_street_address, job_status="Scheduled", notes=""):
-        self.job_id = job_id; self.customer_id = customer_id; self.boat_id = boat_id; self.service_type = service_type
-        self.requested_date = requested_date; self.scheduled_start_datetime = scheduled_start_datetime
-        self.calculated_job_duration_hours = calculated_job_duration_hours; self.scheduled_end_datetime = scheduled_end_datetime
-        self.assigned_hauling_truck_id = assigned_hauling_truck_id; self.assigned_crane_truck_id = assigned_crane_truck_id
-        self.j17_busy_end_datetime = j17_busy_end_datetime; self.pickup_ramp_id = pickup_ramp_id
-        self.pickup_street_address = pickup_street_address; self.dropoff_ramp_id = dropoff_ramp_id
-        self.dropoff_street_address = dropoff_street_address; self.job_status = job_status; self.notes = notes
+    def __init__(self, job_id, customer_id, boat_id, service_type, scheduled_start_datetime, **kwargs):
+        self.job_id = job_id; self.customer_id = customer_id; self.boat_id = boat_id
+        self.service_type = service_type; self.scheduled_start_datetime = scheduled_start_datetime
+        self.job_status = "Scheduled"
+        self.__dict__.update(kwargs)
 
 class OperatingHoursEntry:
     def __init__(self, season, day_of_week, open_time, close_time):
         self.season = season; self.day_of_week = day_of_week; self.open_time = open_time; self.close_time = close_time
 
 # --- Data Initialization ---
-ECM_TRUCKS = {
-    "S20/33": Truck("S20/33", "S20 (aka S33)", 60), "S21/77": Truck("S21/77", "S21 (aka S77)", 45),
-    "S23/55": Truck("S23/55", "S23 (aka S55)", 30), "J17": Truck("J17", "J17 (Crane Truck)", 999)
-}
+ECM_TRUCKS = { "S20/33": Truck("S20/33", "S20", 60), "S21/77": Truck("S21/77", "S21", 45), "S23/55": Truck("S23/55", "S23", 30), "J17": Truck("J17", "J17 (Crane)", 999)}
 ECM_RAMPS = {
-    "DuxburyHarbor": Ramp("DuxburyHarbor", "Duxbury Harbor", "Duxbury", "1 hr +/- HT", "HoursAroundHighTide", "8443970", 1.0, allowed_boat_types="Power Boats Only"),
-    "GreenHarborTaylors": Ramp("GreenHarborTaylors", "Green Harbor", "Marshfield", "3 hrs +/- HT", "HoursAroundHighTide", "8443970", 3.0),
-    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor", "Scituate", "Any tide", "AnyTide", "8443970"),
-    "PlymouthHarbor": Ramp("PlymouthHarbor", "Plymouth Harbor", "Plymouth", "3 hrs +/- HT", "HoursAroundHighTide", "8443970", 3.0),
-    "CordagePark": Ramp("CordagePark", "Cordage Park", "Plymouth", "1.5 hr +/- HT", "HoursAroundHighTide", "8443970", 1.5, allowed_boat_types="Power Boats Only"),
+    "DuxburyHarbor": Ramp("DuxburyHarbor", "Duxbury Harbor", "8443970", "HoursAroundHighTide", 1.0, ["Powerboat"]),
+    "GreenHarborTaylors": Ramp("GreenHarborTaylors", "Green Harbor", "8443970", "HoursAroundHighTide", 3.0),
+    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor", "8443970"),
+    "PlymouthHarbor": Ramp("PlymouthHarbor", "Plymouth Harbor", "8443970", "HoursAroundHighTide", 3.0),
 }
 operating_hours_rules = [
-    OperatingHoursEntry("Standard", 0, datetime.time(8, 0), datetime.time(16, 0)),
-    OperatingHoursEntry("Standard", 1, datetime.time(8, 0), datetime.time(16, 0)),
-    OperatingHoursEntry("Standard", 2, datetime.time(8, 0), datetime.time(16, 0)),
-    OperatingHoursEntry("Standard", 3, datetime.time(8, 0), datetime.time(16, 0)),
-    OperatingHoursEntry("Standard", 4, datetime.time(8, 0), datetime.time(16, 0)),
-    OperatingHoursEntry("Busy", 0, datetime.time(7, 30), datetime.time(17, 30)),
-    OperatingHoursEntry("Busy", 1, datetime.time(7, 30), datetime.time(17, 30)),
-    OperatingHoursEntry("Busy", 2, datetime.time(7, 30), datetime.time(17, 30)),
-    OperatingHoursEntry("Busy", 3, datetime.time(7, 30), datetime.time(17, 30)),
-    OperatingHoursEntry("Busy", 4, datetime.time(7, 30), datetime.time(17, 30)),
+    OperatingHoursEntry("Standard", 0, datetime.time(8, 0), datetime.time(16, 0)), OperatingHoursEntry("Standard", 1, datetime.time(8, 0), datetime.time(16, 0)),
+    OperatingHoursEntry("Standard", 2, datetime.time(8, 0), datetime.time(16, 0)), OperatingHoursEntry("Standard", 3, datetime.time(8, 0), datetime.time(16, 0)),
+    OperatingHoursEntry("Standard", 4, datetime.time(8, 0), datetime.time(16, 0)), OperatingHoursEntry("Busy", 0, datetime.time(7, 30), datetime.time(17, 30)),
+    OperatingHoursEntry("Busy", 1, datetime.time(7, 30), datetime.time(17, 30)), OperatingHoursEntry("Busy", 2, datetime.time(7, 30), datetime.time(17, 30)),
+    OperatingHoursEntry("Busy", 3, datetime.time(7, 30), datetime.time(17, 30)), OperatingHoursEntry("Busy", 4, datetime.time(7, 30), datetime.time(17, 30)),
     OperatingHoursEntry("BusySaturday", 5, datetime.time(7, 30), datetime.time(17, 30)),
 ]
 LOADED_CUSTOMERS = {}
 LOADED_BOATS = {}
 
-def load_customers_and_boats_from_csv(csv_filename):
+def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
     global LOADED_CUSTOMERS, LOADED_BOATS
-    # Implementation from previous steps, assuming it's correct
-    return True
+    try:
+        with open(filename, mode='r', encoding='utf-8-sig') as infile:
+            reader = csv.DictReader(infile)
+            for i, row in enumerate(reader):
+                cust_id = f"C{1001+i}"; boat_id = f"B{5001+i}"
+                LOADED_CUSTOMERS[cust_id] = Customer(cust_id, row['customer_name'], row.get('preferred_truck'), row.get('is_ecm_boat','').lower()=='true')
+                LOADED_BOATS[boat_id] = Boat(boat_id, cust_id, row['boat_type'], float(row['boat_length']), float(row['boat_draft'] or 0))
+        return True
+    except FileNotFoundError: return False
 
 # --- Core Logic Functions ---
-def get_customer_details(cid): return LOADED_CUSTOMERS.get(cid)
-def get_boat_details(bid): return LOADED_BOATS.get(bid)
-def get_ramp_details(rid): return ECM_RAMPS.get(rid)
+get_customer_details = LOADED_CUSTOMERS.get
+get_boat_details = LOADED_BOATS.get
+get_ramp_details = ECM_RAMPS.get
 
-def get_ecm_operating_hours(date_to_check):
-    day_of_week = date_to_check.weekday()
-    season = "Busy" if date_to_check.month in [4, 5, 6, 9, 10] else "Standard"
-    if season == "Busy" and day_of_week == 5 and date_to_check.month in [5, 9]:
-        season = "BusySaturday"
+def get_ecm_operating_hours(date):
+    season = "Busy" if date.month in [4,5,6,9,10] else "Standard"
+    if season == "Busy" and date.weekday() == 5 and date.month in [5,9]: season = "BusySaturday"
     for rule in operating_hours_rules:
-        if rule.season == season and rule.day_of_week == day_of_week:
+        if rule.season == season and rule.day_of_week == date.weekday():
             return {"open": rule.open_time, "close": rule.close_time}
     return None
 
-def calculate_ramp_windows(ramp_obj, tide_data, date_to_check):
-    if ramp_obj.tide_calculation_method == "AnyTide": return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
-    if not tide_data: return []
-    usable_windows = []
-    offset_delta = datetime.timedelta(hours=float(ramp_obj.tide_offset_hours1 or 0))
-    for event in tide_data:
-        if event['type'] == 'H':
-            ht_dt = datetime.datetime.combine(date_to_check, event['time'])
-            usable_windows.append({'start_time': (ht_dt - offset_delta).time(), 'end_time': (ht_dt + offset_delta).time()})
-    return usable_windows
-
-def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
-    ecm_hours = get_ecm_operating_hours(date_to_check)
+def get_final_schedulable_ramp_times(ramp, boat, date):
+    ecm_hours = get_ecm_operating_hours(date)
     if not ecm_hours: return []
-    ecm_open = datetime.datetime.combine(date_to_check, ecm_hours['open'])
-    ecm_close = datetime.datetime.combine(date_to_check, ecm_hours['close'])
-    tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_to_check)
-    tidal_windows = calculate_ramp_windows(ramp_obj, tide_data, date_to_check)
+    ecm_open = datetime.datetime.combine(date, ecm_hours['open'])
+    ecm_close = datetime.datetime.combine(date, ecm_hours['close'])
+    tide_data = fetch_noaa_tides(ramp.noaa_station_id, date)
+    tidal_windows = calculate_ramp_windows(ramp, tide_data, date)
     final_windows = []
     for t_win in tidal_windows:
-        tidal_start = datetime.datetime.combine(date_to_check, t_win['start_time'])
-        tidal_end = datetime.datetime.combine(date_to_check, t_win['end_time'])
-        overlap_start = max(tidal_start, ecm_open)
-        overlap_end = min(tidal_end, ecm_close)
+        tidal_start = datetime.datetime.combine(date, t_win['start_time'])
+        tidal_end = datetime.datetime.combine(date, t_win['end_time'])
+        overlap_start, overlap_end = max(tidal_start, ecm_open), min(tidal_end, ecm_close)
         if overlap_start < overlap_end:
             final_windows.append({
                 'start_time': overlap_start.time(), 'end_time': overlap_end.time(),
                 'high_tide_times': [t['time'] for t in tide_data if t['type'] == 'H'],
-                'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
+                'tide_rule_concise': get_concise_tide_rule(ramp, boat)
             })
     return final_windows
 
-def get_suitable_trucks(boat_len, pref_truck_id=None):
-    all_suitable = [t.truck_id for t in ECM_TRUCKS.values() if not t.is_crane and boat_len <= t.max_boat_length]
-    if force_preferred_truck and pref_truck_id in all_suitable: return [pref_truck_id]
+def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
+    all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and boat_len <= t.max_boat_length]
+    if force_preferred and pref_truck_id and any(t.truck_id == pref_truck_id for t in all_suitable):
+        return [t for t in all_suitable if t.truck_id == pref_truck_id]
     return all_suitable
 
 def check_truck_availability(truck_id, start_dt, end_dt):
     for job in SCHEDULED_JOBS:
         if job.job_status == "Scheduled" and (job.assigned_hauling_truck_id == truck_id or (job.assigned_crane_truck_id == truck_id and truck_id == "J17")):
-            job_end = job.j17_busy_end_datetime if truck_id == "J17" and job.j17_busy_end_datetime else job.scheduled_end_datetime
+            job_end = getattr(job, 'j17_busy_end_datetime', job.scheduled_end_datetime) if truck_id == "J17" else job.scheduled_end_datetime
             if start_dt < job_end and end_dt > job.scheduled_start_datetime: return False
     return True
 
-def determine_job_location_coordinates(endpoint, service, cust, boat, ramp): return {}
-def is_dropoff_at_ecm_base(coords): return False
-
-def _check_and_create_slot_detail(s_date, p_time, truck_id, cust, boat, service, ramp, ecm_hours, duration, needs_j17, j17_dur, debug_list, window_details):
+def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ramp, ecm_hours, duration, j17_duration, window):
     start_dt = datetime.datetime.combine(s_date, p_time)
     hauler_end_dt = start_dt + datetime.timedelta(hours=duration)
     if hauler_end_dt.time() > ecm_hours['close'] and not (hauler_end_dt.time() == ecm_hours['close'] and hauler_end_dt.date() == s_date): return None
-    if not check_truck_availability(truck_id, start_dt, hauler_end_dt): return None
-    if needs_j17 and not check_truck_availability("J17", start_dt, start_dt + datetime.timedelta(hours=j17_dur)): return None
+    if not check_truck_availability(truck.truck_id, start_dt, hauler_end_dt): return None
     
-    priority = 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0
-    return {'date': s_date, 'time': p_time, 'truck_id': truck_id, 'j17_needed': needs_j17, 'type': "Open", 'bumped_job_details': None, 'customer_name': cust.customer_name, 'boat_details_summary': f"{boat.boat_length}ft {boat.boat_type}", 'ramp_id': ramp.ramp_id if ramp else None, 'tide_rule_concise': window_details.get('tide_rule_concise', ''), 'high_tide_times': window_details.get('high_tide_times', []), 'priority_score': priority}
+    needs_j17 = BOOKING_RULES.get(boat.boat_type, {}).get('crane_mins', 0) > 0
+    if needs_j17 and not check_truck_availability("J17", start_dt, start_dt + datetime.timedelta(hours=j17_duration)): return None
+    
+    return {
+        'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'type': "Open",
+        'ramp_id': ramp.ramp_id if ramp else None, 'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0,
+        **window
+    }
 
-def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, transport_dropoff_details=None, force_preferred_truck=True, ignore_forced_search=False, **kwargs):
-    global original_job_request_details, DEBUG_LOG_MESSAGES
-    original_job_request_details = locals(); DEBUG_LOG_MESSAGES = []
+def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, ignore_forced_search=False, **kwargs):
     try: requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError: return [], "Error: Invalid date format.", [], False
-    
     customer = get_customer_details(customer_id); boat = get_boat_details(boat_id)
     if not customer or not boat: return [], "Error: Invalid Cust/Boat ID.", [], False
-
     ramp_obj = get_ramp_details(selected_ramp_id)
-    if ramp_obj and "Power Boats Only" in ramp_obj.allowed_boat_types and "Sailboat" in boat.boat_type:
-        return [], f"Ramp '{ramp_obj.ramp_name}' only allows Power Boats.", [], False
+    if ramp_obj and boat.boat_type not in ramp_obj.allowed_boat_types:
+        return [], f"Ramp '{ramp_obj.ramp_name}' does not allow {boat.boat_type}s.", [], False
 
     forced_date = None
     if boat.boat_type.startswith("Sailboat") and ramp_obj and not ignore_forced_search:
         for job in SCHEDULED_JOBS:
-            if job.assigned_crane_truck_id and (job.pickup_ramp_id == selected_ramp_id or job.dropoff_ramp_id == selected_ramp_id) and abs((requested_date_obj - job.scheduled_start_datetime.date()).days) <= 7:
+            if job.assigned_crane_truck_id and (getattr(job, 'pickup_ramp_id', None) == selected_ramp_id or getattr(job, 'dropoff_ramp_id', None) == selected_ramp_id) and abs((requested_date_obj - job.scheduled_start_datetime.date()).days) <= 7:
                 forced_date = job.scheduled_start_datetime.date(); break
     
     rules = BOOKING_RULES.get(boat.boat_type, {}); duration = rules.get('truck_mins', 90)/60.0
-    needs_j17 = rules.get('crane_mins', 0)>0; j17_duration = rules.get('crane_mins', 0)/60.0
-    trucks_to_search = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id if force_preferred_truck else None)
+    j17_duration = rules.get('crane_mins', 0)/60.0
+    trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
+    if not trucks: return [], "No suitable trucks for this boat.", [], False
     
-    potential_slots = []
     def search_day(s_date, slots_list, limit):
         ecm_hours = get_ecm_operating_hours(s_date)
         if not ecm_hours: return
         windows = get_final_schedulable_ramp_times(ramp_obj, boat, s_date) if ramp_obj else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
+        if not customer.is_ecm_customer:
+            min_start = (datetime.datetime.combine(s_date, ecm_hours['open']) + datetime.timedelta(hours=1.5)).time()
+            windows = [{**w, 'start_time': max(w['start_time'], min_start)} for w in windows if max(w['start_time'], min_start) < w['end_time']]
         
-        for truck_id in trucks_to_search:
+        for truck in trucks:
             if len(slots_list) >= limit: break
             for w in windows:
-                if len(slots_list) >= limit: break
-                p_time = w['start_time']
-                while p_time < w['end_time']:
+                p_time, p_end = w['start_time'], w['end_time']
+                while p_time < p_end:
                     if len(slots_list) >= limit: break
                     if (datetime.datetime.combine(s_date, p_time).minute % 30) != 0:
                         p_time = (datetime.datetime.combine(s_date, p_time) + datetime.timedelta(minutes=30-(p_time.minute%30))).time()
-                    if p_time >= w['end_time']: break
-                    slot = _check_and_create_slot_detail(s_date, p_time, truck_id, customer, boat, service_type, ramp_obj, ecm_hours, duration, needs_j17, j17_duration, DEBUG_LOG_MESSAGES, w)
-                    if slot: slots_list.append(slot); break
+                    if p_time >= p_end: break
+                    slot = _check_and_create_slot_detail(s_date, p_time, truck, customer, boat, service_type, ramp_obj, ecm_hours, duration, j17_duration, w)
+                    if slot: slots_list.append(slot); break # Found slot for this truck in this window
                     p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
-
+    
+    potential_slots, was_forced = [], False
     if forced_date:
         search_day(forced_date, potential_slots, 6); was_forced = True
     else:
@@ -266,45 +235,44 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         d, i = requested_date_obj, 0
         while len(slots_after) < 4 and i < 45:
             search_day(d, slots_after, 4); d += datetime.timedelta(days=1); i += 1
-        potential_slots = slots_before + slots_after; was_forced = False
+        potential_slots = slots_before + slots_after
 
     if not potential_slots: return [], "No suitable slots found.", [], was_forced
     potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
     top_slots = potential_slots[:6]
-    expl = f"Found {len(top_slots)} slots."
+    expl = f"Found {len(top_slots)} available slots."
     if was_forced: expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
     elif top_slots: expl = f"Found {len(top_slots)} slots starting from {top_slots[0]['date'].strftime('%A, %b %d')}."
     
-    return top_slots, expl, DEBUG_LOG_MESSAGES, was_forced
+    return top_slots, expl, [], was_forced
 
-def confirm_and_schedule_job(original_job_request_details, selected_slot_info):
-    global JOB_ID_COUNTER, SCHEDULED_JOBS
-    cust = get_customer_details(original_job_request_details['customer_id']); boat = get_boat_details(original_job_request_details['boat_id'])
-    if not cust or not boat: return None, "Error: Cust/Boat details missing."
-    ramp = get_ramp_details(selected_slot_info.get('ramp_id'))
-    if original_job_request_details['service_type'] in ["Launch", "Haul"] and not ramp: return None, "Error: Ramp is required."
-
-    new_id = JOB_ID_COUNTER; JOB_ID_COUNTER += 1
-    start_dt = datetime.datetime.combine(selected_slot_info['date'], selected_slot_info['time'])
-    rules = BOOKING_RULES.get(boat.boat_type, {}); hauler_dur = rules.get('truck_mins', 90)/60.0
+def confirm_and_schedule_job(original_request, selected_slot):
+    customer = get_customer_details(original_request['customer_id'])
+    boat = get_boat_details(original_request['boat_id'])
+    ramp = get_ramp_details(selected_slot.get('ramp_id'))
+    if original_request['service_type'] in ["Launch", "Haul"] and not ramp: return None, "Error: Ramp is required."
+    
+    job_id = JOB_ID_COUNTER + 1; globals()['JOB_ID_COUNTER'] += 1
+    start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'])
+    rules = BOOKING_RULES.get(boat.boat_type, {})
+    hauler_dur = rules.get('truck_mins', 90)/60.0
     hauler_end_dt = start_dt + datetime.timedelta(hours=hauler_dur)
     j17_end_dt = None
-    if selected_slot_info['j17_needed']: j17_end_dt = start_dt + datetime.timedelta(hours=rules.get('crane_mins',0)/60.0)
+    if selected_slot['j17_needed']: j17_end_dt = start_dt + datetime.timedelta(hours=rules.get('crane_mins',0)/60.0)
 
-    pickup_addr, dropoff_addr = "", ""
-    pickup_rid, dropoff_rid = None, None
-    if original_job_request_details['service_type'] == "Launch":
-        pickup_addr, dropoff_addr = f"Cust: {cust.customer_name}", ramp.ramp_name; dropoff_rid = ramp.ramp_id
-    elif original_job_request_details['service_type'] == "Haul":
-        pickup_addr, dropoff_addr = ramp.ramp_name, f"Cust: {cust.customer_name}"; pickup_rid = ramp.ramp_id
+    pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
+    if original_request['service_type'] == "Launch":
+        pickup_addr, dropoff_addr, dropoff_rid = f"Cust: {customer.customer_name}", ramp.ramp_name, ramp.ramp_id
+    elif original_request['service_type'] == "Haul":
+        pickup_addr, dropoff_addr, pickup_rid = ramp.ramp_name, f"Cust: {customer.customer_name}", ramp.ramp_id
 
-    new_job = Job(job_id=new_id, customer_id=cust.customer_id, boat_id=boat.boat_id, service_type=original_job_request_details['service_type'], requested_date=datetime.datetime.strptime(original_job_request_details['requested_date_str'], '%Y-%m-%d').date(), scheduled_start_datetime=start_dt, calculated_job_duration_hours=hauler_dur, scheduled_end_datetime=hauler_end_dt, assigned_hauling_truck_id=selected_slot_info['truck_id'], assigned_crane_truck_id="J17" if selected_slot_info['j17_needed'] else None, j17_busy_end_datetime=j17_end_dt, pickup_ramp_id=pickup_rid, pickup_street_address=pickup_addr, dropoff_ramp_id=dropoff_rid, dropoff_street_address=dropoff_addr, notes=f"Booked via type: {selected_slot_info['type']}.")
+    new_job = Job(job_id=job_id, customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=original_request['service_type'], scheduled_start_datetime=start_dt, assigned_hauling_truck_id=selected_slot['truck_id'], assigned_crane_truck_id="J17" if selected_slot['j17_needed'] else None, j17_busy_end_datetime=j17_end_dt, pickup_ramp_id=pickup_rid, pickup_street_address=pickup_addr, dropoff_ramp_id=dropoff_rid, dropoff_street_address=dropoff_addr, notes=f"Booked via type: {selected_slot['type']}.", requested_date=datetime.datetime.strptime(original_request['requested_date_str'], '%Y-%m-%d').date(), calculated_job_duration_hours=hauler_dur, scheduled_end_datetime=hauler_end_dt)
     SCHEDULED_JOBS.append(new_job)
 
-    if new_job.assigned_crane_truck_id and new_job.scheduled_start_datetime:
+    if new_job.assigned_crane_truck_id:
         date_str = new_job.scheduled_start_datetime.strftime('%Y-%m-%d')
         if date_str not in crane_daily_status: crane_daily_status[date_str] = {'ramps_visited': set()}
         if new_job.pickup_ramp_id: crane_daily_status[date_str]['ramps_visited'].add(new_job.pickup_ramp_id)
         if new_job.dropoff_ramp_id: crane_daily_status[date_str]['ramps_visited'].add(new_job.dropoff_ramp_id)
 
-    return new_job.job_id, f"SUCCESS: Job {new_id} for {cust.customer_name} scheduled."
+    return new_job.job_id, f"SUCCESS: Job {job_id} for {customer.customer_name} scheduled."
