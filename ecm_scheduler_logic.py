@@ -248,8 +248,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     return top_slots, expl, [], was_forced
 
 def confirm_and_schedule_job(original_request, selected_slot):
-    global JOB_ID_COUNTER, SCHEDULED_JOBS
-    
     # 1. Get all the required objects
     customer = get_customer_details(original_request['customer_id'])
     boat = get_boat_details(original_request['boat_id'])
@@ -262,7 +260,9 @@ def confirm_and_schedule_job(original_request, selected_slot):
         return None, "Error: A ramp must be selected for this service type."
 
     # 3. Calculate job details
-    job_id = JOB_ID_COUNTER + 1
+    job_id = globals()['JOB_ID_COUNTER'] + 1
+    globals()['JOB_ID_COUNTER'] += 1
+    
     start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'])
     rules = BOOKING_RULES.get(boat.boat_type, {})
     hauler_duration_hours = rules.get('truck_mins', 90) / 60.0
@@ -278,7 +278,7 @@ def confirm_and_schedule_job(original_request, selected_slot):
     service_type = original_request['service_type']
 
     if service_type == "Launch":
-        pickup_addr = f"Cust: {customer.customer_name}"
+        pickup_addr = f"Cust: {customer.customer_name} Home"
         dropoff_addr = ramp.ramp_name
         dropoff_rid = ramp.ramp_id
     elif service_type == "Haul":
@@ -286,7 +286,8 @@ def confirm_and_schedule_job(original_request, selected_slot):
         pickup_rid = ramp.ramp_id
         dropoff_addr = f"Cust: {customer.customer_name}"
     
-    # 4. Create the new Job object with all required arguments
+    # --- THIS IS THE CORRECTED PART ---
+    # 4. Create the new Job object by passing arguments explicitly
     new_job = Job(
         job_id=job_id,
         customer_id=customer.customer_id,
@@ -304,14 +305,16 @@ def confirm_and_schedule_job(original_request, selected_slot):
         dropoff_ramp_id=dropoff_rid,
         dropoff_street_address=dropoff_addr,
         job_status="Scheduled",
-        notes=f"Booked via type: {selected_slot.get('type', 'N/A')}."
+        notes=f"Booked via type: {selected_slot.get('type', 'N/A')}.",
+        # These are placeholders for attributes your Job class expects
+        pickup_loc_coords=None,
+        dropoff_loc_coords=None
     )
 
     # 5. Add the job to the schedule
     SCHEDULED_JOBS.append(new_job)
-    globals()['JOB_ID_COUNTER'] += 1
 
-    # Update crane status
+    # 6. Update crane status
     if new_job.assigned_crane_truck_id:
         date_str = new_job.scheduled_start_datetime.strftime('%Y-%m-%d')
         if date_str not in crane_daily_status:
@@ -320,6 +323,6 @@ def confirm_and_schedule_job(original_request, selected_slot):
             crane_daily_status[date_str]['ramps_visited'].add(new_job.pickup_ramp_id)
         if new_job.dropoff_ramp_id:
             crane_daily_status[date_str]['ramps_visited'].add(new_job.dropoff_ramp_id)
-
-    # 6. Return success message
+            
+    # 7. Return success message
     return new_job.job_id, f"SUCCESS: Job {new_job.job_id} for {customer.customer_name} scheduled."
