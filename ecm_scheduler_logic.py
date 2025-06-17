@@ -154,62 +154,99 @@ def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ra
     return {'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'type': "Open", 'ramp_id': ramp.ramp_id if ramp else None, 'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0, **window_details}
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, ignore_forced_search=False, **kwargs):
-    try: requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
-    except ValueError: return [], "Error: Invalid date format.", [], False
-    customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
-    if not customer or not boat: return [], "Error: Invalid Cust/Boat ID.", [], False
+    try:
+        requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return [], "Error: Invalid date format.", [], False
+    
+    customer = get_customer_details(customer_id)
+    boat = get_boat_details(boat_id)
+    if not customer or not boat:
+        return [], "Error: Invalid Cust/Boat ID.", [], False
+
     ramp_obj = get_ramp_details(selected_ramp_id)
-    if ramp_obj and boat.boat_type not in ramp_obj.allowed_boat_types: return [], f"Ramp '{ramp_obj.ramp_name}' doesn't allow {boat.boat_type}s.", [], False
+    if ramp_obj and boat.boat_type not in ramp_obj.allowed_boat_types:
+        return [], f"Ramp '{ramp_obj.ramp_name}' doesn't allow {boat.boat_type}s.", [], False
     
     forced_date = None
     if boat.boat_type.startswith("Sailboat") and ramp_obj and not ignore_forced_search:
         for job in SCHEDULED_JOBS:
             if getattr(job, 'assigned_crane_truck_id', None) and (getattr(job, 'pickup_ramp_id', None) == selected_ramp_id or getattr(job, 'dropoff_ramp_id', None) == selected_ramp_id) and abs((requested_date_obj - job.scheduled_start_datetime.date()).days) <= 7:
-                forced_date = job.scheduled_start_datetime.date(); break
+                forced_date = job.scheduled_start_datetime.date()
+                break
     
-    rules = BOOKING_RULES.get(boat.boat_type, {}); duration = rules.get('truck_mins', 90)/60.0; j17_duration = rules.get('crane_mins', 0)/60.0
-    trucks_to_search = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
-    if not trucks_to_search: return [], "No suitable trucks for this boat.", [], False
+    rules = BOOKING_RULES.get(boat.boat_type, {})
+    duration = rules.get('truck_mins', 90) / 60.0
+    j17_duration = rules.get('crane_mins', 0) / 60.0
+    trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
+    if not trucks:
+        return [], "No suitable trucks for this boat.", [], False
     
+    # --- THIS INNER FUNCTION IS REWRITTEN FOR ACCURACY ---
     def search_day(s_date, slots_list, limit):
         ecm_hours = get_ecm_operating_hours(s_date)
         if not ecm_hours: return
+        
         windows = get_final_schedulable_ramp_times(ramp_obj, boat, s_date) if ramp_obj else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
+        
         if not customer.is_ecm_customer:
             min_start = (datetime.datetime.combine(s_date, ecm_hours['open']) + datetime.timedelta(hours=1.5)).time()
             windows = [{**w, 'start_time': max(w['start_time'], min_start)} for w in windows if max(w['start_time'], min_start) < w['end_time']]
         
-        for truck in trucks_to_search:
+        for truck in trucks:
             if len(slots_list) >= limit: break
             for w in windows:
-                p_time, p_end = w['start_time'], w['end_time']
-                while p_time < p_end:
+                if len(slots_list) >= limit: break
+                
+                p_time = w['start_time']
+                while p_time < w['end_time']:
                     if len(slots_list) >= limit: break
-                    if (datetime.datetime.combine(s_date, p_time).minute % 30) != 0: p_time = (datetime.datetime.combine(s_date, p_time) + datetime.timedelta(minutes=30-(p_time.minute%30))).time()
-                    if p_time >= p_end: break
+                    
+                    # Align potential time to the half-hour
+                    temp_dt = datetime.datetime.combine(s_date, p_time)
+                    if temp_dt.minute % 30 != 0:
+                        p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
+                    if p_time >= w['end_time']: break
+                    
+                    # Check the slot
                     slot = _check_and_create_slot_detail(s_date, p_time, truck, customer, boat, service_type, ramp_obj, ecm_hours, duration, j17_duration, w)
-                    if slot: slots_list.append(slot); break 
+                    if slot:
+                        # Ensure we don't add the same slot twice
+                        if not any(s['date'] == slot['date'] and s['time'] == slot['time'] and s['truck_id'] == slot['truck_id'] for s in slots_list):
+                            slots_list.append(slot)
+                    
+                    # Always advance time to check the next possible slot
                     p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
-    
+
     potential_slots, was_forced = [], False
     if forced_date:
-        search_day(forced_date, potential_slots, 6); was_forced = True
+        was_forced = True
+        search_day(forced_date, potential_slots, 6)
     else:
         slots_before, slots_after = [], []
         d = max(TODAY_FOR_SIMULATION, requested_date_obj - datetime.timedelta(days=5))
         while d < requested_date_obj and len(slots_before) < 2:
-            search_day(d, slots_before, 2); d += datetime.timedelta(days=1)
+            search_day(d, slots_before, 2)
+            d += datetime.timedelta(days=1)
+        
         d, i = requested_date_obj, 0
         while len(slots_after) < 4 and i < 45:
-            search_day(d, slots_after, 4); d += datetime.timedelta(days=1); i += 1
+            search_day(d, slots_after, 4)
+            d += datetime.timedelta(days=1)
+            i += 1
         potential_slots = slots_before + slots_after
 
-    if not potential_slots: return [], "No suitable slots found.", [], was_forced
+    if not potential_slots:
+        return [], "No suitable slots found.", [], was_forced
+    
     potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
     top_slots = potential_slots[:6]
+    
     expl = f"Found {len(top_slots)} available slots."
-    if was_forced: expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
-    elif top_slots: expl = f"Found {len(top_slots)} slots starting from {top_slots[0]['date'].strftime('%A, %b %d')}."
+    if was_forced and forced_date:
+        expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
+    elif top_slots:
+        expl = f"Found {len(top_slots)} available slots starting from {top_slots[0]['date'].strftime('%A, %b %d')}."
     
     return top_slots, expl, [], was_forced
 
