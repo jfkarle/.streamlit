@@ -193,6 +193,19 @@ def get_concise_tide_rule(ramp_obj, boat_obj):
         return f"{offset_str}hrs +/- HT"
     return "Tide Rule N/A" # Fallback if no specific rule matches
 
+def is_j17_at_ramp(check_date, ramp_id):
+    """Checks if the J17 crane is scheduled to be at a specific ramp on a given date."""
+    if not ramp_id:
+        return False
+    date_str = check_date.strftime('%Y-%m-%d')
+    # Check if the date is in our tracking dictionary
+    if date_str in crane_daily_status:
+        # Check if the ramp_id is in the set of visited ramps for that day
+        if ramp_id in crane_daily_status[date_str].get('ramps_visited', set()):
+            return True
+    return False
+    
+
 # --- Section 2: Business Configuration & Initial Data ---
 ECM_TRUCKS = {
     "S20/33": Truck(truck_id="S20/33", truck_name="S20 (aka S33)", max_boat_boat_length=60),
