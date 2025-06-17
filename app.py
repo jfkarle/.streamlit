@@ -64,6 +64,14 @@ if app_mode == "Schedule New Boat":
         st.info(st.session_state.info_message)
         st.session_state.info_message = ""
 
+    # Display confirmation after rerun (TOP LEVEL)
+    if st.session_state.get("confirmation_message") and not st.session_state.get("selected_slot"):
+        st.success(f"✅ {st.session_state.confirmation_message}")
+        if st.button("Schedule Another Job", key="schedule_another"):
+            st.session_state.pop("confirmation_message", None)
+            st.rerun()
+    
+
     st.sidebar.header("New Job Request")
     customer_name_search_input = st.sidebar.text_input("Enter Customer Name:", help="e.g., Olivia, James, Tho")
     selected_customer_obj = None
