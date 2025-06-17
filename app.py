@@ -159,10 +159,17 @@ if app_mode == "Schedule New Boat":
         if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
             new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
             if new_job_id:
-                st.success(f"Job Confirmed! {message}")
+                st.session_state.confirmation_message = message
                 for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
                     st.session_state.pop(key, None)
                 st.rerun()
+        # Display confirmation only if no slot is currently selected
+        if st.session_state.get("confirmation_message") and not st.session_state.get("selected_slot"):
+            st.success(f"✅ {st.session_state.confirmation_message}")
+            if st.button("Schedule Another Job", key="schedule_another"):
+                st.session_state.pop("confirmation_message", None)
+                st.rerun()
+            
             else:
                 st.error(f"Failed to confirm job: {message}")
 
