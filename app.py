@@ -52,7 +52,7 @@ def initialize_session_state():
 
 # --- Main App Execution ---
 initialize_session_state()
-st.title("ECM Boat Hauling - Availability Scheduler")
+st.title("Marine Transportation")
 
 # --- NAVIGATION SIDEBAR ---
 st.sidebar.title("Navigation")
