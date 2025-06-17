@@ -120,33 +120,54 @@ if app_mode == "Schedule New Boat":
         else:
             st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
 
-    # --- Main Area Display Logic ---
-    # 1. Display Slot Options
-    if st.session_state.found_slots and not st.session_state.selected_slot:
-        st.subheader("Please select your preferred slot:")
-        cols = st.columns(3)
-        for i, slot in enumerate(st.session_state.found_slots):
-            with cols[i % 3]:
-                with st.container(border=True):
-                    if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
-                        st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
-                    
-                    date_str = slot['date'].strftime('%a, %b %d, %Y')
-                    time_str = ecm.format_time_for_display(slot.get('time'))
-                    truck_id = slot.get('truck_id', 'N/A')
-                    ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
-                    ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
-                    ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
-                    tide_display_str = format_tides_for_display(slot, ecm_hours)
+# In app.py, replace the main display logic block
 
-                    st.markdown(f"**Date:** {date_str}")
-                    if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
-                    if tide_display_str: st.markdown(tide_display_str)
-                    st.markdown(f"**Time:** {time_str}")
-                    st.markdown(f"**Truck:** {truck_id}")
-                    st.markdown(f"**Ramp:** {ramp_name}")
-                    st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
-        st.markdown("---")
+# --- Main Area: Display Logic ---
+if st.session_state.found_slots and not st.session_state.selected_slot:
+    st.subheader("Please select your preferred slot:")
+    
+    cols = st.columns(3)
+    for i, slot in enumerate(st.session_state.found_slots):
+        with cols[i % 3]:
+            with st.container(border=True):
+                
+                # Highlighting logic for the requested date
+                if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
+                    st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
+                
+                # --- THIS IS THE NEW COMPACT DISPLAY LOGIC ---
+                
+                # 1. Define all variables
+                date_str = slot['date'].strftime('%a, %b %d, %Y')
+                time_str = ecm.format_time_for_display(slot.get('time'))
+                truck_id = slot.get('truck_id', 'N/A')
+                ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
+                ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
+                tide_display_str = format_tides_for_display(slot, ecm_hours).replace("**", "") # Remove markdown bolding
+                tide_rule_str = slot.get('tide_rule_concise', '')
+                
+                # 2. Combine into a single HTML string with controlled spacing
+                card_content_html = f"""
+                <div style="line-height: 1.4;">
+                    <p style="margin-bottom: 2px;"><strong>Date:</strong> {date_str}</p>
+                    <p style="margin-bottom: 2px;"><strong>Tide Rule:</strong> {tide_rule_str}</p>
+                    <p style="margin-bottom: 10px;"><strong>{tide_display_str}</strong></p>
+                    <p style="margin-bottom: 2px;"><strong>Time:</strong> {time_str}</p>
+                    <p style="margin-bottom: 2px;"><strong>Truck:</strong> {truck_id}</p>
+                    <p style="margin-bottom: 2px;"><strong>Ramp:</strong> {ramp_name}</p>
+                </div>
+                """
+                
+                # 3. Render the HTML and the button
+                st.markdown(card_content_html, unsafe_allow_html=True)
+                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+                
+    st.markdown("---")
+
+elif st.session_state.selected_slot:
+    # (The rest of your confirmation logic remains the same)
+    # ...
 
     # 2. Display Confirmation Screen
     elif st.session_state.selected_slot:
