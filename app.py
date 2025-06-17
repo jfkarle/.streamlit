@@ -209,7 +209,7 @@ if st.session_state.found_slots and not st.session_state.selected_slot:
             with st.container(border=True):
                 
                 # --- This block adds the prominent green highlight ---
-                if 'requested_date_input' in locals() and slot['date'] == requested_date_input:
+                if slot['date'] == requested_date_input:
                     st.markdown(
                         """
                         <div style="background-color: #F0FFF0; border-left: 6px solid #2E8B57; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
