@@ -1,21 +1,14 @@
-# app.py
-# FINAL, CORRECTED VERSION
-
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
 import pandas as pd
 
-st.set_page_config(layout="wide")
-
+# --- Helper Functions ---
 def format_tides_for_display(slot, ecm_hours):
-    """
-    Formats the tide display to emphasize the most relevant high tide.
-    """
+    """Formats the tide display to emphasize the most relevant high tide."""
     tide_times = slot.get('high_tide_times', [])
     if not tide_times:
         return ""
-
     if not ecm_hours or not ecm_hours.get('open'):
         return "HT: " + " / ".join([ecm.format_time_for_display(t) for t in tide_times])
 
@@ -26,15 +19,14 @@ def format_tides_for_display(slot, ecm_hours):
         tide_dt = datetime.datetime.combine(datetime.date.today(), tide_time)
         open_dt = datetime.datetime.combine(datetime.date.today(), op_open)
         close_dt = datetime.datetime.combine(datetime.date.today(), op_close)
-
         if open_dt <= tide_dt <= close_dt:
             return 0, abs((tide_dt - open_dt).total_seconds())
-        
         dist_to_open = abs((tide_dt - open_dt).total_seconds())
         dist_to_close = abs((tide_dt - close_dt).total_seconds())
         return 1, min(dist_to_open, dist_to_close)
 
     sorted_tides = sorted(tide_times, key=get_tide_relevance_score)
+    if not sorted_tides: return ""
     primary_tide_str = ecm.format_time_for_display(sorted_tides[0])
     
     if len(sorted_tides) == 1:
@@ -44,37 +36,41 @@ def format_tides_for_display(slot, ecm_hours):
     secondary_tides_str = " / ".join(secondary_tides)
     return f"**HIGH TIDE: {primary_tide_str}** (and {secondary_tides_str.lower()})"
 
+def handle_slot_selection(slot_data):
+    """Sets the chosen slot into the session state for confirmation."""
+    st.session_state.selected_slot = slot_data
+
 # --- Session State Initialization ---
 def initialize_session_state():
-    if 'data_loaded' not in st.session_state:
+    defaults = {
+        'data_loaded': False, 'info_message': "", 'current_job_request': None,
+        'found_slots': [], 'selected_slot': None, 'search_requested_date': None,
+        'was_forced_search': False
+    }
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
+    
+    if not st.session_state.data_loaded:
         if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"):
             st.session_state.data_loaded = True
         else:
-            st.session_state.data_loaded = False
             st.error("Failed to load customer and boat data.")
-    
-    # Initialize other variables if they don't exist
-    for key, default_value in [('info_message', ""), ('current_job_request', None), 
-                               ('found_slots', []), ('selected_slot', None), 
-                               ('search_requested_date', None)]:
-        if key not in st.session_state:
-            st.session_state[key] = default_value
 
+# --- Main App Execution ---
 initialize_session_state()
-
-# --- Main App Layout ---
+st.set_page_config(layout="wide")
 st.title("ECM Boat Hauling - Availability Scheduler")
 
 if st.session_state.info_message:
     st.info(st.session_state.info_message)
     st.session_state.info_message = ""
 
-# --- Sidebar for Job Request ---
+# --- Sidebar ---
 st.sidebar.header("New Job Request")
-
-# --- 1. Customer Name Search ---
 customer_name_search_input = st.sidebar.text_input("Enter Customer Name:", help="e.g., Olivia, James, Tho")
 selected_customer_obj = None
+
 if customer_name_search_input:
     customer_search_results = [c for c in ecm.LOADED_CUSTOMERS.values() if customer_name_search_input.lower() in c.customer_name.lower()]
     if len(customer_search_results) == 1:
@@ -87,7 +83,6 @@ if customer_name_search_input:
     else:
         st.sidebar.warning("No customer found.")
 
-# --- 2. Boat & Job Details ---
 if selected_customer_obj:
     customer_boats = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == selected_customer_obj.customer_id]
     if customer_boats:
@@ -105,6 +100,7 @@ if selected_customer_obj:
         st.sidebar.write(f"**Preferred Truck:** {truck_name}")
         st.sidebar.markdown("---")
 
+        # --- Sidebar Job Inputs ---
         service_type_input = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
         default_date = ecm.TODAY_FOR_SIMULATION + datetime.timedelta(days=7)
         requested_date_input = st.sidebar.date_input("Requested Date:", value=default_date)
@@ -115,113 +111,87 @@ if selected_customer_obj:
         
         st.sidebar.markdown("---")
 
-       if st.sidebar.button("Find Best Slot (Strict)", key="find_strict"):
-        # --- THIS ENTIRE BLOCK IS NOW CORRECTLY INDENTED ---
-        job_request = {
-            'customer_id': selected_customer_obj.customer_id,
-            'boat_id': selected_boat_obj.boat_id,
-            'service_type': service_type_input,
-            'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
-            'selected_ramp_id': selected_ramp_id_input,
-        }
-        st.session_state.current_job_request = job_request
-        st.session_state.search_requested_date = requested_date_input
-
-        # Receive the new 'was_forced' flag
-        slots, message, _, was_forced = ecm.find_available_job_slots(
-            **job_request, 
-            force_preferred_truck=True, 
-            relax_ramp_constraint=False
-        )
-        
-        st.session_state.info_message = message
-        st.session_state.found_slots = slots
-        st.session_state.selected_slot = None
-        st.session_state.was_forced_search = was_forced # Save the flag
-        st.rerun()
-    
-    st.session_state.info_message = message
-    st.session_state.found_slots = slots
-    st.session_state.selected_slot = None
-    st.session_state.was_forced_search = was_forced # Save the flag
-    st.rerun()
-
-        # --- Levers for Alternative Search ---
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Not soon enough? Widen your search:")
-    
-    relax_truck_input = st.sidebar.checkbox("Relax Truck Constraint (use any suitable truck)", key="relax_truck")
-    relax_ramp_input = st.sidebar.checkbox("Relax Ramp Constraint (search nearby ramps)", key="relax_ramp")
-
-    if st.sidebar.button("Find Alternatives", key="find_relaxed"):
-        # We need a current job request to find alternatives for
-        if st.session_state.current_job_request:
+        # --- Strict Search Button Logic ---
+        if st.sidebar.button("Find Best Slot (Strict)", key="find_strict"):
+            job_request = {
+                'customer_id': selected_customer_obj.customer_id, 'boat_id': selected_boat_obj.boat_id,
+                'service_type': service_type_input,
+                'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
+                'selected_ramp_id': selected_ramp_id_input,
+            }
+            st.session_state.current_job_request = job_request
+            st.session_state.search_requested_date = requested_date_input
             
-            # Use the existing job request from session state
-            req = st.session_state.current_job_request
-
-            # --- THIS IS THE CORRECTED FUNCTION CALL ---
-            slots, message, _ = ecm.find_available_job_slots(
-                customer_id=req['customer_id'],
-                boat_id=req['boat_id'],
-                service_type=req['service_type'],
-                requested_date_str=req['requested_date_str'],
-                selected_ramp_id=req['selected_ramp_id'],
-                force_preferred_truck=(not relax_truck_input), 
-                relax_ramp_constraint=relax_ramp_input
-            )
-
+            slots, message, _, was_forced = ecm.find_available_job_slots(**job_request, force_preferred_truck=True, relax_ramp_constraint=False)
+            
             st.session_state.info_message = message
             st.session_state.found_slots = slots
-            st.session_state.selected_slot = None # Reset selection
-            # Also save the date so highlighting works correctly on this search
-            st.session_state.search_requested_date = datetime.datetime.strptime(req['requested_date_str'], '%Y-%m-%d').date()
+            st.session_state.selected_slot = None
+            st.session_state.was_forced_search = was_forced
             st.rerun()
-        else:
-            st.sidebar.warning("Please find a strict slot first before searching for alternatives.")
 
+        # --- Alternative Search Button Logic ---
+        st.sidebar.subheader("Not soon enough? Widen your search:")
+        relax_truck_input = st.sidebar.checkbox("Relax Truck Constraint", key="relax_truck")
+        relax_ramp_input = st.sidebar.checkbox("Relax Ramp Constraint", key="relax_ramp")
+        if st.sidebar.button("Find Alternatives", key="find_relaxed"):
+            if st.session_state.current_job_request:
+                req = st.session_state.current_job_request
+                slots, message, _, was_forced = ecm.find_available_job_slots(
+                    customer_id=req['customer_id'], boat_id=req['boat_id'],
+                    service_type=req['service_type'], requested_date_str=req['requested_date_str'],
+                    selected_ramp_id=req['selected_ramp_id'],
+                    force_preferred_truck=(not relax_truck_input), 
+                    relax_ramp_constraint=relax_ramp_input
+                )
+                st.session_state.info_message = message
+                st.session_state.found_slots = slots
+                st.session_state.selected_slot = None
+                st.session_state.was_forced_search = was_forced
+                st.session_state.search_requested_date = datetime.datetime.strptime(req['requested_date_str'], '%Y-%m-%d').date()
+                st.rerun()
+            else:
+                st.sidebar.warning("Please find a strict slot first.")
+    else:
+        st.sidebar.error(f"No boat found for customer: {selected_customer_obj.customer_name}")
 
-# --- Main Area for Displaying Results and Confirmation ---
-def handle_slot_selection(slot_data):
-    """Sets the chosen slot into the session state for confirmation."""
-    st.session_state.selected_slot = slot_data
+# --- Main Area: Results & Confirmation ---
 
+# 1. Display Slot Options
 if st.session_state.found_slots and not st.session_state.selected_slot:
     st.subheader("Please select your preferred slot:")
+    # ... (Your two-tiered display logic will go here) ...
+    # For now, let's use the simple grid display with corrected indentation.
+    
     cols = st.columns(3)
-
     for i, slot in enumerate(st.session_state.found_slots):
         with cols[i % 3]:
             with st.container(border=True):
                 if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
                     st.markdown(
-                        """
-                        <div style="background-color: #F0FFF0; border-left: 6px solid #2E8B57; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                            <h5 style="color: #2E8B57; margin: 0; font-weight: bold;">⭐ Requested Date</h5>
-                        </div>
-                        """,
+                        """<div style="background-color: #F0FFF0; border-left: 6px solid #2E8B57; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                           <h5 style="color: #2E8B57; margin: 0; font-weight: bold;">⭐ Requested Date</h5></div>""",
                         unsafe_allow_html=True
                     )
                 
                 date_str = slot['date'].strftime('%a, %b %d, %Y')
                 time_str = ecm.format_time_for_display(slot.get('time'))
                 truck_id = slot.get('truck_id', 'N/A')
-                ramp_name = ecm.get_ramp_details(slot.get('ramp_id')).ramp_name if slot.get('ramp_id') else "N/A"
+                ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
                 ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
                 tide_display_str = format_tides_for_display(slot, ecm_hours)
 
                 st.markdown(f"**Date:** {date_str}")
-                if slot.get('tide_rule_concise'):
-                    st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
-                if tide_display_str:
-                    st.markdown(tide_display_str)
+                if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
+                if tide_display_str: st.markdown(tide_display_str)
                 st.markdown(f"**Time:** {time_str}")
                 st.markdown(f"**Truck:** {truck_id}")
                 st.markdown(f"**Ramp:** {ramp_name}")
-                
                 st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
     st.markdown("---")
 
+# 2. Display Confirmation Screen
 elif st.session_state.selected_slot:
     slot = st.session_state.selected_slot
     original_request = st.session_state.current_job_request
@@ -230,24 +200,24 @@ elif st.session_state.selected_slot:
     
     st.subheader("Preview & Confirm Selection:")
     st.success(f"You are considering: **{date_str} at {slot_time_str}** with Truck **{slot.get('truck_id')}**.")
-    if slot.get('j17_needed'):
-        st.write("J17 Crane will also be assigned.")
+    if slot.get('j17_needed'): st.write("J17 Crane will also be assigned.")
     
     if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
         new_job_id, message = ecm.confirm_and_schedule_job(original_job_request_details=original_request, selected_slot_info=slot)
         if new_job_id:
             st.success(f"Job Confirmed! {message}")
-            for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date']:
+            for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
                 st.session_state.pop(key, None)
             st.rerun()
         else:
             st.error(f"Failed to confirm job: {message}")
 
+# 3. Handle No Slots Found
 elif st.session_state.get('current_job_request') and not st.session_state.found_slots:
     if st.session_state.info_message:
         st.warning(st.session_state.info_message)
 
-# Display All Scheduled Jobs
+# 4. Display All Scheduled Jobs Table
 st.markdown("---")
 if st.checkbox("Show All Currently Scheduled Jobs"):
     st.subheader("All Scheduled Jobs (Current Session):")
@@ -265,11 +235,8 @@ if st.checkbox("Show All Currently Scheduled Jobs"):
             else:
                 date_formatted, time_formatted = "Not Scheduled", "N/A"
             
-            ramp_name = "N/A"
-            ramp_id = job.pickup_ramp_id or job.dropoff_ramp_id
-            if ramp_id:
-                ramp = ecm.get_ramp_details(ramp_id)
-                if ramp: ramp_name = ramp.ramp_name
+            ramp_details = ecm.get_ramp_details(job.pickup_ramp_id or job.dropoff_ramp_id)
+            ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
 
             display_data.append({
                 "Job ID": job.job_id, "Status": job.job_status, "Scheduled Date": date_formatted,
