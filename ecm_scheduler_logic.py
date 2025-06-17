@@ -93,18 +93,33 @@ def calculate_ramp_windows(ramp, tide_data, date):
     offset = datetime.timedelta(hours=float(ramp.tide_offset_hours1 or 0))
     return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(), 'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()} for t in tide_data if t['type']=='H']
 
-def get_final_schedulable_ramp_times(ramp, boat, date):
-    ecm_hours = get_ecm_operating_hours(date)
-    if not ecm_hours: return []
-    ecm_open = datetime.datetime.combine(date, ecm_hours['open']); ecm_close = datetime.datetime.combine(date, ecm_hours['close'])
-    tide_data = fetch_noaa_tides(ramp.noaa_station_id, date)
-    tidal_windows = calculate_ramp_windows(ramp, boat, tide_data, date)
+def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
+    ecm_hours = get_ecm_operating_hours(date_to_check)
+    if not ecm_hours:
+        return []
+
+    ecm_open = datetime.datetime.combine(date_to_check, ecm_hours['open'])
+    ecm_close = datetime.datetime.combine(date_to_check, ecm_hours['close'])
+    tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_to_check)
+    
+    # --- THIS IS THE CORRECTED CALL ---
+    tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data, date_to_check)
+    
     final_windows = []
     for t_win in tidal_windows:
-        overlap_start = max(datetime.datetime.combine(date, t_win['start_time']), ecm_open)
-        overlap_end = min(datetime.datetime.combine(date, t_win['end_time']), ecm_close)
+        tidal_start = datetime.datetime.combine(date_to_check, t_win['start_time'])
+        tidal_end = datetime.datetime.combine(date_to_check, t_win['end_time'])
+        overlap_start = max(tidal_start, ecm_open)
+        overlap_end = min(tidal_end, ecm_close)
+        
         if overlap_start < overlap_end:
-            final_windows.append({'start_time': overlap_start.time(), 'end_time': overlap_end.time(), 'high_tide_times': [t['time'] for t in tide_data if t['type'] == 'H'], 'tide_rule_concise': get_concise_tide_rule(ramp, boat)})
+            final_windows.append({
+                'start_time': overlap_start.time(),
+                'end_time': overlap_end.time(),
+                'high_tide_times': [t['time'] for t in tide_data if t['type'] == 'H'],
+                'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
+            })
+            
     return final_windows
 
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
