@@ -159,8 +159,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     except ValueError:
         return [], "Error: Invalid date format.", [], False
     
-    customer = get_customer_details(customer_id)
-    boat = get_boat_details(boat_id)
+    customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
     if not customer or not boat:
         return [], "Error: Invalid Cust/Boat ID.", [], False
 
@@ -182,11 +181,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not trucks:
         return [], "No suitable trucks for this boat.", [], False
     
-    # --- THIS INNER FUNCTION IS REWRITTEN FOR ACCURACY ---
     def search_day(s_date, slots_list, limit):
         ecm_hours = get_ecm_operating_hours(s_date)
-        if not ecm_hours: return
-        
+        if not ecm_hours:
+            return
+
         windows = get_final_schedulable_ramp_times(ramp_obj, boat, s_date) if ramp_obj else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
         
         if not customer.is_ecm_customer:
@@ -194,28 +193,25 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             windows = [{**w, 'start_time': max(w['start_time'], min_start)} for w in windows if max(w['start_time'], min_start) < w['end_time']]
         
         for truck in trucks:
-            if len(slots_list) >= limit: break
             for w in windows:
-                if len(slots_list) >= limit: break
-                
-                p_time = w['start_time']
-                while p_time < w['end_time']:
-                    if len(slots_list) >= limit: break
-                    
-                    # Align potential time to the half-hour
+                p_time, p_end = w['start_time'], w['end_time']
+                while p_time < p_end:
+                    if len(slots_list) >= limit:
+                        return # Exit if we've already hit the overall limit
+
                     temp_dt = datetime.datetime.combine(s_date, p_time)
                     if temp_dt.minute % 30 != 0:
                         p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
-                    if p_time >= w['end_time']: break
-                    
-                    # Check the slot
+                    if p_time >= p_end:
+                        break
+
                     slot = _check_and_create_slot_detail(s_date, p_time, truck, customer, boat, service_type, ramp_obj, ecm_hours, duration, j17_duration, w)
-                    if slot:
-                        # Ensure we don't add the same slot twice
-                        if not any(s['date'] == slot['date'] and s['time'] == slot['time'] and s['truck_id'] == slot['truck_id'] for s in slots_list):
-                            slots_list.append(slot)
                     
-                    # Always advance time to check the next possible slot
+                    # --- THIS IS THE KEY CHANGE ---
+                    if slot:
+                        slots_list.append(slot)
+                        return  # Exit immediately after finding the first valid slot for the day
+                    
                     p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
 
     potential_slots, was_forced = [], False
@@ -224,11 +220,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         search_day(forced_date, potential_slots, 6)
     else:
         slots_before, slots_after = [], []
+        # Phase 1: Before
         d = max(TODAY_FOR_SIMULATION, requested_date_obj - datetime.timedelta(days=5))
         while d < requested_date_obj and len(slots_before) < 2:
             search_day(d, slots_before, 2)
             d += datetime.timedelta(days=1)
-        
+        # Phase 2: After
         d, i = requested_date_obj, 0
         while len(slots_after) < 4 and i < 45:
             search_day(d, slots_after, 4)
