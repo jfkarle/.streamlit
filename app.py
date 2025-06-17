@@ -201,23 +201,45 @@ if st.session_state.found_slots and not st.session_state.selected_slot:
     
     cols = st.columns(3)
     
-    for i, slot in enumerate(st.session_state.found_slots):
-        col = cols[i % 3]
-        with col:
-            with st.container(border=True):
-                
-                # --- THIS IS THE FINAL, CORRECTED LOGIC ---
-                # It safely gets the requested date from session_state
-                if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
-                    st.markdown(
-                        """
-                        <div style="background-color: #F0FFF0; border-left: 6px solid #2E8B57; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                            <h5 style="color: #2E8B57; margin: 0; font-weight: bold;">⭐ Requested Date</h5>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
+# --- THIS ENTIRE LOOP AND ITS CONTENTS HAVE BEEN UN-INDENTED BY 4 SPACES ---
+for i, slot in enumerate(st.session_state.found_slots):
+    col = cols[i % 3]
+    with col:
+        with st.container(border=True):
+            
+            # This check now uses the reliable session_state variable
+            if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
+                st.markdown(
+                    """
+                    <div style="background-color: #F0FFF0; border-left: 6px solid #2E8B57; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                        <h5 style="color: #2E8B57; margin: 0; font-weight: bold;">⭐ Requested Date</h5>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
+            # Define all variables
+            date_str = slot['date'].strftime('%a, %b %d, %Y')
+            time_str = ecm.format_time_for_display(slot.get('time'))
+            truck_id = slot.get('truck_id', 'N/A')
+            ramp_name = ecm.get_ramp_details(slot.get('ramp_id')).ramp_name if slot.get('ramp_id') else "N/A"
+            
+            ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
+            tide_display_str = format_tides_for_display(slot, ecm_hours)
+
+            # Display in the desired order
+            st.markdown(f"**Date:** {date_str}")
+            if slot.get('tide_rule_concise'):
+                st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
+            if tide_display_str:
+                st.markdown(tide_display_str)
+            st.markdown(f"**Time:** {time_str}")
+            st.markdown(f"**Truck:** {truck_id}")
+            st.markdown(f"**Ramp:** {ramp_name}")
+            
+            st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+    
+st.markdown("---")
                 # --- The rest of the display logic is the same ---
                 date_str = slot['date'].strftime('%a, %b %d, %Y')
                 time_str = ecm.format_time_for_display(slot.get('time'))
