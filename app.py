@@ -123,23 +123,39 @@ if app_mode == "Schedule New Boat":
 
     # --- Main Area Display Logic ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
-        # Displaying the prominent "Requested Date" card
-        # (Your two-tiered logic would go here)
         st.subheader("Please select your preferred slot:")
+        
+        # This is the full, detailed card display logic
         cols = st.columns(3)
         for i, slot in enumerate(st.session_state.found_slots):
             with cols[i % 3]:
                 with st.container(border=True):
-                    # Highlighting logic, etc.
-                    st.markdown(f"**Date:** {slot['date'].strftime('%a, %b %d, %Y')}")
-                    st.button("Select", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+                    if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
+                        st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
+                    
+                    date_str = slot['date'].strftime('%a, %b %d, %Y')
+                    time_str = ecm.format_time_for_display(slot.get('time'))
+                    truck_id = slot.get('truck_id', 'N/A')
+                    ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                    ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
+                    ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
+                    tide_display_str = format_tides_for_display(slot, ecm_hours)
+
+                    st.markdown(f"**Date:** {date_str}")
+                    if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
+                    if tide_display_str: st.markdown(tide_display_str)
+                    st.markdown(f"**Time:** {time_str}")
+                    st.markdown(f"**Truck:** {truck_id}")
+                    st.markdown(f"**Ramp:** {ramp_name}")
+                    st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
         st.markdown("---")
 
     elif st.session_state.selected_slot:
-        # Confirmation screen
+        # Confirmation Screen Logic
         slot = st.session_state.selected_slot
         st.subheader("Preview & Confirm Selection:")
-        st.success(f"Confirming job for {slot['date'].strftime('%Y-%m-%d %A')}...")
+        st.success(f"You are considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
+        if slot.get('j17_needed'): st.write("J17 Crane will also be assigned.")
         if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
             new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
             if new_job_id:
@@ -157,6 +173,7 @@ if app_mode == "Schedule New Boat":
 # --- PAGE 2: REPORTING ---
 elif app_mode == "Reporting":
     st.header("Reporting Dashboard")
+    st.info("This section is for viewing and exporting scheduled jobs.")
     st.subheader("All Scheduled Jobs (Current Session)")
     if ecm.SCHEDULED_JOBS:
         display_data = []
