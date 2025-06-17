@@ -74,7 +74,49 @@ def calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
     usable_windows.sort(key=lambda x: x['start_time'])
     return usable_windows
 
+def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
+    final_windows = []
+    ecm_hours = get_ecm_operating_hours(date_to_check)
+    if not ecm_hours: return []
+    
+    ecm_open_dt = datetime.datetime.combine(date_to_check, ecm_hours['open'])
+    ecm_close_dt = datetime.datetime.combine(date_to_check, ecm_hours['close'])
+    
+    tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_to_check)
+    
+    # --- THIS IS THE CORRECTED LINE ---
+    # It now correctly passes all four required arguments.
+    tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data, date_to_check)
 
+    if not tidal_windows: return []
+
+    high_tides_list = [event['time'] for event in tide_data if event['type'] == 'H']
+    concise_tide_rule_str = get_concise_tide_rule(ramp_obj, boat_obj)
+
+    for t_window in tidal_windows:
+        tidal_start_dt = datetime.datetime.combine(date_to_check, t_window['start_time'])
+        tidal_end_dt = datetime.datetime.combine(date_to_check, t_window['end_time'])
+        
+        overlap_start_dt = max(tidal_start_dt, ecm_open_dt)
+        overlap_end_dt = min(tidal_end_dt, ecm_close_dt)
+        
+        if overlap_start_dt < overlap_end_dt:
+            final_windows.append({
+                'start_time': overlap_start_dt.time(),
+                'end_time': overlap_end_dt.time(),
+                'high_tide_times': high_tides_list,
+                'tide_rule_concise': concise_tide_rule_str
+            })
+            
+    # Remove duplicates that can occur with overlapping tide windows
+    unique_final_windows = []
+    if final_windows:
+        final_windows.sort(key=lambda x: x['start_time'])
+        for fw in final_windows:
+            if not unique_final_windows or unique_final_windows[-1] != fw:
+                unique_final_windows.append(fw)
+
+    return unique_final_windows
 
 # --- Configuration & Data Models ---
 TODAY_FOR_SIMULATION = datetime.date.today()
