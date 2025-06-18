@@ -11,6 +11,10 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib import colors
+# --- NEW IMPORTS FOR PARAGRAPH HANDLING ---
+from reportlab.platypus import Paragraph
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.enums import TA_CENTER
 
 # =============================================================================
 # --- PDF Generation Functions ---
@@ -77,7 +81,8 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
 
     # --- 3. Draw High-Fidelity Grid ---
-    c.setFont("Helvetica-Bold", 10)
+    # --- FIX: Increased font size for column headings to 12pt ---
+    c.setFont("Helvetica-Bold", 12)
     for i, col_name in enumerate(planner_columns):
         x_center = margin + time_col_width + (i * col_width) + (col_width / 2)
         c.drawCentredString(x_center, top_y + 8, col_name)
@@ -98,13 +103,10 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             if minute == 0:
                 c.setLineWidth(1.0)
                 c.setFont("Helvetica-Bold", 10)
-                
-                # --- FIX for Problem #4: 12-Hour Clock ---
                 display_hour = hour
                 if hour == 0: display_hour = 12
                 elif hour > 12: display_hour = hour - 12
                 c.drawString(margin + 5, y - 4, str(display_hour))
-
                 c.setFont("Helvetica", 8)
                 c.drawString(margin + 20, y - 3, "00")
             else:
@@ -115,6 +117,14 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.line(margin, y, width - margin, y)
 
     # --- 4. Place Jobs and Duration Lines onto the Grid ---
+    # --- FIX: Using Paragraphs for perfect vertical centering ---
+    styles = getSampleStyleSheet()
+    p_style = styles["Normal"]
+    p_style.fontName = "Helvetica"
+    p_style.fontSize = 11
+    p_style.leading = 13 # Line spacing
+    p_style.alignment = TA_CENTER
+
     for job in jobs_for_day:
         truck_id = job.assigned_hauling_truck_id
         if job.assigned_crane_truck_id:
@@ -129,12 +139,13 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
         column_start_x = margin + time_col_width + (col_index * col_width)
         line_x = column_start_x + (col_width * 0.2)
-        text_center_x = column_start_x + (col_width * 0.6)
+        text_area_x = line_x + 5
+        text_area_width = col_width - (col_width * 0.2) - 10
 
         job_slot_top_y = get_y_for_time(job_start_time)
         next_slot_time = (datetime.datetime.combine(datetime.date.today(), job_start_time) + datetime.timedelta(minutes=15)).time()
         job_slot_bottom_y = get_y_for_time(next_slot_time)
-        job_slot_center_y = job_slot_bottom_y + ((job_slot_top_y - job_slot_bottom_y) / 2)
+        cell_height = job_slot_top_y - job_slot_bottom_y
 
         customer = ecm.get_customer_details(job.customer_id)
         boat = ecm.get_boat_details(job.boat_id)
@@ -148,28 +159,27 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         elif job.service_type == "Haul":
             location_text = f"Haul-{origin}"
         
-        # --- FIX for Problem #3: Font Size ---
-        c.setFont("Helvetica", 11)
-        line_height = 13
-
-        # --- FIX for Problem #1 & #3: Vertical Centering & Text Centering ---
-        c.drawCentredString(text_center_x, job_slot_center_y + (line_height * 0.9), last_name)
-        c.drawCentredString(text_center_x, job_slot_center_y - (line_height * 0.1), f"{int(boat.boat_length)}' {boat.boat_type}")
-        c.drawCentredString(text_center_x, job_slot_center_y - (line_height * 1.1), location_text)
-
-        # --- FIX for Problem #2: Vertical Line Start ---
-        # More robustly calculate bottom of text block to start the line
-        text_block_bottom_y = job_slot_center_y - line_height - 6 # Add 6 points of padding
+        # Combine text into a single block with line breaks
+        full_text = f"{last_name}<br/>{int(boat.boat_length)}' {boat.boat_type}<br/>{location_text}"
         
-        y_start_for_line = text_block_bottom_y
+        # Create a Paragraph object to measure and draw the text block
+        p = Paragraph(full_text, p_style)
+        p_width, p_height = p.wrapOn(c, text_area_width, cell_height)
+        
+        # Calculate the Y position to perfectly center the paragraph in the cell
+        y_for_paragraph = job_slot_bottom_y + (cell_height - p_height) / 2
+        p.drawOn(c, text_area_x, y_for_paragraph)
+
+        # Draw the Duration Line
         y_end_for_line = get_y_for_time(job_end_time)
+        y_start_for_line = job_slot_bottom_y # Start the line from the bottom of the text's cell
         
-        c.setLineWidth(1.0)
-        c.setStrokeColorRGB(0.1, 0.1, 0.1)
-        
-        c.line(line_x, y_start_for_line, line_x, y_end_for_line)
-        c.line(line_x - 3, y_end_for_line, line_x + 3, y_end_for_line)
-        c.setStrokeColorRGB(0,0,0)
+        if y_start_for_line > y_end_for_line:
+            c.setLineWidth(1.0)
+            c.setStrokeColorRGB(0.1, 0.1, 0.1)
+            c.line(line_x, y_start_for_line, line_x, y_end_for_line)
+            c.line(line_x - 3, y_end_for_line, line_x + 3, y_end_for_line)
+            c.setStrokeColorRGB(0,0,0)
 
     c.save()
     buffer.seek(0)
