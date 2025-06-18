@@ -132,6 +132,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         elif service_type == "Haul":
             location = f"Haul-{_abbreviate_location(pickup)}"
         
+        # --- Start of job block rendering ---
         # Compute exact text y-positions between grid lines
         dt_base = datetime.datetime.combine(datetime.date.today(), start_time)
         y0 = get_y_for_time(start_time)
@@ -139,24 +140,24 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         y2 = get_y_for_time((dt_base + datetime.timedelta(minutes=30)).time())
         y3 = get_y_for_time((dt_base + datetime.timedelta(minutes=45)).time())
         
-        line1_y = (y0 + y1) / 2  # Customer name: between top line and 15-min line
-        line2_y = (y1 + y2) / 2  # Boat info: between 15-min and 30-min
-        line3_y = (y2 + y3) / 2  # Location: between 30-min and 45-min
-
-# Draw each text line centered between time lines
-c.setFont("Helvetica-Bold", 8)
-c.drawCentredString(text_center_x, line1_y, customer_name)
-
-c.setFont("Helvetica", 7)
-c.drawCentredString(text_center_x, line2_y, boat_desc)
-c.drawCentredString(text_center_x, line3_y, location)
-
-
-        # Job vertical line below the 3rd line of text
-        y_bar_start = first_block_mid_y - 18
+        line1_y = (y0 + y1) / 2  # Customer name
+        line2_y = (y1 + y2) / 2  # Boat description
+        line3_y = (y2 + y3) / 2  # Launch location
+        
+        # Draw the 3-line block between grid lines
+        c.setFont("Helvetica-Bold", 8)
+        c.drawCentredString(text_center_x, line1_y, customer_name)
+        
+        c.setFont("Helvetica", 7)
+        c.drawCentredString(text_center_x, line2_y, boat_desc)
+        c.drawCentredString(text_center_x, line3_y, location)
+        
+        # Vertical line starts below last line (after y3)
+        y_bar_start = y3 + 6
         c.setLineWidth(2)
         c.line(text_center_x, y_bar_start, text_center_x, y_end)
         c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+        # --- End of job block rendering ---
 
     c.save()
     buffer.seek(0)
