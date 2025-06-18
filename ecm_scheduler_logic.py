@@ -227,15 +227,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], "No suitable trucks for this boat.", [], False
     
     # Nested helper function for searching a single day
-    def search_day(s_date, slots_list, limit, reason=None):
+    # CORRECTED: Updated the signature to accept all 10 arguments
+    def search_day(s_date, slots_list, limit, customer, boat, service_type, ramp_obj, duration, j17_duration, trucks, reason=None):
         ecm_hours = get_ecm_operating_hours(s_date)
         if not ecm_hours:
             return
 
-        # Ensure windows are correctly determined based on ramp or full operating hours
         windows = get_final_schedulable_ramp_times(ramp_obj, boat, s_date) if ramp_obj else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
         
-        # Adjust start times for non-ECM customers
         if not customer.is_ecm_customer:
             min_start = (datetime.datetime.combine(s_date, ecm_hours['open']) + datetime.timedelta(hours=1.5)).time()
             windows = [{**w, 'start_time': max(w['start_time'], min_start)} for w in windows if max(w['start_time'], min_start) < w['end_time']]
@@ -244,27 +243,22 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             for w in windows:
                 p_time, p_end = w['start_time'], w['end_time']
                 
-                # Round the initial start time to the nearest 15 minutes
                 p_time = round_time_to_nearest_15_minutes(p_time)
 
                 while p_time < p_end:
                     if len(slots_list) >= limit:
-                        return # Exit if we've found enough slots across all days
+                        return 
 
-                    # Attempt to create a slot with the current p_time
-                    # This is the single, correct call to _check_and_create_slot_detail
                     slot = _check_and_create_slot_detail(s_date, p_time, truck, customer, boat, service_type, ramp_obj, ecm_hours, duration, j17_duration, w, reason_for_suggestion=reason)
                     
                     if slot:
                         slots_list.append(slot)
-                        # Return immediately after finding the first valid slot for this day/window/truck.
-                        # If you want to find more slots for the same day/window/truck, remove this return.
+                        # The 'return' here means it stops after finding the first valid slot for the day/window/truck.
+                        # If you want to find ALL possible slots for the day/window/truck before returning, remove this return.
                         return 
 
-                    # Increment p_time by 15 minutes for the next iteration
                     p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=15)).time()
 
-                    # If the incremented time goes beyond the window end, break the inner loop
                     if p_time >= p_end:
                         break
 
@@ -272,21 +266,21 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if forced_date:
         was_forced = True
         reason_message = "Suggested to group with an existing crane job."
-        # Pass all necessary arguments to search_day
+        # Call search_day with all necessary arguments
         search_day(forced_date, potential_slots, 6, customer, boat, service_type, ramp_obj, duration, j17_duration, trucks, reason=reason_message)
     else:
         slots_before, slots_after = [], []
         # Phase 1: Before requested date
         d = max(TODAY_FOR_SIMULATION, requested_date_obj - datetime.timedelta(days=5))
         while d < requested_date_obj and len(slots_before) < 2:
-            # Pass all necessary arguments to search_day
+            # Call search_day with all necessary arguments
             search_day(d, slots_before, 2, customer, boat, service_type, ramp_obj, duration, j17_duration, trucks)
             d += datetime.timedelta(days=1)
         
         # Phase 2: After requested date (including the requested date)
         d, i = requested_date_obj, 0
         while len(slots_after) < 4 and i < 45:
-            # Pass all necessary arguments to search_day
+            # Call search_day with all necessary arguments
             search_day(d, slots_after, 4, customer, boat, service_type, ramp_obj, duration, j17_duration, trucks)
             d += datetime.timedelta(days=1)
             i += 1
