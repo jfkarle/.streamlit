@@ -164,7 +164,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         
         # Create a Paragraph object to measure and draw the text block
         p = Paragraph(full_text, p_style)
-        p_width, p_height = p.wrapOn(c, text_area_width, cell_height)
+        p_width, p_height = p.wrapOn(c, text_area_width, height)
         
         # Calculate the Y position to perfectly center the paragraph in the cell
         y_for_paragraph = job_slot_bottom_y + (cell_height - p_height) / 2
