@@ -60,15 +60,6 @@ class OperatingHoursEntry:
 
 # --- Data Initialization ---
 ECM_TRUCKS = { "S20/33": Truck("S20/33", "S20", 60), "S21/77": Truck("S21/77", "S21", 45), "S23/55": Truck("S23/55", "S23", 30), "J17": Truck("J17", "J17 (Crane)", 999)}
-Yes, absolutely. I have validated the NOAA Station IDs in your code. Several of them were either placeholders, pointing to a nearby but less accurate station, or were simply incorrect.
-
-Using a station's designated ID ensures you can reliably pull tide prediction data from the NOAA API for the correct location.
-
-Here is the corrected code block with validated and updated NOAA Tide Prediction Station IDs.
-
-Corrected Code with Validated Station IDs
-Python
-
 ECM_RAMPS = {
     # Arguments mapped to: Ramp(r_id, name, station, tide_method, offset, boats)
     "SandwichBasin": Ramp("SandwichBasin", "Sandwich Basin", "8447180", "AnyTide", None, ["Power Boats (RARE)"]), # CORRECTED  
