@@ -62,11 +62,15 @@ class OperatingHoursEntry:
 ECM_TRUCKS = { "S20/33": Truck("S20/33", "S20", 60), "S21/77": Truck("S21/77", "S21", 45), "S23/55": Truck("S23/55", "S23", 30), "J17": Truck("J17", "J17 (Crane)", 999)}
 ECM_RAMPS = {
     # Arguments mapped to: Ramp(r_id, name, station, tide_method, offset, boats)
-    "SandwichBasin": Ramp("SandwichBasin", "Sandwich Basin", "8447180", "AnyTide"),
+    "SandwichBasin": Ramp("SandwichBasin", "Sandwich Basin", "8447180", "AnyTide", ["Powerboat"]),
     "PlymouthHarbor": Ramp("PlymouthHarbor", "Plymouth Harbor", "8446493", "HoursAroundHighTide", 3.0),
+    "FerryStreet": Ramp("FerryStreet", "Ferry Street (Scituate)", "8443970", "HoursAroundHighTide", 3.0, ["Powerboat"]),
+    "SouthRiverYachtYard": Ramp("SouthRiverYachtYard", "SRYY (Scituate)", "8443970", "HoursAroundHighTide", 2.0, ["Powerboat"]),    
     "CordagePark": Ramp("CordagePark", "Cordage Park (Plymouth)", "8446493", "HoursAroundHighTide", 1.5, ["Powerboat"]),
     "DuxburyHarbor": Ramp("DuxburyHarbor", "Duxbury Harbor (Town Pier)", "8446166", "HoursAroundHighTide", 1.0, ["Powerboat"]),
     "GreenHarborTaylors": Ramp("GreenHarborTaylors", "Green Harbor (Taylors)", "8446166", "HoursAroundHighTide", 3.0, ["Powerboat"]),
+    "JonesRiver": Ramp("JonesRiver", "Ferry Street (Kingston)", "8443970", "HoursAroundHighTide", 1.5, ["Powerboat"]),
+    "RohtMarine": Ramp("RohtMarine", "Roht Marine Marine (Scituate)", "8443970", "HoursAroundHighTide", 1.5, ["Powerboat"]),
     "GreenHarborSafeHarbor": Ramp("GreenHarborSafeHarbor", "Safe Harbor (Green Harbor)", "8446166", "HoursAroundHighTide", 1.0, ["Powerboat"]),
     "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor (Jericho Road)", "8443970", "AnyTideWithDraftRule"),
     "CohassetParkerAve": Ramp("CohassetHarbor", "Cohasset Harbor (Parker Ave)", "8443970", "HoursAroundHighTide", 3.0),
