@@ -120,21 +120,23 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         job_start_time = job.scheduled_start_datetime.time()
         job_end_time = job.scheduled_end_datetime.time()
 
-        # --- REVISED LOGIC FOR PLACEMENT, CENTERING, and FONT SIZE ---
+        # --- NEW, SIMPLIFIED & CORRECTED LOGIC FOR POSITIONING ---
 
-        # 1. Define the geometry of the text area and line
-        line_x = margin + time_col_width + (col_index * col_width) + (col_width / 2)
-        text_area_start_x = line_x + 5
-        text_area_width = (col_width / 2) - 5
-        text_center_x = text_area_start_x + (text_area_width / 2)
+        # 1. Get the starting X-coordinate for the current column.
+        column_start_x = margin + time_col_width + (col_index * col_width)
 
-        # 2. Calculate the vertical "cell" for the text
+        # 2. Position the duration line and the text relative to the start of the column.
+        #    This prevents any overlap between columns.
+        line_x = column_start_x + (col_width * 0.2)  # Position line 20% into the column
+        text_center_x = column_start_x + (col_width * 0.6) # Center text in the remaining space
+
+        # 3. Calculate the vertical "cell" for the text
         job_slot_top_y = get_y_for_time(job_start_time)
         next_slot_time = (datetime.datetime.combine(datetime.date.today(), job_start_time) + datetime.timedelta(minutes=15)).time()
         job_slot_bottom_y = get_y_for_time(next_slot_time)
         job_slot_center_y = job_slot_bottom_y + ((job_slot_top_y - job_slot_bottom_y) / 2)
 
-        # 3. Get job details and set new font size
+        # 4. Get job details and set font size
         customer = ecm.get_customer_details(job.customer_id)
         boat = ecm.get_boat_details(job.boat_id)
         last_name = customer.customer_name.split(' ')[-1] if ' ' in customer.customer_name else customer.customer_name
@@ -147,17 +149,15 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         elif job.service_type == "Haul":
             location_text = f"Haul-{origin}"
         
-        # Set new, larger font size
         c.setFont("Helvetica", 11)
-        line_height = 13 # The distance between lines of text
+        line_height = 13
 
-        # 4. Draw the 3 lines of text, centered horizontally and vertically
+        # 5. Draw the 3 lines of text, centered in their new, correct position
         c.drawCentredString(text_center_x, job_slot_center_y + line_height, last_name)
         c.drawCentredString(text_center_x, job_slot_center_y, f"{int(boat.boat_length)}' {boat.boat_type}")
         c.drawCentredString(text_center_x, job_slot_center_y - line_height, location_text)
 
-        # 5. Draw the Duration Line, starting BENEATH the text
-        # Calculate where the text block ends
+        # 6. Draw the Duration Line, starting BENEATH the text
         text_block_bottom_y = job_slot_center_y - line_height - (line_height / 2)
         
         y_start_for_line = text_block_bottom_y
@@ -166,11 +166,9 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         c.setLineWidth(1.0)
         c.setStrokeColorRGB(0.1, 0.1, 0.1)
         
-        # The vertical line
         c.line(line_x, y_start_for_line, line_x, y_end_for_line)
-        # The horizontal tick mark at the end
         c.line(line_x - 3, y_end_for_line, line_x + 3, y_end_for_line)
-        c.setStrokeColorRGB(0,0,0) # Reset stroke color
+        c.setStrokeColorRGB(0,0,0)
         
     c.save()
     buffer.seek(0)
