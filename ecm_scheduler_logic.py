@@ -61,10 +61,17 @@ class OperatingHoursEntry:
 # --- Data Initialization ---
 ECM_TRUCKS = { "S20/33": Truck("S20/33", "S20", 60), "S21/77": Truck("S21/77", "S21", 45), "S23/55": Truck("S23/55", "S23", 30), "J17": Truck("J17", "J17 (Crane)", 999)}
 ECM_RAMPS = {
-    "DuxburyHarbor": Ramp("DuxburyHarbor", "Duxbury Harbor", "8443970", "HoursAroundHighTide", 1.0, ["Powerboat"]),
-    "GreenHarborTaylors": Ramp("GreenHarborTaylors", "Green Harbor", "8443970", "HoursAroundHighTide", 3.0),
-    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor", "8443970"),
-    "PlymouthHarbor": Ramp("PlymouthHarbor", "Plymouth Harbor", "8443970", "HoursAroundHighTide", 3.0),
+    "SandwichBasin": Ramp("SandwichBasin", "Sandwich Basin", "Sandwich, MA", "Any tide", "AnyTide", "SandwichStation_mock", allowed_boat_types="Power Boats (RARE)"),
+    "PlymouthHarbor": Ramp("PlymouthHarbor", "Plymouth Harbor", "Plymouth, MA", "3 hrs before and after high tide", "HoursAroundHighTide", "8446493", tide_offset_hours1=3.0),
+    "CordagePark": Ramp("CordagePark", "Cordage Park (Plymouth)", "Plymouth, MA", "1.5 hr before and after high tide", "HoursAroundHighTide", "8446493", tide_offset_hours1=1.5, allowed_boat_types="Power Boats Only"),
+    "DuxburyHarbor": Ramp("DuxburyHarbor", "Duxbury Harbor (Town Pier)", "Duxbury, MA", "1 hr before or after high tide", "HoursAroundHighTide", "8445672", tide_offset_hours1=1.0, allowed_boat_types="Power Boats Only"),
+    "GreenHarborTaylors": Ramp("GreenHarborTaylors", "Green Harbor (Taylors)", "Marshfield, MA", "3 hrs before and after high tide", "HoursAroundHighTide", "8445071", tide_offset_hours1=3.0, allowed_boat_types="Power Boats"),
+    "GreenHarborSafeHarbor": Ramp("GreenHarborSafeHarbor", "Safe Harbor (Green Harbor)", "Marshfield, MA", "1 hr before and after (only for Safe Harbor customers)", "HoursAroundHighTide", "8445071", tide_offset_hours1=1.0, allowed_boat_types="Power Boats only", operating_notes="Safe Harbor customers only"),
+    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor (Jericho Road)", "Scituate, MA", "Any tide; 5' draft or > needs 3 hrs around high tide", "AnyTideWithDraftRule", "8444992", draft_restriction_ft=5.0, draft_restriction_tide_rule="HoursAroundHighTide_Offset3"), # Special draft rule
+    "CohassetParkerAve": Ramp("CohassetParkerAve", "Cohasset Harbor (Parker Ave)", "Cohasset, MA", "3 hrs before or after high tide", "HoursAroundHighTide", "8444672", tide_offset_hours1=3.0),
+    "HullASt": Ramp("HullASt", "Hull (A St, Sunset, Steamboat)", "Hull, MA", "3 hrs before or after high tide; 1.5 hr tide for 6' or > draft", "HoursAroundHighTide_WithDraftRule", "8444009", tide_offset_hours1=3.0, draft_restriction_ft=6.0, draft_restriction_tide_rule="HoursAroundHighTide_Offset1.5"),
+    "HinghamHarbor": Ramp("HinghamHarbor", "Hingham Harbor", "Hingham, MA", "3 hrs before and after high tide", "HoursAroundHighTide", "8443971", tide_offset_hours1=3.0),
+    "WeymouthWessagusset": Ramp("WeymouthWessagusset", "Weymouth Harbor (Wessagusset)", "Weymouth, MA", "3 hrs before and after high tide", "HoursAroundHighTide", "8443581", tide_offset_hours1=3.0),
 }
 operating_hours_rules = [
     OperatingHoursEntry("Standard", 0, datetime.time(8,0), datetime.time(16,0)), OperatingHoursEntry("Standard", 1, datetime.time(8,0), datetime.time(16,0)),
