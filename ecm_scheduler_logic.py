@@ -230,11 +230,29 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
         for truck in trucks:
             for w in windows:
+# Inside the search_day function...
                 p_time, p_end = w['start_time'], w['end_time']
+                
+                # ----> NEW: Round the initial start time <----
+                p_time = round_time_to_nearest_15_minutes(p_time)
+
                 while p_time < p_end:
                     if len(slots_list) >= limit:
-                        return # Exit if we've already hit the overall limit
+                        return
 
+                    # ----> REMOVED: The old "snap forward" logic is no longer needed.
+
+                    # (The slot = _check_and_create_slot_detail(...) logic remains the same)
+                    slot = _check_and_create_slot_detail(...)
+                    if slot:
+                        slots_list.append(slot)
+                        # NOTE: You may want to remove the 'return' here if you want to find
+                        # ALL possible slots in a day, not just the first one.
+                        # For now, we'll leave it to find the first available.
+                        return
+
+                    # ----> CHANGED: Increment by 15 minutes instead of 30 <----
+                    p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=15)).time()
                     temp_dt = datetime.datetime.combine(s_date, p_time)
                     if temp_dt.minute % 30 != 0:
                         p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
