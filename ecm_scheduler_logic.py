@@ -62,17 +62,17 @@ class OperatingHoursEntry:
 ECM_TRUCKS = { "S20/33": Truck("S20/33", "S20", 60), "S21/77": Truck("S21/77", "S21", 45), "S23/55": Truck("S23/55", "S23", 30), "J17": Truck("J17", "J17 (Crane)", 999)}
 ECM_RAMPS = {
     # Arguments mapped to: Ramp(r_id, name, station, tide_method, offset, boats)
-    "SandwichBasin": Ramp("SandwichBasin", "Sandwich Basin", "8447180", "AnyTide", None, ["Powerboat"]), # CORRECTED  
-    "PlymouthHarbor": Ramp("PlymouthHarbor", "Plymouth Harbor", "8446493", "HoursAroundHighTide", 3.0), # VERIFIED
-    "CordagePark": Ramp("CordagePark", "Cordage Park (Plymouth)", "8446493", "HoursAroundHighTide", 1.5, ["Powerboat"]), # VERIFIED
-    "DuxburyHarbor": Ramp("DuxburyHarbor", "Duxbury Harbor (Town Pier)", "8446166", "HoursAroundHighTide", 1.0, ["Powerboat"]), # CORRECTED
-    "GreenHarborTaylors": Ramp("GreenHarborTaylors", "Green Harbor (Taylors)", "8445071", "HoursAroundHighTide", 3.0, ["Powerboat"]), # VERIFIED
-    "GreenHarborSafeHarbor": Ramp("GreenHarborSafeHarbor", "Safe Harbor (Green Harbor)", "8445071", "HoursAroundHighTide", 1.0, ["Powerboat"]), # VERIFIED
-    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor (Jericho Road)", "8445138", "AnyTideWithDraftRule"), # CORRECTED
-    "CohassetParkerAve": Ramp("CohassetHarbor", "Cohasset Harbor (Parker Ave)", "8444762", "HoursAroundHighTide", 3.0), # CORRECTED
-    "HullASt": Ramp("HullASt", "Hull (A St, Sunset, Steamboat)", "8444199", "HoursAroundHighTide_WithDraftRule", 3.0), # CORRECTED
-    "HinghamHarbor": Ramp("HinghamHarbor", "Hingham Harbor", "8444775", "HoursAroundHighTide", 3.0), # CORRECTED
-    "WeymouthWessagusset": Ramp("WeymouthWessagusset", "Weymouth Harbor (Wessagusset)", "8444788", "HoursAroundHighTide", 3.0), # CORRECTED
+    "SandwichBasin": Ramp("SandwichBasin", "Sandwich Basin", "8447180", "AnyTide"),
+    "PlymouthHarbor": Ramp("PlymouthHarbor", "Plymouth Harbor", "8446493", "HoursAroundHighTide", 3.0),
+    "CordagePark": Ramp("CordagePark", "Cordage Park (Plymouth)", "8446493", "HoursAroundHighTide", 1.5, ["Powerboat"]),
+    "DuxburyHarbor": Ramp("DuxburyHarbor", "Duxbury Harbor (Town Pier)", "8446166", "HoursAroundHighTide", 1.0, ["Powerboat"]),
+    "GreenHarborTaylors": Ramp("GreenHarborTaylors", "Green Harbor (Taylors)", "8446166", "HoursAroundHighTide", 3.0, ["Powerboat"]),
+    "GreenHarborSafeHarbor": Ramp("GreenHarborSafeHarbor", "Safe Harbor (Green Harbor)", "8446166", "HoursAroundHighTide", 1.0, ["Powerboat"]),
+    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor (Jericho Road)", "8443970", "AnyTideWithDraftRule"),
+    "CohassetParkerAve": Ramp("CohassetHarbor", "Cohasset Harbor (Parker Ave)", "8443970", "HoursAroundHighTide", 3.0),
+    "HullASt": Ramp("HullASt", "Hull (A St, Sunset, Steamboat)", "8444199", "HoursAroundHighTide_WithDraftRule", 3.0),
+    "HinghamHarbor": Ramp("HinghamHarbor", "Hingham Harbor", "8444775", "HoursAroundHighTide", 3.0),
+    "WeymouthWessagusset": Ramp("WeymouthWessagusset", "Weymouth Harbor (Wessagusset)", "8444788", "HoursAroundHighTide", 3.0),
 }
 operating_hours_rules = [
     OperatingHoursEntry("Standard", 0, datetime.time(8,0), datetime.time(16,0)), OperatingHoursEntry("Standard", 1, datetime.time(8,0), datetime.time(16,0)),
