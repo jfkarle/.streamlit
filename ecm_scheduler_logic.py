@@ -157,16 +157,17 @@ def check_truck_availability(truck_id, start_dt, end_dt):
             if start_dt < job_end and end_dt > job.scheduled_start_datetime: return False
     return True
 
-def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ramp, ecm_hours, duration, j17_duration, window_details):
+def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ramp, ecm_hours, duration, j17_duration, window_details, reason_for_suggestion=None):
     start_dt = datetime.datetime.combine(s_date, p_time); hauler_end_dt = start_dt + datetime.timedelta(hours=duration)
     if hauler_end_dt.time() > ecm_hours['close'] and not (hauler_end_dt.time() == ecm_hours['close'] and hauler_end_dt.date() == s_date): return None
     if not check_truck_availability(truck.truck_id, start_dt, hauler_end_dt): return None
     needs_j17 = BOOKING_RULES.get(boat.boat_type, {}).get('crane_mins', 0) > 0
     if needs_j17 and not check_truck_availability("J17", start_dt, start_dt + datetime.timedelta(hours=j17_duration)): return None
+    
     return {'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 
             'type': "Open", 'ramp_id': ramp.ramp_id if ramp else None, 
             'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0,
-            'reason_for_suggestion': reason_for_suggestion,  # <-- NEW LINE
+            'reason_for_suggestion': reason_for_suggestion, # This is now valid
             **window_details}
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, ignore_forced_search=False, **kwargs):
