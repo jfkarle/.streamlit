@@ -132,13 +132,24 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         elif service_type == "Haul":
             location = f"Haul-{_abbreviate_location(pickup)}"
         
-        # Vertical centering (spread evenly)
-        c.setFont("Helvetica-Bold", 8)
-        c.drawCentredString(text_center_x, first_block_mid_y + 6, customer_name)
+        # Compute exact text y-positions between grid lines
+        dt_base = datetime.datetime.combine(datetime.date.today(), start_time)
+        y0 = get_y_for_time(start_time)
+        y1 = get_y_for_time((dt_base + datetime.timedelta(minutes=15)).time())
+        y2 = get_y_for_time((dt_base + datetime.timedelta(minutes=30)).time())
+        y3 = get_y_for_time((dt_base + datetime.timedelta(minutes=45)).time())
         
-        c.setFont("Helvetica", 7)
-        c.drawCentredString(text_center_x, first_block_mid_y, boat_desc)
-        c.drawCentredString(text_center_x, first_block_mid_y - 6, location)
+        line1_y = (y0 + y1) / 2  # Customer name: between top line and 15-min line
+        line2_y = (y1 + y2) / 2  # Boat info: between 15-min and 30-min
+        line3_y = (y2 + y3) / 2  # Location: between 30-min and 45-min
+
+# Draw each text line centered between time lines
+c.setFont("Helvetica-Bold", 8)
+c.drawCentredString(text_center_x, line1_y, customer_name)
+
+c.setFont("Helvetica", 7)
+c.drawCentredString(text_center_x, line2_y, boat_desc)
+c.drawCentredString(text_center_x, line3_y, location)
 
 
         # Job vertical line below the 3rd line of text
