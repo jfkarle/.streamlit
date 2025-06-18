@@ -120,6 +120,14 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         job_start_time = job.scheduled_start_datetime.time()
         job_end_time = job.scheduled_end_datetime.time()
 
+        # --- THE FIX IS HERE: ---
+        # 1. First, calculate the X position for the centered duration line
+        line_x = margin + time_col_width + (col_index * col_width) + (col_width / 2)
+
+        # 2. Then, calculate the X position for the text to start to the RIGHT of the line
+        text_x = line_x + 5  # Start text 5 points to the right of the line
+
+        # Get job details for the text
         customer = ecm.get_customer_details(job.customer_id)
         boat = ecm.get_boat_details(job.boat_id)
         
@@ -134,30 +142,27 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         elif job.service_type == "Haul":
             location_text = f"Haul-{origin}"
 
-        text_x = margin + time_col_width + (col_index * col_width) + 5
+        # Position the text block vertically
         text_y_start = get_y_for_time(job_start_time) - 3
 
+        # Draw the 3 lines of text
         c.setFont("Helvetica", 9)
         c.drawString(text_x, text_y_start - 9, last_name)
         c.drawString(text_x, text_y_start - 19, f"{int(boat.boat_length)}' {boat.boat_type}")
         c.drawString(text_x, text_y_start - 29, location_text)
 
+        # Draw the Duration Line (now that the text is placed)
         y_start = get_y_for_time(job_start_time)
         y_end = get_y_for_time(job_end_time)
         
-        line_x = margin + time_col_width + (col_index * col_width) + (col_width / 2)
-        
         c.setLineWidth(1.0)
-        c.setStrokeColorRGB(0.1, 0.1, 0.1)
+        c.setStrokeColorRGB(0.1, 0.1, 0.1) # Dark grey for the line
         
+        # The vertical line
         c.line(line_x, y_start, line_x, y_end)
+        # The horizontal tick mark at the end
         c.line(line_x - 3, y_end, line_x + 3, y_end)
-        c.setStrokeColorRGB(0,0,0) # Reset stroke color
-
-    c.save()
-    buffer.seek(0)
-    return buffer
-
+        c.setStrokeColorRGB(0,0,0) # Reset stroke color for the next loop
 # =============================================================================
 # --- ADDED CODE BLOCK END ---
 # =============================================================================
