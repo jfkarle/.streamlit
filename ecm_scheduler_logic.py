@@ -27,6 +27,25 @@ def format_time_for_display(time_obj):
     # A more portable way is to use lstrip
     return time_obj.strftime('%I:%M %p').lstrip('0')
 
+def round_time_to_nearest_15_minutes(t):
+    """Rounds a datetime.time object to the nearest 15 minutes."""
+    # Combine with a dummy date to create a datetime object for calculations
+    dt = datetime.datetime.combine(datetime.date.min, t)
+    
+    # Calculate the number of seconds from the beginning of the hour
+    seconds_past_hour = dt.minute * 60 + dt.second
+    
+    # Calculate the remainder when divided by 900 seconds (15 minutes)
+    remainder = seconds_past_hour % 900
+    
+    # If the remainder is greater than 450 seconds (7.5 minutes), round up
+    if remainder > 450:
+        dt_rounded = dt + datetime.timedelta(seconds=900 - remainder)
+    # Otherwise, round down
+    else:
+        dt_rounded = dt - datetime.timedelta(seconds=remainder)
+        
+    return dt_rounded.time()
 
 def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide": return "Any Tide"
