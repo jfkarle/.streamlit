@@ -113,16 +113,16 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             (datetime.datetime.combine(datetime.date.today(), start_time) + datetime.timedelta(minutes=15)).time()
         )) / 2
 
-        c.setFont("Helvetica-Bold", 8)
+        # Get customer name
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
         customer_name = customer.customer_name.split()[-1] if customer else "Unknown"
-        c.drawCentredString(text_center_x, first_block_mid_y + 10, customer_name)
-
+        
+        # Get boat info
         boat_length = getattr(job, 'boat_length', 0)
         boat_type = getattr(job, 'boat_type', '')
-        c.setFont("Helvetica", 7)
-        c.drawCentredString(text_center_x, first_block_mid_y, f"{int(boat_length)}' {boat_type}")
-
+        boat_desc = f"{int(boat_length)}' {boat_type}"
+        
+        # Get location info
         pickup = getattr(job, 'pickup_street_address', '')
         dropoff = getattr(job, 'dropoff_street_address', '')
         location = f"{_abbreviate_location(pickup)}-{_abbreviate_location(dropoff)}"
@@ -131,7 +131,15 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             location = f"Launch-{_abbreviate_location(dropoff)}"
         elif service_type == "Haul":
             location = f"Haul-{_abbreviate_location(pickup)}"
-        c.drawCentredString(text_center_x, first_block_mid_y - 10, location)
+        
+        # Vertical centering (spread evenly)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawCentredString(text_center_x, first_block_mid_y + 6, customer_name)
+        
+        c.setFont("Helvetica", 7)
+        c.drawCentredString(text_center_x, first_block_mid_y, boat_desc)
+        c.drawCentredString(text_center_x, first_block_mid_y - 6, location)
+
 
         # Job vertical line below the 3rd line of text
         y_bar_start = first_block_mid_y - 18
