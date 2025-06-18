@@ -163,6 +163,9 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         # The horizontal tick mark at the end
         c.line(line_x - 3, y_end, line_x + 3, y_end)
         c.setStrokeColorRGB(0,0,0) # Reset stroke color for the next loop
+    c.save()
+    buffer.seek(0)
+    return buffer
 # =============================================================================
 # --- ADDED CODE BLOCK END ---
 # =============================================================================
