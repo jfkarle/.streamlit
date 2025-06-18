@@ -120,19 +120,24 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         job_start_time = job.scheduled_start_datetime.time()
         job_end_time = job.scheduled_end_datetime.time()
 
-        # --- THE FIX IS HERE: ---
-        # 1. First, calculate the X position for the centered duration line
+        # --- REVISED LOGIC FOR PLACEMENT, CENTERING, and FONT SIZE ---
+
+        # 1. Define the geometry of the text area and line
         line_x = margin + time_col_width + (col_index * col_width) + (col_width / 2)
+        text_area_start_x = line_x + 5
+        text_area_width = (col_width / 2) - 5
+        text_center_x = text_area_start_x + (text_area_width / 2)
 
-        # 2. Then, calculate the X position for the text to start to the RIGHT of the line
-        text_x = line_x + 5  # Start text 5 points to the right of the line
+        # 2. Calculate the vertical "cell" for the text
+        job_slot_top_y = get_y_for_time(job_start_time)
+        next_slot_time = (datetime.datetime.combine(datetime.date.today(), job_start_time) + datetime.timedelta(minutes=15)).time()
+        job_slot_bottom_y = get_y_for_time(next_slot_time)
+        job_slot_center_y = job_slot_bottom_y + ((job_slot_top_y - job_slot_bottom_y) / 2)
 
-        # Get job details for the text
+        # 3. Get job details and set new font size
         customer = ecm.get_customer_details(job.customer_id)
         boat = ecm.get_boat_details(job.boat_id)
-        
         last_name = customer.customer_name.split(' ')[-1] if ' ' in customer.customer_name else customer.customer_name
-        
         origin = _abbreviate_location(job.pickup_street_address)
         destination = _abbreviate_location(job.dropoff_street_address)
         
@@ -141,28 +146,32 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             location_text = f"Launch-{destination}"
         elif job.service_type == "Haul":
             location_text = f"Haul-{origin}"
+        
+        # Set new, larger font size
+        c.setFont("Helvetica", 11)
+        line_height = 13 # The distance between lines of text
 
-        # Position the text block vertically
-        text_y_start = get_y_for_time(job_start_time) - 3
+        # 4. Draw the 3 lines of text, centered horizontally and vertically
+        c.drawCentredString(text_center_x, job_slot_center_y + line_height, last_name)
+        c.drawCentredString(text_center_x, job_slot_center_y, f"{int(boat.boat_length)}' {boat.boat_type}")
+        c.drawCentredString(text_center_x, job_slot_center_y - line_height, location_text)
 
-        # Draw the 3 lines of text
-        c.setFont("Helvetica", 9)
-        c.drawString(text_x, text_y_start - 9, last_name)
-        c.drawString(text_x, text_y_start - 19, f"{int(boat.boat_length)}' {boat.boat_type}")
-        c.drawString(text_x, text_y_start - 29, location_text)
-
-        # Draw the Duration Line (now that the text is placed)
-        y_start = get_y_for_time(job_start_time)
-        y_end = get_y_for_time(job_end_time)
+        # 5. Draw the Duration Line, starting BENEATH the text
+        # Calculate where the text block ends
+        text_block_bottom_y = job_slot_center_y - line_height - (line_height / 2)
+        
+        y_start_for_line = text_block_bottom_y
+        y_end_for_line = get_y_for_time(job_end_time)
         
         c.setLineWidth(1.0)
-        c.setStrokeColorRGB(0.1, 0.1, 0.1) # Dark grey for the line
+        c.setStrokeColorRGB(0.1, 0.1, 0.1)
         
         # The vertical line
-        c.line(line_x, y_start, line_x, y_end)
+        c.line(line_x, y_start_for_line, line_x, y_end_for_line)
         # The horizontal tick mark at the end
-        c.line(line_x - 3, y_end, line_x + 3, y_end)
-        c.setStrokeColorRGB(0,0,0) # Reset stroke color for the next loop
+        c.line(line_x - 3, y_end_for_line, line_x + 3, y_end_for_line)
+        c.setStrokeColorRGB(0,0,0) # Reset stroke color
+        
     c.save()
     buffer.seek(0)
     return buffer
