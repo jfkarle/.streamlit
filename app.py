@@ -1,13 +1,8 @@
-# app.py
-# FINAL, CORRECTED AND VERIFIED VERSION
-# --- MODIFIED TO INCLUDE PDF PLANNER REPORTING ---
-
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
 import pandas as pd
 from io import BytesIO
-
 # --- ADDED LIBRARIES FOR PDF GENERATION ---
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
