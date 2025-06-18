@@ -95,8 +95,8 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
     # Jobs
     for job in jobs_for_day:
-        truck_id = job.assigned_hauling_truck_id
-        if job.assigned_crane_truck_id:
+        truck_id = getattr(job, 'assigned_hauling_truck_id', None)
+        if getattr(job, 'assigned_crane_truck_id', None):
             truck_id = "S17"
         if truck_id not in column_map:
             continue
@@ -104,21 +104,33 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         column_start_x = margin + time_col_width + col_index * col_width
         text_center_x = column_start_x + col_width / 2
 
-        start_time = job.scheduled_start_datetime.time()
-        end_time = job.scheduled_end_datetime.time()
+        start_time = getattr(job, 'scheduled_start_datetime').time()
+        end_time = getattr(job, 'scheduled_end_datetime').time()
         y_start = get_y_for_time(start_time)
         y_end = get_y_for_time(end_time)
 
-        first_block_mid_y = (get_y_for_time(start_time) + get_y_for_time((datetime.datetime.combine(datetime.date.today(), start_time) + datetime.timedelta(minutes=15)).time())) / 2
+        first_block_mid_y = (get_y_for_time(start_time) + get_y_for_time(
+            (datetime.datetime.combine(datetime.date.today(), start_time) + datetime.timedelta(minutes=15)).time()
+        )) / 2
+
         c.setFont("Helvetica-Bold", 8)
-        c.drawCentredString(text_center_x, first_block_mid_y + 10, job.customer_name.split()[-1])
+        customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
+        customer_name = customer.customer_name.split()[-1] if customer else "Unknown"
+        c.drawCentredString(text_center_x, first_block_mid_y + 10, customer_name)
+
+        boat_length = getattr(job, 'boat_length', 0)
+        boat_type = getattr(job, 'boat_type', '')
         c.setFont("Helvetica", 7)
-        c.drawCentredString(text_center_x, first_block_mid_y, f"{int(job.boat_length)}' {job.boat_type}")
-        location = f"{_abbreviate_location(job.pickup_street_address)}-{_abbreviate_location(job.dropoff_street_address)}"
-        if job.service_type == "Launch":
-            location = f"Launch-{_abbreviate_location(job.dropoff_street_address)}"
-        elif job.service_type == "Haul":
-            location = f"Haul-{_abbreviate_location(job.pickup_street_address)}"
+        c.drawCentredString(text_center_x, first_block_mid_y, f"{int(boat_length)}' {boat_type}")
+
+        pickup = getattr(job, 'pickup_street_address', '')
+        dropoff = getattr(job, 'dropoff_street_address', '')
+        location = f"{_abbreviate_location(pickup)}-{_abbreviate_location(dropoff)}"
+        service_type = getattr(job, 'service_type', '')
+        if service_type == "Launch":
+            location = f"Launch-{_abbreviate_location(dropoff)}"
+        elif service_type == "Haul":
+            location = f"Haul-{_abbreviate_location(pickup)}"
         c.drawCentredString(text_center_x, first_block_mid_y - 10, location)
 
         # Job vertical line below the 3rd line of text
