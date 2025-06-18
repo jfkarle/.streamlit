@@ -1,6 +1,7 @@
 # app.py
 # FINAL WORKING VERSION
 
+
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
@@ -16,7 +17,6 @@ from reportlab.lib import colors
 # =============================================================================
 
 def _abbreviate_location(location_name):
-    """Helper function to create location abbreviations per user rules."""
     if not location_name:
         return ""
     if "Scituate" in location_name:
@@ -27,22 +27,16 @@ def _abbreviate_location(location_name):
         return "Plym"
     if "Duxbury" in location_name:
         return "Dux"
-
     parts = location_name.split(',')
     if len(parts) > 1:
         return parts[-1].strip()
-
     return location_name
 
 def generate_daily_planner_pdf(report_date, jobs_for_day):
-    """
-    Creates a high-fidelity PDF file in the style of the user-provided daily planner.
-    """
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
-    # --- 1. Define Layout ---
     planner_columns = ["S20/33", "S21/77", "S23/55", "S17"]
     column_map = {name: i for i, name in enumerate(planner_columns)}
     margin = 0.5 * inch
@@ -55,11 +49,10 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     content_height = top_y - bottom_y
 
     def get_y_for_time(t):
-        total_minutes_from_start = (t.hour - start_hour) * 60 + t.minute
-        total_planner_minutes = (end_hour - start_hour) * 60
-        return top_y - (total_minutes_from_start / total_planner_minutes * content_height)
+        total_minutes = (t.hour - start_hour) * 60 + t.minute
+        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
 
-    # --- 2. Draw Header ---
+    # Header
     day_of_year = report_date.timetuple().tm_yday
     days_in_year = 366 if (report_date.year % 4 == 0 and report_date.year % 100 != 0) or (report_date.year % 400 == 0) else 365
     days_remaining = days_in_year - day_of_year
@@ -69,88 +62,70 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.setFont("Helvetica-Bold", 12)
     c.drawRightString(width - margin, height - 0.6 * inch, date_str)
 
-    # --- 3. Draw Grid ---
-    c.setFont("Helvetica-Bold", 12) # Increased Column Title Font
-    for i, col_name in enumerate(planner_columns):
-        x_center = margin + time_col_width + (i * col_width) + (col_width / 2)
-        c.drawCentredString(x_center, top_y + 8, col_name)
+    # Column Headers
+    c.setFont("Helvetica-Bold", 11)
+    for i, name in enumerate(planner_columns):
+        x_center = margin + time_col_width + i * col_width + col_width / 2
+        c.drawCentredString(x_center, top_y + 10, name)
 
-    c.setLineWidth(0.5)
     for i in range(len(planner_columns) + 1):
-        x = margin + time_col_width + (i * col_width)
+        x = margin + time_col_width + i * col_width
+        c.setLineWidth(0.5)
         c.line(x, top_y, x, bottom_y)
     c.line(margin, top_y, margin, bottom_y)
 
+    # Time slots
     for hour in range(start_hour, end_hour + 1):
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
-            if current_time > datetime.time(end_hour, 0): continue
             y = get_y_for_time(current_time)
-            if minute == 0:
-                c.setLineWidth(1.0)
-                c.setFont("Helvetica-Bold", 10)
-                display_hour = hour
-                if hour == 0: display_hour = 12
-                elif hour > 12: display_hour = hour - 12
-                c.drawString(margin + 5, y - 4, str(display_hour))
-                c.setFont("Helvetica", 8)
-                c.drawString(margin + 20, y - 3, "00")
-            else:
-                c.setLineWidth(0.25)
-                c.setFont("Helvetica", 7)
-                c.drawString(margin + 20, y - 2, str(minute))
+            next_y = get_y_for_time((datetime.datetime.combine(datetime.date.today(), current_time) + datetime.timedelta(minutes=15)).time())
+            label_y = (y + next_y) / 2
+            c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
+            if minute == 0:
+                display_hour = hour if hour <= 12 else hour - 12
+                c.setFont("Helvetica-Bold", 9)
+                c.drawString(margin + 3, label_y - 3, str(display_hour))
+                c.setFont("Helvetica", 7)
+                c.drawString(margin + 18, label_y - 3, "00")
+            else:
+                c.setFont("Helvetica", 6)
+                c.drawString(margin + 18, label_y - 2, f"{minute}")
 
-    # --- 4. Place Jobs ---
+    # Jobs
     for job in jobs_for_day:
         truck_id = job.assigned_hauling_truck_id
-        if job.assigned_crane_truck_id: truck_id = "S17"
-        if truck_id not in column_map: continue
-
+        if job.assigned_crane_truck_id:
+            truck_id = "S17"
+        if truck_id not in column_map:
+            continue
         col_index = column_map[truck_id]
-        job_start_time = job.scheduled_start_datetime.time()
-        job_end_time = job.scheduled_end_datetime.time()
+        column_start_x = margin + time_col_width + col_index * col_width
+        text_center_x = column_start_x + col_width / 2
 
-        column_start_x = margin + time_col_width + (col_index * col_width)
-        line_x = column_start_x + (col_width * 0.2)
-        text_center_x = column_start_x + (col_width * 0.65) # Adjusted for better centering
+        start_time = job.scheduled_start_datetime.time()
+        end_time = job.scheduled_end_datetime.time()
+        y_start = get_y_for_time(start_time)
+        y_end = get_y_for_time(end_time)
 
-        job_slot_top_y = get_y_for_time(job_start_time)
-        next_slot_time = (datetime.datetime.combine(datetime.date.today(), job_start_time) + datetime.timedelta(minutes=15)).time()
-        job_slot_bottom_y = get_y_for_time(next_slot_time)
-        cell_height = job_slot_top_y - job_slot_bottom_y
+        first_block_mid_y = (get_y_for_time(start_time) + get_y_for_time((datetime.datetime.combine(datetime.date.today(), start_time) + datetime.timedelta(minutes=15)).time())) / 2
+        c.setFont("Helvetica-Bold", 8)
+        c.drawCentredString(text_center_x, first_block_mid_y + 10, job.customer_name.split()[-1])
+        c.setFont("Helvetica", 7)
+        c.drawCentredString(text_center_x, first_block_mid_y, f"{int(job.boat_length)}' {job.boat_type}")
+        location = f"{_abbreviate_location(job.pickup_street_address)}-{_abbreviate_location(job.dropoff_street_address)}"
+        if job.service_type == "Launch":
+            location = f"Launch-{_abbreviate_location(job.dropoff_street_address)}"
+        elif job.service_type == "Haul":
+            location = f"Haul-{_abbreviate_location(job.pickup_street_address)}"
+        c.drawCentredString(text_center_x, first_block_mid_y - 10, location)
 
-        customer = ecm.get_customer_details(job.customer_id)
-        boat = ecm.get_boat_details(job.boat_id)
-        last_name = customer.customer_name.split(' ')[-1] if ' ' in customer.customer_name else customer.customer_name
-        origin = _abbreviate_location(job.pickup_street_address)
-        destination = _abbreviate_location(job.dropoff_street_address)
-        location_text = f"{origin}-{destination}"
-        if job.service_type == "Launch": location_text = f"Launch-{destination}"
-        elif job.service_type == "Haul": location_text = f"Haul-{origin}"
-        
-        c.setFont("Helvetica", 11)
-        line_height = 14 # The space between lines of text
-        
-        # Manually calculate position for the 3-line block to be centered
-        text_block_height = line_height * 2 
-        y_start_of_block = job_slot_bottom_y + (cell_height - text_block_height) / 2
-        
-        # Draw the three lines relative to the calculated start position
-        c.drawCentredString(text_center_x, y_start_of_block + line_height, last_name)
-        c.drawCentredString(text_center_x, y_start_of_block, f"{int(boat.boat_length)}' {boat.boat_type}")
-        c.drawCentredString(text_center_x, y_start_of_block - line_height, location_text)
-        
-        # Draw the duration line starting from the bottom of the cell
-        y_end_for_line = get_y_for_time(job_end_time)
-        y_start_for_line = job_slot_bottom_y 
-
-        if y_start_for_line > y_end_for_line:
-            c.setLineWidth(1.0)
-            c.setStrokeColorRGB(0.1, 0.1, 0.1)
-            c.line(line_x, y_start_for_line, line_x, y_end_for_line)
-            c.line(line_x - 3, y_end_for_line, line_x + 3, y_end_for_line)
-            c.setStrokeColorRGB(0,0,0)
+        # Job vertical line below the 3rd line of text
+        y_bar_start = first_block_mid_y - 18
+        c.setLineWidth(2)
+        c.line(text_center_x, y_bar_start, text_center_x, y_end)
+        c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
 
     c.save()
     buffer.seek(0)
