@@ -1,166 +1,394 @@
+# app.py
+# FINAL, CORRECTED AND VERIFIED VERSION
+# --- MODIFIED TO INCLUDE PDF PLANNER REPORTING ---
+
+import streamlit as st
 import datetime
+import ecm_scheduler_logic as ecm
+import pandas as pd
+from io import BytesIO
+
+# --- ADDED LIBRARIES FOR PDF GENERATION ---
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 
-# --- Sample Job Data (This would come from your ECM) ---
-# In a real application, you would fetch this from your ECM database/API
-sample_jobs = [
-    {
-        "description": "Quarterly financial data validation",
-        "start_time": datetime.time(9, 15),
-        "end_time": datetime.time(10, 0),
-        "category": "FINANCE"
-    },
-    {
-        "description": "Onboarding call with Client X",
-        "start_time": datetime.time(11, 0),
-        "end_time": datetime.time(11, 30),
-        "category": "CLIENTS"
-    },
-    {
-        "description": "Server patch and reboot cycle",
-        "start_time": datetime.time(14, 0),
-        "end_time": datetime.time(15, 45),
-        "category": "IT OPS"
-    },
-    {
-        "description": "Review marketing campaign proofs",
-        "start_time": datetime.time(9, 30),
-        "end_time": datetime.time(10, 15),
-        "category": "MARKETING"
-    }
-]
+# =============================================================================
+# --- ADDED CODE BLOCK START: PDF Generation Functions ---
+# =============================================================================
 
-# --- PDF Generation Logic ---
-def create_daily_report_pdf(filename, report_date, jobs_data, categories):
-    """
-    Generates a PDF report formatted like a daily planner.
-
-    Args:
-        filename (str): The name of the PDF file to create.
-        report_date (datetime.date): The date for the report.
-        jobs_data (list): A list of job dictionaries.
-        categories (list): A list of category strings for the columns.
-    """
-    c = canvas.Canvas(filename, pagesize=letter)
-    width, height = letter  # Get page dimensions
-
-    # --- Define Layout Constants ---
-    margin = 0.75 * inch
-    time_col_width = 1.25 * inch
-    content_width = width - margin - margin - time_col_width
-    col_width = content_width / len(categories)
-    start_hour, end_hour = 8, 19 # 8 AM to 7 PM
-    row_height = (height - (2 * margin)) / ((end_hour - start_hour) * 4)
-
-    # --- Helper function to calculate Y position from time ---
-    def get_y_for_time(t):
-        hour_offset = t.hour - start_hour
-        minute_offset = t.minute / 15
-        return height - margin - ((hour_offset * 4 + minute_offset) * row_height)
-
-    # --- 1. Draw Header ---
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(margin, height - 0.5 * inch, f"Daily Job Report")
+def _abbreviate_location(location_name):
+    """Helper function to create location abbreviations per user rules."""
+    if not location_name:
+        return ""
+    # Rule 1: Specific ramp name abbreviations
+    if "Scituate" in location_name:
+        return "Sci"
+    if "Green Harbor" in location_name:
+        return "Grn Hbr"
+    if "Plymouth" in location_name:
+        return "Plym"
+    if "Duxbury" in location_name:
+        return "Dux"
     
+    # Rule 2: For addresses, try to get the city
+    parts = location_name.split(',')
+    if len(parts) > 1:
+        return parts[-1].strip()
+        
+    return location_name
+
+def generate_daily_planner_pdf(report_date, jobs_for_day):
+    """
+    Creates a high-fidelity PDF file in the style of the user-provided daily planner.
+    """
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    # --- 1. Define High-Fidelity Planner Layout ---
+    planner_columns = ["S20/33", "S21/77", "S23/55", "S17"]
+    column_map = {name: i for i, name in enumerate(planner_columns)}
+
+    margin = 0.5 * inch
+    time_col_width = 0.75 * inch
+    content_width = width - (2 * margin) - time_col_width
+    col_width = content_width / len(planner_columns)
+    
+    start_hour, end_hour = 8, 19 # 8 AM to 7 PM
+    
+    top_y = height - margin - (0.5 * inch)
+    bottom_y = margin + (0.5 * inch)
+    content_height = top_y - bottom_y
+
+    def get_y_for_time(t):
+        total_minutes_from_start = (t.hour - start_hour) * 60 + t.minute
+        total_planner_minutes = (end_hour - start_hour) * 60
+        return top_y - (total_minutes_from_start / total_planner_minutes * content_height)
+
+    # --- 2. Draw PDF Header ---
     day_of_year = report_date.timetuple().tm_yday
     days_in_year = 366 if (report_date.year % 4 == 0 and report_date.year % 100 != 0) or (report_date.year % 400 == 0) else 365
     days_remaining = days_in_year - day_of_year
     
-    c.setFont("Helvetica", 10)
-    date_str = report_date.strftime("%A, %B %d, %Y").upper()
-    c.drawRightString(width - margin, height - 0.5 * inch, date_str)
-    c.drawRightString(width - margin, height - 0.65 * inch, f"Day {day_of_year}/{days_remaining}")
-
-    # --- 2. Draw Grid and Time Column ---
-    top_y = height - margin
-    bottom_y = margin
+    c.setFont("Helvetica", 9)
+    c.drawRightString(width - margin, height - 0.4 * inch, f"{day_of_year}/{days_remaining}")
     
-    # Draw data column headers
-    c.setFont("Helvetica-Bold", 9)
-    for i, category in enumerate(categories):
-        x = margin + time_col_width + (i * col_width)
-        c.drawString(x + 5, top_y + 5, category)
-        
-    # Draw vertical lines
-    for i in range(len(categories) + 1):
+    date_str = report_date.strftime("%A, %B %d").upper()
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(width - margin, height - 0.6 * inch, date_str)
+
+
+    # --- 3. Draw High-Fidelity Grid ---
+    c.setFont("Helvetica-Bold", 10)
+    for i, col_name in enumerate(planner_columns):
+        x_center = margin + time_col_width + (i * col_width) + (col_width / 2)
+        c.drawCentredString(x_center, top_y + 8, col_name)
+
+    c.setLineWidth(0.5)
+    for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + (i * col_width)
         c.line(x, top_y, x, bottom_y)
-    c.line(margin, top_y, margin, bottom_y) # Leftmost line
+    c.line(margin, top_y, margin, bottom_y)
     
-    # Draw horizontal lines and time labels
-    c.setFont("Helvetica", 8)
     for hour in range(start_hour, end_hour + 1):
-        for quarter in range(4):
-            time_offset = (hour - start_hour) * 4 + quarter
-            y = top_y - (time_offset * row_height)
+        for minute in [0, 15, 30, 45]:
+            current_time = datetime.time(hour, minute)
+            if current_time > datetime.time(end_hour, 0): continue
             
-            # Draw faint horizontal lines
-            if quarter != 0:
-                c.setStrokeColorRGB(0.8, 0.8, 0.8)
-                c.line(margin, y, width - margin, y)
+            y = get_y_for_time(current_time)
             
-            # Time labels
-            c.setStrokeColorRGB(0, 0, 0) # Reset color
-            current_time = datetime.time(hour, quarter * 15)
-            if quarter == 0:
+            if minute == 0:
+                c.setLineWidth(1.0)
                 c.setFont("Helvetica-Bold", 10)
-                c.drawString(margin + 5, y - 10, current_time.strftime("%I:00"))
+                c.drawString(margin + 5, y - 4, str(hour))
                 c.setFont("Helvetica", 8)
-                c.drawString(margin + 45, y - 10, current_time.strftime("%p").lower())
+                c.drawString(margin + 20, y - 3, "00")
             else:
-                c.drawString(margin + 20, y - 8, current_time.strftime("%M"))
-    
-    c.setStrokeColorRGB(0, 0, 0)
-    c.line(margin, top_y, width - margin, top_y) # Top border line
-    c.line(margin, bottom_y, width - margin, bottom_y) # Bottom border line
+                c.setLineWidth(0.25)
+                c.setFont("Helvetica", 7)
+                c.drawString(margin + 20, y - 2, str(minute))
+                
+            c.line(margin, y, width - margin, y)
 
-    # --- 3. Place Job Data onto the Grid ---
-    c.setFont("Helvetica", 9)
-    category_map = {name: i for i, name in enumerate(categories)}
-    
-    for job in jobs_data:
-        if job['category'] not in category_map:
-            continue # Skip jobs with no assigned column
+    # --- 4. Place Jobs and Duration Lines onto the Grid ---
+    for job in jobs_for_day:
+        truck_id = job.assigned_hauling_truck_id
+        if job.assigned_crane_truck_id:
+             truck_id = "S17"
 
-        start_y = get_y_for_time(job['start_time'])
-        end_y = get_y_for_time(job['end_time'])
-        col_index = category_map[job['category']]
+        if truck_id not in column_map:
+            continue
+
+        col_index = column_map[truck_id]
+        job_start_time = job.scheduled_start_datetime.time()
+        job_end_time = job.scheduled_end_datetime.time()
+
+        customer = ecm.get_customer_details(job.customer_id)
+        boat = ecm.get_boat_details(job.boat_id)
         
-        x_pos = margin + time_col_width + (col_index * col_width)
-        rect_height = start_y - end_y
+        last_name = customer.customer_name.split(' ')[-1] if ' ' in customer.customer_name else customer.customer_name
         
-        # Draw a colored rectangle representing the job's duration
-        c.setFillColorRGB(0.9, 0.95, 1.0) # Light blue
-        c.rect(x_pos, end_y, col_width, rect_height, stroke=0, fill=1)
+        origin = _abbreviate_location(job.pickup_street_address)
+        destination = _abbreviate_location(job.dropoff_street_address)
         
-        # Add the job description text
-        c.setFillColorRGB(0,0,0) # Black text
-        text_object = c.beginText(x_pos + 5, start_y - 12)
-        text_object.setFont("Helvetica", 9)
-        # Simple text wrapping
-        words = job['description'].split()
-        line = ""
-        for word in words:
-            if c.stringWidth(line + word, "Helvetica", 9) < col_width - 10:
-                line += word + " "
-            else:
-                text_object.textLine(line)
-                line = word + " "
-        text_object.textLine(line)
-        c.drawText(text_object)
+        location_text = f"{origin}-{destination}"
+        if job.service_type == "Launch":
+            location_text = f"Launch-{destination}"
+        elif job.service_type == "Haul":
+            location_text = f"Haul-{origin}"
+
+        text_x = margin + time_col_width + (col_index * col_width) + 5
+        text_y_start = get_y_for_time(job_start_time) - 3
+
+        c.setFont("Helvetica", 9)
+        c.drawString(text_x, text_y_start - 9, last_name)
+        c.drawString(text_x, text_y_start - 19, f"{int(boat.boat_length)}' {boat.boat_type}")
+        c.drawString(text_x, text_y_start - 29, location_text)
+
+        y_start = get_y_for_time(job_start_time)
+        y_end = get_y_for_time(job_end_time)
+        
+        line_x = margin + time_col_width + (col_index * col_width) + (col_width / 2)
+        
+        c.setLineWidth(1.0)
+        c.setStrokeColorRGB(0.1, 0.1, 0.1)
+        
+        c.line(line_x, y_start, line_x, y_end)
+        c.line(line_x - 3, y_end, line_x + 3, y_end)
+        c.setStrokeColorRGB(0,0,0) # Reset stroke color
 
     c.save()
-    print(f"Successfully created report: {filename}")
+    buffer.seek(0)
+    return buffer
 
+# =============================================================================
+# --- ADDED CODE BLOCK END ---
+# =============================================================================
 
-# --- Run the report generator ---
-if __name__ == "__main__":
-    report_date_today = datetime.date.today()
-    # The columns you want on your report
-    report_categories = ["FINANCE", "CLIENTS", "IT OPS", "MARKETING"] 
-    output_filename = "daily_job_report.pdf"
+# --- Helper Functions ---
+def format_tides_for_display(slot, ecm_hours):
+    tide_times = slot.get('high_tide_times', [])
+    if not tide_times: return ""
+    if not ecm_hours or not ecm_hours.get('open'):
+        return "HT: " + " / ".join([ecm.format_time_for_display(t) for t in tide_times])
+
+    op_open, op_close = ecm_hours['open'], ecm_hours['close']
+    def get_tide_relevance_score(tide_time):
+        tide_dt = datetime.datetime.combine(datetime.date.today(), tide_time)
+        open_dt = datetime.datetime.combine(datetime.date.today(), op_open)
+        close_dt = datetime.datetime.combine(datetime.date.today(), op_close)
+        if open_dt <= tide_dt <= close_dt: return 0, abs((tide_dt - open_dt).total_seconds())
+        return 1, min(abs((tide_dt - open_dt).total_seconds()), abs((tide_dt - close_dt).total_seconds()))
+
+    sorted_tides = sorted(tide_times, key=get_tide_relevance_score)
+    if not sorted_tides: return ""
+    primary_tide_str = ecm.format_time_for_display(sorted_tides[0])
+    if len(sorted_tides) == 1: return f"**HIGH TIDE: {primary_tide_str}**"
+    secondary_tides_str = " / ".join([ecm.format_time_for_display(t) for t in sorted_tides[1:]])
+    return f"**HIGH TIDE: {primary_tide_str}** (and {secondary_tides_str.lower()})"
+
+def handle_slot_selection(slot_data):
+    st.session_state.selected_slot = slot_data
+
+# --- Session State Initialization ---
+def initialize_session_state():
+    defaults = {
+        'data_loaded': False, 'info_message': "", 'current_job_request': None,
+        'found_slots': [], 'selected_slot': None, 'search_requested_date': None,
+        'was_forced_search': False
+    }
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
     
-    create_daily_report_pdf(output_filename, report_date_today, sample_jobs, report_categories)
+    if not st.session_state.data_loaded:
+        if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"):
+            st.session_state.data_loaded = True
+        else:
+            st.error("Failed to load customer and boat data.")
+
+# --- Main App Execution ---
+initialize_session_state()
+st.title("Marine Transportation")
+
+# --- NAVIGATION SIDEBAR ---
+st.sidebar.title("Navigation")
+app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
+
+# --- PAGE 1: SCHEDULER ---
+if app_mode == "Schedule New Boat":
+    if st.session_state.info_message:
+        st.info(st.session_state.info_message)
+        st.session_state.info_message = ""
+
+    if st.session_state.get("confirmation_message") and not st.session_state.get("selected_slot"):
+        st.success(f"✅ {st.session_state.confirmation_message}")
+        if st.button("Schedule Another Job", key="schedule_another"):
+            st.session_state.pop("confirmation_message", None)
+            st.rerun()
+    
+    st.sidebar.header("New Job Request")
+    customer_name_search_input = st.sidebar.text_input("Enter Customer Name:", help="e.g., Olivia, James, Tho")
+    selected_customer_obj = None
+
+    if customer_name_search_input:
+        customer_search_results = [c for c in ecm.LOADED_CUSTOMERS.values() if customer_name_search_input.lower() in c.customer_name.lower()]
+        if len(customer_search_results) == 1:
+            selected_customer_obj = customer_search_results[0]
+        elif len(customer_search_results) > 1:
+            customer_options = {cust.customer_name: cust for cust in customer_search_results}
+            chosen_name = st.sidebar.selectbox("Multiple matches, please select:", options=list(customer_options.keys()))
+            selected_customer_obj = customer_options.get(chosen_name)
+        else:
+            st.sidebar.warning("No customer found.")
+    
+    if selected_customer_obj:
+        st.sidebar.success(f"Selected: {selected_customer_obj.customer_name}")
+        customer_boats = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == selected_customer_obj.customer_id]
+        if customer_boats:
+            selected_boat_obj = customer_boats[0]
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("Selected Customer & Boat:")
+            st.sidebar.write(f"**Customer:** {selected_customer_obj.customer_name}")
+            st.sidebar.write(f"**ECM Boat:** {'Yes' if selected_customer_obj.is_ecm_customer else 'No'}")
+            st.sidebar.write(f"**Boat Type:** {selected_boat_obj.boat_type}")
+            st.sidebar.write(f"**Boat Length:** {selected_boat_obj.boat_length}ft")
+            truck_name = "N/A"
+            if selected_customer_obj.preferred_truck_id and ecm.ECM_TRUCKS.get(selected_customer_obj.preferred_truck_id):
+                truck_name = ecm.ECM_TRUCKS[selected_customer_obj.preferred_truck_id].truck_name
+            st.sidebar.write(f"**Preferred Truck:** {truck_name}")
+            st.sidebar.markdown("---")
+
+            service_type_input = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
+            default_date = ecm.TODAY_FOR_SIMULATION + datetime.timedelta(days=7)
+            requested_date_input = st.sidebar.date_input("Requested Date:", value=default_date)
+            selected_ramp_id_input = None
+            if service_type_input in ["Launch", "Haul"]:
+                ramp_options = list(ecm.ECM_RAMPS.keys())
+                selected_ramp_id_input = st.sidebar.selectbox("Select Ramp:", ramp_options)
+            
+            st.sidebar.markdown("---")
+
+            if st.sidebar.button("Find Best Slot (Strict)", key="find_strict"):
+                job_request = {
+                    'customer_id': selected_customer_obj.customer_id, 'boat_id': selected_boat_obj.boat_id,
+                    'service_type': service_type_input, 'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
+                    'selected_ramp_id': selected_ramp_id_input,
+                }
+                st.session_state.current_job_request = job_request
+                st.session_state.search_requested_date = requested_date_input
+                slots, message, _, was_forced = ecm.find_available_job_slots(**job_request)
+                st.session_state.info_message, st.session_state.found_slots = message, slots
+                st.session_state.selected_slot, st.session_state.was_forced_search = None, was_forced
+                st.rerun()
+        else:
+            st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
+
+    if st.session_state.found_slots and not st.session_state.selected_slot:
+        st.subheader("Please select your preferred slot:")
+        
+        cols = st.columns(3)
+        for i, slot in enumerate(st.session_state.found_slots):
+            with cols[i % 3]:
+                with st.container(border=True):
+                    if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
+                        st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
+                    if slot.get('reason_for_suggestion'):
+                        st.markdown(f"""<div style='background-color:#E3F2FD;border-left:6px solid #1E88E5;padding:10px;border-radius:5px;margin-bottom:10px;font-size:14px;'>💡 <b>Note:</b> {slot['reason_for_suggestion']}</div>""", unsafe_allow_html=True)
+
+                    date_str = slot['date'].strftime('%a, %b %d, %Y')
+                    time_str = ecm.format_time_for_display(slot.get('time'))
+                    truck_id = slot.get('truck_id', 'N/A')
+                    ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                    ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
+                    ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
+                    tide_display_str = format_tides_for_display(slot, ecm_hours)
+
+                    st.markdown(f"**Date:** {date_str}")
+                    if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
+                    if tide_display_str: st.markdown(tide_display_str)
+                    st.markdown(f"**Time:** {time_str}")
+                    st.markdown(f"**Truck:** {truck_id}")
+                    st.markdown(f"**Ramp:** {ramp_name}")
+                    st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+        st.markdown("---")
+
+    elif st.session_state.selected_slot:
+        slot = st.session_state.selected_slot
+        st.subheader("Preview & Confirm Selection:")
+        st.success(f"You are considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
+        if slot.get('j17_needed'): st.write("J17 Crane will also be assigned.")
+        if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
+            new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
+            if new_job_id:
+                st.session_state.confirmation_message = message
+                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
+                    st.session_state.pop(key, None)
+                st.rerun()
+        if st.session_state.get("confirmation_message") and not st.session_state.get("selected_slot"):
+            st.success(f"✅ {st.session_state.confirmation_message}")
+            if st.button("Schedule Another Job", key="schedule_another"):
+                st.session_state.pop("confirmation_message", None)
+                st.rerun()
+            
+            else:
+                st.error(f"Failed to confirm job: {message}")
+
+    elif st.session_state.get('current_job_request') and not st.session_state.found_slots:
+        if st.session_state.info_message:
+            st.warning(st.session_state.info_message)
+
+# --- PAGE 2: REPORTING ---
+elif app_mode == "Reporting":
+    st.header("Reporting Dashboard")
+    
+    st.markdown("---")
+    st.subheader("Daily Planner PDF Report")
+    st.write("Select a single day to generate a PDF schedule in the classic planner format.")
+
+    selected_date = st.date_input("Select a date for the report", value=datetime.date.today())
+
+    if st.button("Generate Daily Planner PDF", key="generate_pdf"):
+        jobs_for_selected_date = [
+            job for job in ecm.SCHEDULED_JOBS 
+            if job.scheduled_start_datetime.date() == selected_date
+        ]
+
+        if not jobs_for_selected_date:
+            st.warning(f"No jobs found for {selected_date.strftime('%Y-%m-%d')}. The PDF would be empty.")
+        else:
+            with st.spinner("Creating your daily planner..."):
+                pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_for_selected_date)
+                
+                st.download_button(
+                    label="✅ Download PDF Planner",
+                    data=pdf_buffer,
+                    file_name=f"Daily_Planner_{selected_date.strftime('%Y-%m-%d')}.pdf",
+                    mime="application/pdf"
+                )
+
+    st.markdown("---")
+    
+    st.subheader("All Scheduled Jobs (Table View)")
+    if ecm.SCHEDULED_JOBS:
+        display_data = []
+        for job in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max):
+            customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
+            ramp = ecm.get_ramp_details(getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None))
+            display_data.append({
+                "Job ID": job.job_id, "Status": job.job_status,
+                "Scheduled Date": job.scheduled_start_datetime.strftime("%Y-%m-%d") if job.scheduled_start_datetime else "N/A",
+                "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
+                "Service": job.service_type, "Customer": customer.customer_name if customer else "N/A",
+                "Truck": job.assigned_hauling_truck_id, "Ramp": ramp.ramp_name if ramp else "N/A"
+            })
+        st.dataframe(pd.DataFrame(display_data))
+    else:
+        st.write("No jobs scheduled yet.")
+
+# --- PAGE 3: SETTINGS ---
+elif app_mode == "Settings":
+    st.header("Application Settings")
+    st.write("This section is under construction.")
