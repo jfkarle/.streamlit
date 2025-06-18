@@ -98,7 +98,13 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             if minute == 0:
                 c.setLineWidth(1.0)
                 c.setFont("Helvetica-Bold", 10)
-                c.drawString(margin + 5, y - 4, str(hour))
+                
+                # --- FIX for Problem #4: 12-Hour Clock ---
+                display_hour = hour
+                if hour == 0: display_hour = 12
+                elif hour > 12: display_hour = hour - 12
+                c.drawString(margin + 5, y - 4, str(display_hour))
+
                 c.setFont("Helvetica", 8)
                 c.drawString(margin + 20, y - 3, "00")
             else:
@@ -121,7 +127,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         job_start_time = job.scheduled_start_datetime.time()
         job_end_time = job.scheduled_end_datetime.time()
 
-        # --- NEW, SIMPLIFIED & CORRECTED LOGIC FOR POSITIONING ---
         column_start_x = margin + time_col_width + (col_index * col_width)
         line_x = column_start_x + (col_width * 0.2)
         text_center_x = column_start_x + (col_width * 0.6)
@@ -143,14 +148,18 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         elif job.service_type == "Haul":
             location_text = f"Haul-{origin}"
         
+        # --- FIX for Problem #3: Font Size ---
         c.setFont("Helvetica", 11)
         line_height = 13
 
-        c.drawCentredString(text_center_x, job_slot_center_y + line_height, last_name)
-        c.drawCentredString(text_center_x, job_slot_center_y, f"{int(boat.boat_length)}' {boat.boat_type}")
-        c.drawCentredString(text_center_x, job_slot_center_y - line_height, location_text)
+        # --- FIX for Problem #1 & #3: Vertical Centering & Text Centering ---
+        c.drawCentredString(text_center_x, job_slot_center_y + (line_height * 0.9), last_name)
+        c.drawCentredString(text_center_x, job_slot_center_y - (line_height * 0.1), f"{int(boat.boat_length)}' {boat.boat_type}")
+        c.drawCentredString(text_center_x, job_slot_center_y - (line_height * 1.1), location_text)
 
-        text_block_bottom_y = job_slot_center_y - line_height - (line_height / 2)
+        # --- FIX for Problem #2: Vertical Line Start ---
+        # More robustly calculate bottom of text block to start the line
+        text_block_bottom_y = job_slot_center_y - line_height - 6 # Add 6 points of padding
         
         y_start_for_line = text_block_bottom_y
         y_end_for_line = get_y_for_time(job_end_time)
