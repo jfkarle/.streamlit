@@ -140,7 +140,9 @@ if app_mode == "Schedule New Boat":
                 with st.container(border=True):
                     if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
                         st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
-                    
+                    if slot.get('reason_for_suggestion'):
+                        st.markdown(f"""<div style='background-color:#E3F2FD;border-left:6px solid #1E88E5;padding:10px;border-radius:5px;margin-bottom:10px;font-size:14px;'>💡 <b>Note:</b> {slot['reason_for_suggestion']}</div>""", unsafe_allow_html=True)
+
                     date_str = slot['date'].strftime('%a, %b %d, %Y')
                     time_str = ecm.format_time_for_display(slot.get('time'))
                     truck_id = slot.get('truck_id', 'N/A')
