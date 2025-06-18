@@ -138,7 +138,7 @@ def get_ecm_operating_hours(date):
     return None
 
 def calculate_ramp_windows(ramp, boat, tide_data, date):
-    if ramp.tide_calculation_method == "AnyTide": return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
+    if ramp.tide_calculation_method in ["AnyTide", "AnyTideWithDraftRule"]: return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
     if not tide_data: return []
     offset = datetime.timedelta(hours=float(ramp.tide_offset_hours1 or 0))
     return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(), 'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()} for t in tide_data if t['type']=='H']
