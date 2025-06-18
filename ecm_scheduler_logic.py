@@ -163,7 +163,11 @@ def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ra
     if not check_truck_availability(truck.truck_id, start_dt, hauler_end_dt): return None
     needs_j17 = BOOKING_RULES.get(boat.boat_type, {}).get('crane_mins', 0) > 0
     if needs_j17 and not check_truck_availability("J17", start_dt, start_dt + datetime.timedelta(hours=j17_duration)): return None
-    return {'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'type': "Open", 'ramp_id': ramp.ramp_id if ramp else None, 'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0, **window_details}
+    return {'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 
+            'type': "Open", 'ramp_id': ramp.ramp_id if ramp else None, 
+            'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0,
+            'reason_for_suggestion': reason_for_suggestion,  # <-- NEW LINE
+            **window_details}
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, ignore_forced_search=False, **kwargs):
     try:
@@ -193,7 +197,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not trucks:
         return [], "No suitable trucks for this boat.", [], False
     
-    def search_day(s_date, slots_list, limit):
+    def search_day(s_date, slots_list, limit, reason=None):
         ecm_hours = get_ecm_operating_hours(s_date)
         if not ecm_hours:
             return
@@ -217,7 +221,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     if p_time >= p_end:
                         break
 
-                    slot = _check_and_create_slot_detail(s_date, p_time, truck, customer, boat, service_type, ramp_obj, ecm_hours, duration, j17_duration, w)
+                    slot = _check_and_create_slot_detail(s_date, p_time, truck, customer, boat, service_type, ramp_obj, ecm_hours, duration, j17_duration, w, reason_for_suggestion=reason)
                     
                     # --- THIS IS THE KEY CHANGE ---
                     if slot:
@@ -229,7 +233,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     potential_slots, was_forced = [], False
     if forced_date:
         was_forced = True
-        search_day(forced_date, potential_slots, 6)
+        reason_message = "Suggested to group with an existing crane job."
+        search_day(forced_date, potential_slots, 6, reason=reason_message) # Pass the reason here
     else:
         slots_before, slots_after = [], []
         # Phase 1: Before
