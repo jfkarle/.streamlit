@@ -125,7 +125,8 @@ def get_high_tide_times_for_ramp(ramp_id, date):
     ramp = get_ramp_details(ramp_id)
     if not ramp:
         return []
-    return fetch_noaa_tides(ramp.noaa_station_id, date)
+    tide_data = fetch_noaa_tides(ramp.noaa_station_id, date)
+    return [entry["time"] for entry in tide_data if entry["type"] == "H"]
 
 def round_time_to_nearest_15_minutes(time_obj):
     """
