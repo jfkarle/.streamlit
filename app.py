@@ -32,6 +32,32 @@ def _abbreviate_location(location_name):
         return parts[-1].strip()
     return location_name
 
+def _abbreviate_town(address):
+    if not address:
+        return ""
+    address = address.lower()
+    if "scituate" in address:
+        return "Sci"
+    if "green harbor" in address:
+        return "Grn"
+    if "marshfield" in address:
+        return "Mfield"
+    if "cohasset" in address:
+        return "Coh"
+    if "weymouth" in address:
+        return "Wey"
+    if "plymouth" in address:
+        return "Ply"
+    if "sandwich" in address:
+        return "Sand"
+    if "duxbury" in address:
+        return "Dux"
+    if "humarock" in address:
+        return "Huma"
+    if "pembroke" in address or "ecm" in address:
+        return "Pembroke"
+    return address.title().split(',')[0]
+
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
