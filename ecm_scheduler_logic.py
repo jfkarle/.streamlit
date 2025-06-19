@@ -121,6 +121,12 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
 # --- Core Logic Functions ---
 get_customer_details = LOADED_CUSTOMERS.get; get_boat_details = LOADED_BOATS.get; get_ramp_details = ECM_RAMPS.get
 
+def get_high_tide_times_for_ramp(ramp_id, date):
+    ramp = get_ramp_details(ramp_id)
+    if not ramp:
+        return []
+    return fetch_noaa_tides(ramp.noaa_station_id, date)
+
 def round_time_to_nearest_15_minutes(time_obj):
     """
     Rounds a datetime.time object to the nearest 15-minute interval.
