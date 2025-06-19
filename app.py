@@ -9,6 +9,7 @@ import pandas as pd
 st.set_page_config(layout="wide")
 
 # --- Helper Functions ---
+
 def format_tides_for_display(slot, ecm_hours):
     tide_times = slot.get('high_tide_times', [])
     if not tide_times: return ""
@@ -32,6 +33,23 @@ def format_tides_for_display(slot, ecm_hours):
 
 def handle_slot_selection(slot_data):
     st.session_state.selected_slot = slot_data
+
+from io import BytesIO
+from PyPDF2 import PdfMerger
+
+def generate_multi_day_planner_pdf(start_date, end_date, jobs):
+    merger = PdfMerger()
+    for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
+        jobs_for_day = [j for j in jobs if j.scheduled_start_datetime.date() == single_date]
+        if jobs_for_day:
+            daily_pdf = generate_daily_planner_pdf(single_date, jobs_for_day)
+            merger.append(daily_pdf)
+    output = BytesIO()
+    merger.write(output)
+    merger.close()
+    output.seek(0)
+    return output
+    
 
 ########################################################################################
 ### BEGIN  PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
