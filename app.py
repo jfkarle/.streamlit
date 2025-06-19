@@ -1,7 +1,3 @@
-# app.py
-# FINAL WORKING VERSION
-
-
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
@@ -10,27 +6,6 @@ from io import BytesIO
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from reportlab.lib import colors
-
-# =============================================================================
-# --- PDF Generation Functions ---
-# =============================================================================
-
-def _abbreviate_location(location_name):
-    if not location_name:
-        return ""
-    if "Scituate" in location_name:
-        return "Sci"
-    if "Green Harbor" in location_name:
-        return "Grn Hbr"
-    if "Plymouth" in location_name:
-        return "Plym"
-    if "Duxbury" in location_name:
-        return "Dux"
-    parts = location_name.split(',')
-    if len(parts) > 1:
-        return parts[-1].strip()
-    return location_name
 
 def _abbreviate_town(address):
     if not address:
@@ -57,7 +32,6 @@ def _abbreviate_town(address):
     if "pembroke" in address or "ecm" in address:
         return "Pembroke"
     return address.title().split(',')[0]
-
 
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
@@ -129,9 +103,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
         start_time = getattr(job, 'scheduled_start_datetime').time()
         end_time = getattr(job, 'scheduled_end_datetime').time()
-        y_start = get_y_for_time(start_time)
-        y_end = get_y_for_time(end_time)
-
         dt_base = datetime.datetime.combine(datetime.date.today(), start_time)
         y0 = get_y_for_time(start_time)
         y1 = get_y_for_time((dt_base + datetime.timedelta(minutes=15)).time())
@@ -160,12 +131,12 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
         c.setFont("Helvetica-Bold", 8)
         c.drawCentredString(text_center_x, line1_y, customer_name)
-
         c.setFont("Helvetica", 7)
         c.drawCentredString(text_center_x, line2_y, boat_desc)
         c.drawCentredString(text_center_x, line3_y, location_label)
 
         y_bar_start = y3 + 6
+        y_end = get_y_for_time(end_time)
         c.setLineWidth(2)
         c.line(text_center_x, y_bar_start, text_center_x, y_end)
         c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
@@ -173,3 +144,15 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.save()
     buffer.seek(0)
     return buffer
+
+st.title("Daily Planner PDF Generator")
+st.write("Select a date to generate the daily boat delivery planner.")
+
+selected_date = st.date_input("Select date", value=datetime.date.today())
+if st.button("Generate PDF"):
+    jobs = [job for job in ecm.SCHEDULED_JOBS if job.scheduled_start_datetime.date() == selected_date]
+    if not jobs:
+        st.warning("No jobs scheduled on this day.")
+    else:
+        pdf = generate_daily_planner_pdf(selected_date, jobs)
+        st.download_button("📥 Download PDF", data=pdf, file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf")
