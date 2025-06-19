@@ -285,11 +285,12 @@ if app_mode == "Schedule New Boat":
         else:
             st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
 
-    # --- Main Area Display Logic ---
-    if st.session_state.found_slots and not st.session_state.selected_slot:
-        st.subheader("Please select your preferred slot:")
-         # --- High Tide Summary Message ---
-       if st.session_state.get("search_requested_date") and st.session_state.get("current_job_request"):
+   # --- Main Area Display Logic ---
+if st.session_state.found_slots and not st.session_state.selected_slot:
+    st.subheader("Please select your preferred slot:")
+
+    # --- High Tide Summary Message ---
+    if st.session_state.get("search_requested_date") and st.session_state.get("current_job_request"):
         ramp_id = st.session_state.current_job_request.get("selected_ramp_id")
         date = st.session_state.search_requested_date
         ramp_obj = ecm.ECM_RAMPS.get(ramp_id)
@@ -305,31 +306,32 @@ if app_mode == "Schedule New Boat":
                     <h5 style='margin:0;'>🌊 <b>High Tide on {date.strftime('%A, %B %d')} at {ramp_name} is approximately <u>{primary_tide}</u>.</b></h5>
                 </div>
             """, unsafe_allow_html=True)
-        
-        # This is the full, detailed card display logic
-        cols = st.columns(3)
-        for i, slot in enumerate(st.session_state.found_slots):
-            with cols[i % 3]:
-                with st.container(border=True):
-                    if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
-                        st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
-                    
-                    date_str = slot['date'].strftime('%a, %b %d, %Y')
-                    time_str = ecm.format_time_for_display(slot.get('time'))
-                    truck_id = slot.get('truck_id', 'N/A')
-                    ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
-                    ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
-                    ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
-                    tide_display_str = format_tides_for_display(slot, ecm_hours)
 
-                    st.markdown(f"**Date:** {date_str}")
-                    if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
-                    if tide_display_str: st.markdown(tide_display_str)
-                    st.markdown(f"**Time:** {time_str}")
-                    st.markdown(f"**Truck:** {truck_id}")
-                    st.markdown(f"**Ramp:** {ramp_name}")
-                    st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
-        st.markdown("---")
+    # --- Slot Cards ---
+    cols = st.columns(3)
+    for i, slot in enumerate(st.session_state.found_slots):
+        with cols[i % 3]:
+            with st.container(border=True):
+                if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
+                    st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
+
+                date_str = slot['date'].strftime('%a, %b %d, %Y')
+                time_str = ecm.format_time_for_display(slot.get('time'))
+                truck_id = slot.get('truck_id', 'N/A')
+                ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
+                ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
+                tide_display_str = format_tides_for_display(slot, ecm_hours)
+
+                st.markdown(f"**Date:** {date_str}")
+                if slot.get('tide_rule_concise'):
+                    st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
+                if tide_display_str:
+                    st.markdown(tide_display_str)
+                st.markdown(f"**Time:** {time_str}")
+                st.markdown(f"**Truck:** {truck_id}")
+                st.markdown(f"**Ramp:** {ramp_name}")
+                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
 
     elif st.session_state.selected_slot:
         # Confirmation Screen Logic
