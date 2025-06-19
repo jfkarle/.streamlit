@@ -424,21 +424,6 @@ elif app_mode == "Reporting":
                     mime="application/pdf"
                 )
 
-from io import BytesIO
-from PyPDF2 import PdfMerger  # ← Ensure you have PyPDF2 installed
-
-def generate_multi_day_planner_pdf(start_date, end_date, jobs):
-    merger = PdfMerger()
-    for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
-        jobs_for_day = [j for j in jobs if j.scheduled_start_datetime.date() == single_date]
-        if jobs_for_day:
-            daily_pdf = generate_daily_planner_pdf(single_date, jobs_for_day)
-            merger.append(daily_pdf)
-    output = BytesIO()
-    merger.write(output)
-    merger.close()
-    output.seek(0)
-    return output
     
 
 # --- PAGE 3: SETTINGS ---
