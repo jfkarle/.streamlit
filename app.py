@@ -12,6 +12,8 @@ from reportlab.lib.units import inch
 
 st.set_page_config(layout="wide")
 
+app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
+
 # --- Helper Functions ---
 def format_tides_for_display(slot, ecm_hours):
     tide_times = slot.get('high_tide_times', [])
