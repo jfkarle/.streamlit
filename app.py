@@ -333,7 +333,7 @@ if st.session_state.found_slots and not st.session_state.selected_slot:
                 st.markdown(f"**Ramp:** {ramp_name}")
                 st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
 
-    elif st.session_state.selected_slot:
+elif st.session_state.selected_slot:
         # Confirmation Screen Logic
         slot = st.session_state.selected_slot
         st.subheader("Preview & Confirm Selection:")
