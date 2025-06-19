@@ -133,31 +133,44 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             location = f"Haul-{_abbreviate_location(pickup)}"
         
         # --- Start of job block rendering ---
-        # Compute exact text y-positions between grid lines
+        # Compute text Y positions between grid lines
         dt_base = datetime.datetime.combine(datetime.date.today(), start_time)
         y0 = get_y_for_time(start_time)
         y1 = get_y_for_time((dt_base + datetime.timedelta(minutes=15)).time())
         y2 = get_y_for_time((dt_base + datetime.timedelta(minutes=30)).time())
         y3 = get_y_for_time((dt_base + datetime.timedelta(minutes=45)).time())
-        
-        line1_y = (y0 + y1) / 2  # Customer name
-        line2_y = (y1 + y2) / 2  # Boat description
-        line3_y = (y2 + y3) / 2  # Launch location
-        
-        # Draw the 3-line block between grid lines
+
+        line1_y = (y0 + y1) / 2  # Name
+        line2_y = (y1 + y2) / 2  # Boat
+        line3_y = (y2 + y3) / 2  # Location
+
+        # --- Gather Text Values ---
+        customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
+        customer_name = customer.customer_name.split()[-1] if customer else "Unknown"
+
+        boat_length = getattr(job, 'boat_length', None)
+        boat_type = getattr(job, 'boat_type', '')
+        boat_desc = f"{int(boat_length)}' {boat_type}" if boat_length else boat_type or "Unknown"
+
+        origin = getattr(job, 'pickup_street_address', '') or ''
+        dest = getattr(job, 'dropoff_street_address', '') or ''
+        origin_abbr = _abbreviate_town(origin)
+        dest_abbr = _abbreviate_town(dest)
+        location_label = f"{origin_abbr}-{dest_abbr}"
+
+        # --- Draw Three-Line Block ---
         c.setFont("Helvetica-Bold", 8)
         c.drawCentredString(text_center_x, line1_y, customer_name)
-        
+
         c.setFont("Helvetica", 7)
         c.drawCentredString(text_center_x, line2_y, boat_desc)
-        c.drawCentredString(text_center_x, line3_y, location)
-        
-        # Vertical line starts below last line (after y3)
+        c.drawCentredString(text_center_x, line3_y, location_label)
+
+        # --- Vertical bar after text block ---
         y_bar_start = y3 + 6
         c.setLineWidth(2)
         c.line(text_center_x, y_bar_start, text_center_x, y_end)
-        c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
-        # --- End of job block rendering ---
+        c.line(text_center_x - 3, y_end, text_center_x + 3
 
     c.save()
     buffer.seek(0)
