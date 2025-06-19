@@ -140,13 +140,13 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         )) / 2
 
         # Get customer name
-        customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
-        customer_name = customer.customer_name.split()[-1] if customer else "Unknown"
+        #customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
+        #customer_name = customer.customer_name.split()[-1] if customer else "Unknown"
         
         # Get boat info
-        boat_length = getattr(job, 'boat_length', 0)
-        boat_type = getattr(job, 'boat_type', '')
-        boat_desc = f"{int(boat_length)}' {boat_type}"
+        #boat_length = getattr(job, 'boat_length', 0)
+        #boat_type = getattr(job, 'boat_type', '')
+        #boat_desc = f"{int(boat_length)}' {boat_type}"
         
         # Get location info
         pickup = getattr(job, 'pickup_street_address', '')
