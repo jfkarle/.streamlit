@@ -1,3 +1,4 @@
+
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
@@ -145,14 +146,19 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer.seek(0)
     return buffer
 
-st.title("Daily Planner PDF Generator")
-st.write("Select a date to generate the daily boat delivery planner.")
+# ---- UI wrapper preserved ----
+st.set_page_config(page_title="ECM Scheduler", layout="wide")
+st.title("Marine Transportation")
 
-selected_date = st.date_input("Select date", value=datetime.date.today())
-if st.button("Generate PDF"):
-    jobs = [job for job in ecm.SCHEDULED_JOBS if job.scheduled_start_datetime.date() == selected_date]
-    if not jobs:
-        st.warning("No jobs scheduled on this day.")
-    else:
-        pdf = generate_daily_planner_pdf(selected_date, jobs)
-        st.download_button("📥 Download PDF", data=pdf, file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf")
+app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
+if app_mode == "Reporting":
+    st.subheader("Daily Planner PDF Report")
+    selected_date = st.date_input("Select report date", value=datetime.date.today())
+    if st.button("Generate Daily Planner PDF"):
+        jobs = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime.date() == selected_date]
+        if not jobs:
+            st.warning("No jobs for that date.")
+        else:
+            with st.spinner("Building PDF..."):
+                pdf = generate_daily_planner_pdf(selected_date, jobs)
+                st.download_button("📥 Download Planner", data=pdf, file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf")
