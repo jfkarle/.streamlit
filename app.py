@@ -270,6 +270,20 @@ if app_mode == "Schedule New Boat":
     # --- Main Area Display Logic ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
+
+         # --- High Tide Summary Message ---
+    if st.session_state.get("search_requested_date") and st.session_state.get("current_job_request"):
+        ramp_id = st.session_state.current_job_request.get("selected_ramp_id")
+        date = st.session_state.search_requested_date
+        tide_times = ecm.get_high_tide_times_for_ramp(ramp_id, date)
+        if tide_times:
+            primary_tide = ecm.format_time_for_display(tide_times[0])
+            ramp_name = ecm.ECM_RAMPS[ramp_id].ramp_name if ramp_id in ecm.ECM_RAMPS else "selected ramp"
+            st.markdown(f"""
+                <div style='background-color:#FFFCE0;border-left:6px solid #DAA520;padding:10px;border-radius:5px;margin-bottom:10px;'>
+                    <h5 style='margin:0;'>🌊 <b>High Tide on {date.strftime('%A, %B %d')} at {ramp_name} is approximately <u>{primary_tide}</u>.</b></h5>
+                </div>
+            """, unsafe_allow_html=True)
         
         # This is the full, detailed card display logic
         cols = st.columns(3)
