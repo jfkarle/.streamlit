@@ -196,8 +196,8 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         y_bar_start = y3 + 6
         c.setLineWidth(2)
         c.line(text_center_x, y_bar_start, text_center_x, y_end)
-        c.line(text_center_x - 3, y_end, text_center_x + 3)
-
+        c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+        
     c.save()
     buffer.seek(0)
     return buffer
