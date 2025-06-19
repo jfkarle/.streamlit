@@ -277,7 +277,7 @@ if app_mode == "Schedule New Boat":
         date = st.session_state.search_requested_date
         ramp_obj = ecm.ECM_RAMPS.get(ramp_id)
         if ramp_obj:
-            tide_times = ramp_obj.get_tide_times_for_date(date)
+            tide_times = ecm.get_high_tide_times_for_ramp(ramp_id, date)
         else:
             tide_times = []
         if tide_times:
