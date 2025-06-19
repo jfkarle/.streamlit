@@ -288,9 +288,8 @@ if app_mode == "Schedule New Boat":
     # --- Main Area Display Logic ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
-
          # --- High Tide Summary Message ---
-    if st.session_state.get("search_requested_date") and st.session_state.get("current_job_request"):
+   if st.session_state.get("search_requested_date") and st.session_state.get("current_job_request"):
         ramp_id = st.session_state.current_job_request.get("selected_ramp_id")
         date = st.session_state.search_requested_date
         ramp_obj = ecm.ECM_RAMPS.get(ramp_id)
