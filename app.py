@@ -345,30 +345,6 @@ elif app_mode == "Reporting":
 ### BEGIN In the elif app_mode == "Reporting": block, add ###
 ########################################################################################
 
-        elif app_mode == "Reporting":
-    st.header("Reporting Dashboard")
-    st.info("This section is for viewing and exporting scheduled jobs.")
-    st.subheader("All Scheduled Jobs (Current Session)")
-
-    if ecm.SCHEDULED_JOBS:
-        display_data = []
-        for job in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max):
-            customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
-            ramp = ecm.get_ramp_details(getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None))
-            display_data.append({
-                "Job ID": job.job_id,
-                "Status": job.job_status,
-                "Scheduled Date": job.scheduled_start_datetime.strftime("%Y-%m-%d") if job.scheduled_start_datetime else "N/A",
-                "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
-                "Service": job.service_type,
-                "Customer": customer.customer_name if customer else "N/A",
-                "Truck": job.assigned_hauling_truck_id,
-                "Ramp": ramp.ramp_name if ramp else "N/A"
-            })
-        st.dataframe(pd.DataFrame(display_data))
-    else:
-        st.write("No jobs scheduled yet.")
-
     # ✅ DAILY PLANNER PDF GENERATION TOOL — properly indented
     st.subheader("Generate Daily Planner PDF")
     selected_date = st.date_input("Select date to export:", value=datetime.date.today())
