@@ -2,3 +2,4 @@ streamlit
 pandas
 requests
 reportlab
+PyPDF2>=3.0.0
