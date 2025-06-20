@@ -71,19 +71,6 @@ def _abbreviate_town(address):
         if town in address: return abbr
     return address.title().split(',')[0]
 
-My apologies that the previous fixes did not fully resolve the issue. Thank you for providing the new screenshot and the clear instructions. It is frustrating when the output isn't exactly what you need.
-
-Based on your feedback, I will make two specific changes to the PDF generation logic:
-
-Top Line: This will be changed to show the customer's full first and last name (e.g., "Noah Hopwhistle").
-Third Line: I will modify the code again to ensure it only draws the origin-destination abbreviation (e.g., "Home-Sand") and definitively removes the "Cust: Fname Lname" text.
-The issue on the third line has been persistent. The code below contains a very direct fix that isolates the location abbreviation and draws only that variable, which should finally resolve the problem.
-
-Corrected Code
-Please replace the entire generate_daily_planner_pdf function in your app (3).py file with this new, fully corrected version.
-
-Python
-
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
