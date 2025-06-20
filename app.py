@@ -233,8 +233,12 @@ def initialize_session_state():
 initialize_session_state()
 st.title("Marine Transportation")
 
-# --- NAVIGATION SIDEBAR ---
-st.sidebar.title("Navigation")
+# ADD THIS BUTTON TO MANUALLY CLEAR THE CACHE
+if st.sidebar.button("Clear App Cache"):
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.rerun()
+
 app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
 
 # --- PAGE 1: SCHEDULER ---
