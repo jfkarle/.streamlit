@@ -192,7 +192,7 @@ def check_truck_availability(truck_id, start_dt, end_dt):
             if start_dt < job_end and end_dt > job.scheduled_start_datetime: return False
     return True
 
-def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ramp, ecm_hours, duration, j17_duration, window_details, reason_for_suggestion=None):
+def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ramp, ecm_hours, duration, j17_duration, window_details, debug_messages, reason_for_suggestion=None):
     start_dt = datetime.datetime.combine(s_date, p_time); hauler_end_dt = start_dt + datetime.timedelta(hours=duration)
     if hauler_end_dt.time() > ecm_hours['close'] and not (hauler_end_dt.time() == ecm_hours['close'] and hauler_end_dt.date() == s_date): return None
     if not check_truck_availability(truck.truck_id, start_dt, hauler_end_dt): return None
@@ -256,7 +256,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         potential_time = temp_dt.time()
                     if potential_time >= window['end_time']: break
                     
-                    slot_detail = _check_and_create_slot_detail(search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES)
+                    slot_detail = _check_and_create_slot_detail(search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, window, DEBUG_LOG_MESSAGES)
                     if slot_detail:
                         slots_found.append(slot_detail)
                     potential_time = (datetime.datetime.combine(datetime.date.min, potential_time) + datetime.timedelta(minutes=30)).time()
