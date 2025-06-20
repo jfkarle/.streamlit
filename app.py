@@ -293,18 +293,37 @@ if app_mode == "Schedule New Boat":
             
             st.sidebar.markdown("---")
 
-            if st.sidebar.button("Find Best Slot (Strict)", key="find_strict"):
+            # --- START OF MODIFIED BLOCK ---
+            
+            # 1. ADD CHECKBOXES FOR RELAXATION OPTIONS
+            relax_truck_input = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
+            relax_ramp_input = st.sidebar.checkbox("Relax Ramp (Search other nearby ramps)") # Note: This will search all ramps.
+            
+            # 2. CHANGE BUTTON AND UPDATE THE LOGIC IT CALLS
+            if st.sidebar.button("Find Best Slot", key="find_slots"):
                 job_request = {
-                    'customer_id': selected_customer_obj.customer_id, 'boat_id': selected_boat_obj.boat_id,
-                    'service_type': service_type_input, 'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
+                    'customer_id': selected_customer_obj.customer_id,
+                    'boat_id': selected_boat_obj.boat_id,
+                    'service_type': service_type_input,
+                    'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
                     'selected_ramp_id': selected_ramp_id_input,
                 }
                 st.session_state.current_job_request = job_request
                 st.session_state.search_requested_date = requested_date_input
-                slots, message, _, was_forced = ecm.find_available_job_slots(**job_request)
+                
+                # This is the key change: we now pass the checkbox values to the search function.
+                # If "Relax Truck" is checked, force_preferred_truck becomes False.
+                slots, message, _, was_forced = ecm.find_available_job_slots(
+                    **job_request,
+                    force_preferred_truck=(not relax_truck_input), 
+                    relax_ramp=relax_ramp_input
+                )
+                
                 st.session_state.info_message, st.session_state.found_slots = message, slots
                 st.session_state.selected_slot, st.session_state.was_forced_search = None, was_forced
                 st.rerun()
+            # --- END OF MODIFIED BLOCK ---
+        
         else:
             st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
 
