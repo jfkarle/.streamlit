@@ -155,7 +155,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
         customer_name = customer.customer_name.split()[-1] if customer and customer.customer_name else "Unknown"
 
-        # Correctly get boat description by looking up boat_id from the job
+        # Get boat description
         boat_id = getattr(job, 'boat_id', None)
         boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
         if boat:
@@ -165,12 +165,22 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         else:
             boat_desc = "Unknown"
 
-        origin = getattr(job, 'pickup_street_address', '') or ''
-        dest = getattr(job, 'dropoff_street_address', '') or ''
-        origin_abbr = _abbreviate_town(origin)
-        dest_abbr = _abbreviate_town(dest)
+        # *** NEW: Get addresses and replace "HOME" with the actual customer address ***
+        origin_address = getattr(job, 'pickup_street_address', '') or ''
+        dest_address = getattr(job, 'dropoff_street_address', '') or ''
+
+        if customer:
+            # Use case-insensitive comparison for "HOME"
+            if origin_address.upper() == 'HOME':
+                origin_address = customer.street_address
+            if dest_address.upper() == 'HOME':
+                dest_address = customer.street_address
+
+        origin_abbr = _abbreviate_town(origin_address)
+        dest_abbr = _abbreviate_town(dest_address)
         location_label = f"{origin_abbr}-{dest_abbr}"
 
+        # Draw the three lines of text for the job entry
         c.setFont("Helvetica-Bold", 8)
         c.drawCentredString(text_center_x, line1_y, customer_name)
         c.setFont("Helvetica", 7)
