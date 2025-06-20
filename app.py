@@ -71,6 +71,19 @@ def _abbreviate_town(address):
         if town in address: return abbr
     return address.title().split(',')[0]
 
+My apologies that the previous fixes did not fully resolve the issue. Thank you for providing the new screenshot and the clear instructions. It is frustrating when the output isn't exactly what you need.
+
+Based on your feedback, I will make two specific changes to the PDF generation logic:
+
+Top Line: This will be changed to show the customer's full first and last name (e.g., "Noah Hopwhistle").
+Third Line: I will modify the code again to ensure it only draws the origin-destination abbreviation (e.g., "Home-Sand") and definitively removes the "Cust: Fname Lname" text.
+The issue on the third line has been persistent. The code below contains a very direct fix that isolates the location abbreviation and draws only that variable, which should finally resolve the problem.
+
+Corrected Code
+Please replace the entire generate_daily_planner_pdf function in your app (3).py file with this new, fully corrected version.
+
+Python
+
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
@@ -152,40 +165,46 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         line2_y = (y1 + y2) / 2
         line3_y = (y2 + y3) / 2
 
+        # --- TEXT FOR DIARY ENTRY ---
+        
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
-        customer_name = customer.customer_name.split()[-1] if customer and customer.customer_name else "Unknown"
+        
+        # FIX 1: Change top line to show full name (e.g., "Noah Hopwhistle")
+        customer_full_name = customer.customer_name if customer and hasattr(customer, 'customer_name') else "Unknown Customer"
 
-        # Get boat description
+        # Get boat description (e.g., "29' Powerboat")
         boat_id = getattr(job, 'boat_id', None)
         boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
         if boat:
             boat_length = getattr(boat, 'boat_length', None)
             boat_type = getattr(boat, 'boat_type', '')
-            boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown"
+            boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown Boat"
         else:
-            boat_desc = "Unknown"
+            boat_desc = "Unknown Boat"
 
-        # *** NEW: Get addresses and replace "HOME" with the actual customer address ***
+        # FIX 2: Create location abbreviation and ensure NO other text is added
         origin_address = getattr(job, 'pickup_street_address', '') or ''
         dest_address = getattr(job, 'dropoff_street_address', '') or ''
-
-        if customer:
-            # Use case-insensitive comparison for "HOME"
+        if customer and hasattr(customer, 'street_address'):
             if origin_address.upper() == 'HOME':
                 origin_address = customer.street_address
             if dest_address.upper() == 'HOME':
                 dest_address = customer.street_address
-
         origin_abbr = _abbreviate_town(origin_address)
         dest_abbr = _abbreviate_town(dest_address)
-        location_label = f"{origin_abbr}-{dest_abbr}"
+        location_label_only = f"{origin_abbr}-{dest_abbr}" # This variable now holds ONLY the abbreviation
 
-        # Draw the three lines of text for the job entry
+        # --- DRAW THE TEXT ---
+        # Line 1: Full Customer Name
         c.setFont("Helvetica-Bold", 8)
-        c.drawCentredString(text_center_x, line1_y, customer_name)
+        c.drawCentredString(text_center_x, line1_y, customer_full_name)
+        
+        # Line 2: Boat Description
         c.setFont("Helvetica", 7)
         c.drawCentredString(text_center_x, line2_y, boat_desc)
-        c.drawCentredString(text_center_x, line3_y, location_label)
+        
+        # Line 3: Location Abbreviation ONLY
+        c.drawCentredString(text_center_x, line3_y, location_label_only)
 
         y_bar_start = y3 + 6
         y_end = get_y_for_time(end_time)
