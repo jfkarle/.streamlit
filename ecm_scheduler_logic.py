@@ -193,7 +193,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     forced_date = None
     # --- END OF MODIFIED BLOCK ---
-    
+    ramp_obj = get_ramp_details(selected_ramp_id) # Define ramp_obj for this specific check
     if boat.boat_type.startswith("Sailboat") and ramp_obj and not ignore_forced_search:
         for job in SCHEDULED_JOBS:
             if getattr(job, 'assigned_crane_truck_id', None) and (getattr(job, 'pickup_ramp_id', None) == selected_ramp_id or getattr(job, 'dropoff_ramp_id', None) == selected_ramp_id) and abs((requested_date_obj - job.scheduled_start_datetime.date()).days) <= 7:
@@ -236,7 +236,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     if p_time >= p_end:
                         break
 
-                    slot = _check_and_create_slot_detail(s_date, p_time, truck, customer, boat, service_type, ramp_obj, ecm_hours, duration, j17_duration, w)
+                    slot = _check_and_create_slot_detail(s_date, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
                     
                     # --- THIS IS THE KEY CHANGE ---
                     if slot:
