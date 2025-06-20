@@ -190,7 +190,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         c.drawCentredString(text_center_x, line2_y, boat_desc)
         
         # Line 3: Location Abbreviation ONLY
-        c.drawCentredString(text_center_x, line3_y, location_label_only)
+        c.drawCentredString(text_center_x, line3_y, f"NEW-CODE-TEST: {location_label_only}")
 
         y_bar_start = y3 + 6
         y_end = get_y_for_time(end_time)
