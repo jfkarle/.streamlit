@@ -207,102 +207,119 @@ def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ra
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
                              selected_ramp_id=None, transport_dropoff_details=None,
-                             start_after_slot_details=None,
-                             force_preferred_truck=True, relax_ramp_constraint=False):
+                             start_after_slot_details=None):
     
     global original_job_request_details, DEBUG_LOG_MESSAGES
-    DEBUG_LOG_MESSAGES = [f"FindSlots Start: Cust({customer_id}) Svc({service_type}) ReqDate({requested_date_str})"]
-    original_job_request_details = {'transport_dropoff_details': transport_dropoff_details, 'customer_id': customer_id, 'boat_id': boat_id, 'service_type': service_type, 'selected_ramp_id': selected_ramp_id}
+    DEBUG_LOG_MESSAGES = [f"FindSlots Start: Cust({customer_id}) Boat({boat_id}) Svc({service_type}) ReqDate({requested_date_str}) Ramp({selected_ramp_id})"]
+    original_job_request_details = {'transport_dropoff_details': transport_dropoff_details, 'customer_id': customer_id, 'boat_id': boat_id, 'service_type': service_type}
     
     try: 
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError: 
-        DEBUG_LOG_MESSAGES.append("Error: Invalid date format.")
         return [], "Error: Invalid date format.", DEBUG_LOG_MESSAGES
     
     customer = get_customer_details(customer_id)
     boat = get_boat_details(boat_id)
     if not customer or not boat: 
-        DEBUG_LOG_MESSAGES.append("Error: Invalid Cust/Boat ID.")
-        return [], "Error: Invalid Cust/Boat ID.", DEBUG_LOG_MESSAGES
+        return [], "Error: Invalid Customer/Boat ID.", DEBUG_LOG_MESSAGES
 
-    # --- This is the full, correct implementation ---
+    # --- This helper encapsulates a search for a single day ---
+    def search_single_day(search_date):
+        slots_found = []
+        ecm_op_hours = get_ecm_operating_hours(search_date)
+        if not ecm_op_hours or (boat.boat_type in ["Sailboat MD", "Sailboat MT"] and search_date.weekday() == 5 and search_date.month not in [5, 9]):
+            return []
+        
+        job_duration_hours = 3.0 if boat.boat_type in ["Sailboat MD", "Sailboat MT"] else 1.5
+        needs_j17 = boat.boat_type in ["Sailboat MD", "Sailboat MT"]
+        j17_actual_busy_duration_hours = 1.0 if boat.boat_type == "Sailboat MD" else (1.5 if boat.boat_type == "Sailboat MT" else 0)
+        suitable_truck_ids = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
+        
+        ramp_obj = None; daily_windows = []
+        if service_type in ["Launch", "Haul"]:
+            ramp_obj = ECM_RAMPS.get(selected_ramp_id)
+            if not ramp_obj: return []
+            daily_windows = get_final_schedulable_ramp_times(ramp_obj, boat, search_date)
+        elif service_type == "Transport":
+            daily_windows = [{'start_time': ecm_op_hours['open'], 'end_time': ecm_op_hours['close']}]
+        
+        if not daily_windows: return []
+
+        for truck_id in suitable_truck_ids:
+            for window in daily_windows:
+                potential_time = window['start_time']
+                while potential_time < window['end_time']:
+                    temp_dt = datetime.datetime.combine(search_date, potential_time)
+                    if temp_dt.minute not in [0, 30]:
+                        if temp_dt.minute < 30: temp_dt = temp_dt.replace(minute=30, second=0, microsecond=0)
+                        else: temp_dt = (temp_dt + datetime.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+                        potential_time = temp_dt.time()
+                    if potential_time >= window['end_time']: break
+                    
+                    slot_detail = _check_and_create_slot_detail(search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, DEBUG_LOG_MESSAGES)
+                    if slot_detail:
+                        slots_found.append(slot_detail)
+                    potential_time = (datetime.datetime.combine(datetime.date.min, potential_time) + datetime.timedelta(minutes=30)).time()
+        return slots_found
+
+    # --- Step 1: Strict Search on Requested Date ---
+    if not start_after_slot_details: # Only do strict search for initial request
+        DEBUG_LOG_MESSAGES.append(f"Phase 1: Strict search on requested date: {requested_date_obj}")
+        slots_on_requested_date = search_single_day(requested_date_obj)
+        if slots_on_requested_date:
+            DEBUG_LOG_MESSAGES.append(f"Found {len(slots_on_requested_date)} slots on requested date.")
+            slots_on_requested_date.sort(key=lambda x: x['time'])
+            return slots_on_requested_date[:3], "Found available slots on your requested date.", DEBUG_LOG_MESSAGES
     
-    # 1. Use new centralized booking rules
-    boat_type_for_rules = boat.boat_type
-    if boat_type_for_rules == "Sailboat MD": boat_type_for_rules = "Sailboat DT" # Standardize
-    rules = BOOKING_RULES.get(boat_type_for_rules, {})
-    job_duration_hours = rules.get('truck_mins', 90) / 60.0
-    needs_j17 = rules.get('crane_mins', 0) > 0
-    j17_actual_busy_duration_hours = rules.get('crane_mins', 0) / 60.0
-
-    # 2. Determine Search Parameters based on Levers
-    all_suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
-    if not all_suitable_trucks:
-        DEBUG_LOG_MESSAGES.append("Error: No suitable trucks.")
-        return [], "Error: No suitable trucks.", DEBUG_LOG_MESSAGES
-
-    if force_preferred_truck and customer.preferred_truck_id:
-        if customer.preferred_truck_id in all_suitable_trucks:
-            trucks_to_search = [customer.preferred_truck_id]
-        else:
-            msg = f"Strict search failed: Preferred truck {customer.preferred_truck_id} is not suitable."
-            return [], msg, [msg]
+    # --- Step 2: Expanded Search if Strict Search Fails or for Roll Forward ---
+    if start_after_slot_details:
+        DEBUG_LOG_MESSAGES.append(f"Rolling forward...")
+        effective_search_start_date = start_after_slot_details['date']
+        min_start_time = (datetime.datetime.combine(effective_search_start_date, start_after_slot_details['time']) + datetime.timedelta(minutes=1)).time()
     else:
-        trucks_to_search = all_suitable_trucks
-
-    if not trucks_to_search:
-         return [], "Error: No suitable trucks found matching criteria.", ["No suitable trucks found."]
-
-    ramps_to_search = [selected_ramp_id] if service_type in ["Launch", "Haul"] else [None]
-    if relax_ramp_constraint and selected_ramp_id:
-        ramps_to_search = list(get_nearby_ramps(selected_ramp_id).keys())
-
-    # --- Search Logic ---
-    today = TODAY_FOR_SIMULATION
-    effective_search_start_date = requested_date_obj
-    if requested_date_obj >= today + datetime.timedelta(days=7):
-        effective_search_start_date = requested_date_obj - datetime.timedelta(days=3)
-    if effective_search_start_date < today:
-        effective_search_start_date = today
-    search_end_limit_date = requested_date_obj + datetime.timedelta(days=30)
+        DEBUG_LOG_MESSAGES.append(f"No slots on {requested_date_obj}. Expanding search to -7/+21 days.")
+        effective_search_start_date = requested_date_obj - datetime.timedelta(days=7)
+        if effective_search_start_date < TODAY_FOR_SIMULATION: effective_search_start_date = TODAY_FOR_SIMULATION
+        min_start_time = None
     
-    potential_slots_collected = []
-    MAX_POOL_SIZE = 20
+    search_end_limit_date = requested_date_obj + datetime.timedelta(days=21)
+    
+    all_found_slots = []
     current_search_date = effective_search_start_date
-    days_iterated = 0
+    while current_search_date <= search_end_limit_date:
+        slots_today = search_single_day(current_search_date)
+        if min_start_time and current_search_date == effective_search_start_date:
+            all_found_slots.extend([s for s in slots_today if s['time'] >= min_start_time])
+            min_start_time = None # Only apply this filter to the very first day of roll-forward
+        else:
+            all_found_slots.extend(slots_today)
+        
+        if len(all_found_slots) >= 15: # Collect a decent pool then stop
+            break
+        current_search_date += datetime.timedelta(days=1)
+        
+    if not all_found_slots:
+        return [], "No suitable slots found within the expanded search window.", DEBUG_LOG_MESSAGES
 
-    while current_search_date <= search_end_limit_date and len(potential_slots_collected) < MAX_POOL_SIZE and days_iterated < 45:
-        # ... (full looping logic from response #48 goes here) ...
-        # This includes iterating days, ramps, trucks, windows, and time slots
-        # and calling _check_and_create_slot_detail for each.
-        ecm_op_hours = get_ecm_operating_hours(current_search_date)
-        if not ecm_op_hours:
-            current_search_date += datetime.timedelta(days=1); days_iterated += 1; continue
-        # (and so on...)
+    # --- Step 3: Prioritize by Closest Date for Expanded Search Results ---
+    def sort_key(slot):
+        day_diff = abs((slot['date'] - requested_date_obj).days)
+        is_preferred = 0 if customer.preferred_truck_id and slot['truck_id'] == customer.preferred_truck_id else 1
+        return (day_diff, slot['time'], is_preferred)
+
+    all_found_slots.sort(key=sort_key)
     
-    # (The following is a simplified version of the main search loop from response #48 for clarity)
-    # The full version from #48 is what should be used.
-    # This is just to show the structure.
-    for i in range(5): # Mock finding some slots
-        mock_date = effective_search_start_date + datetime.timedelta(days=i)
-        mock_time = datetime.time(8, 0)
-        # In a real loop, you would call _check_and_create_slot_detail here.
-        # This is a placeholder to ensure the function returns something.
-        potential_slots_collected.append({'date': mock_date, 'time': mock_time, 'truck_id': trucks_to_search[0], 'type': 'Open'})
-
-
-    # --- Final Processing ---
-    if not potential_slots_collected:
-        return [], "No suitable slots found.", DEBUG_LOG_MESSAGES
-
-    # (Sorting and filtering logic as detailed in response #60)
-    # ...
+    final_slots = []
+    used_date_times = set()
+    for slot in all_found_slots:
+        if len(final_slots) >= 3: break
+        slot_dt = datetime.datetime.combine(slot['date'], slot['time'])
+        if slot_dt not in used_date_times:
+            final_slots.append(slot)
+            used_date_times.add(slot_dt)
     
-    final_slots_to_present = potential_slots_collected[:3]
-    message = f"Showing top {len(final_slots_to_present)} prioritized slots."
-
-    return final_slots_to_present, message, DEBUG_LOG_MESSAGES
+    message = f"Found best available slots, but your requested date of {requested_date_str} was not available."
+    return final_slots, message, DEBUG_LOG_MESSAGES
 
 def confirm_and_schedule_job(original_request, selected_slot):
     # 1. Get all the required objects
