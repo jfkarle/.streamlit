@@ -305,7 +305,7 @@ if app_mode == "Schedule New Boat":
                 }
                 st.session_state.current_job_request = job_request
                 st.session_state.search_requested_date = requested_date_input
-                slots, message, _, was_forced = ecm.find_available_job_slots(**job_request)
+                slots, message, debug_messages = ecm.find_available_job_slots(**job_request)
                 st.session_state.info_message, st.session_state.found_slots = message, slots
                 st.session_state.selected_slot, st.session_state.was_forced_search = None, was_forced
                 st.rerun()
