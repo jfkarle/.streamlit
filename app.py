@@ -154,9 +154,16 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
         customer_name = customer.customer_name.split()[-1] if customer and customer.customer_name else "Unknown"
-        boat_length = getattr(job, 'boat_length', None)
-        boat_type = getattr(job, 'boat_type', '')
-        boat_desc = f"{int(boat_length)}' {boat_type}" if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown"
+
+        # Correctly get boat description by looking up boat_id from the job
+        boat_id = getattr(job, 'boat_id', None)
+        boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
+        if boat:
+            boat_length = getattr(boat, 'boat_length', None)
+            boat_type = getattr(boat, 'boat_type', '')
+            boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown"
+        else:
+            boat_desc = "Unknown"
 
         origin = getattr(job, 'pickup_street_address', '') or ''
         dest = getattr(job, 'dropoff_street_address', '') or ''
