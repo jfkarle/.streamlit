@@ -50,7 +50,7 @@ class Ramp:
         self.ramp_id=r_id; self.ramp_name=name; self.noaa_station_id=station; self.tide_calculation_method=tide_method
         self.tide_offset_hours1=offset; self.allowed_boat_types=boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
 class Customer:
-    def __init__(self, c_id, name, truck_id=None, is_ecm=False): self.customer_id=c_id; self.customer_name=name; self.preferred_truck_id=truck_id; self.is_ecm_customer=is_ecm
+    def __init__(self, c_id, name, street_address, truck_id=None, is_ecm=False): self.customer_id=c_id; self.customer_name=name; self.street_address=street_address; self.preferred_truck_id=truck_id; self.is_ecm_customer=is_ecm
 class Boat:
     def __init__(self, b_id, c_id, b_type, b_len, draft=None): self.boat_id=b_id; self.customer_id=c_id; self.boat_type=b_type; self.boat_length=b_len; self.draft_ft=draft
 class Job:
@@ -90,7 +90,7 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
             reader = csv.DictReader(infile)
             for i, row in enumerate(reader):
                 cust_id = f"C{1001+i}"; boat_id = f"B{5001+i}"
-                LOADED_CUSTOMERS[cust_id] = Customer(cust_id, row['customer_name'], row.get('preferred_truck'), row.get('is_ecm_boat','').lower()=='true')
+                LOADED_CUSTOMERS[cust_id] = Customer(cust_id, row['customer_name'], row.get('street_address', ''), row.get('preferred_truck'), row.get('is_ecm_boat','').lower()=='true')
                 LOADED_BOATS[boat_id] = Boat(boat_id, cust_id, row['boat_type'], float(row['boat_length']), float(row.get('boat_draft') or 0))
         return True
     except FileNotFoundError: return False
