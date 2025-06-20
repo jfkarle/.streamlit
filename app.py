@@ -33,6 +33,185 @@ def format_tides_for_display(slot, ecm_hours):
 def handle_slot_selection(slot_data):
     st.session_state.selected_slot = slot_data
 
+from io import BytesIO
+from PyPDF2 import PdfMerger
+
+def generate_multi_day_planner_pdf(start_date, end_date, jobs):
+    merger = PdfMerger()
+    for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
+        jobs_for_day = [j for j in jobs if j.scheduled_start_datetime.date() == single_date]
+        if jobs_for_day:
+            daily_pdf = generate_daily_planner_pdf(single_date, jobs_for_day)
+            merger.append(daily_pdf)
+    output = BytesIO()
+    merger.write(output)
+    merger.close()
+    output.seek(0)
+    return output
+    
+
+########################################################################################
+### BEGIN  PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
+########################################################################################
+
+from io import BytesIO
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+
+def _abbreviate_town(address):
+    if not address: return ""
+    address = address.lower()
+    for town, abbr in {
+        "scituate": "Sci", "green harbor": "Grn", "marshfield": "Mfield", "cohasset": "Coh",
+        "weymouth": "Wey", "plymouth": "Ply", "sandwich": "Sand", "duxbury": "Dux",
+        "humarock": "Huma", "pembroke": "Pembroke", "ecm": "Pembroke"
+    }.items():
+        if town in address: return abbr
+    return address.title().split(',')[0]
+
+def generate_daily_planner_pdf(report_date, jobs_for_day):
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    planner_columns = ["S20/33", "S21/77", "S23/55", "S17"]
+    column_map = {name: i for i, name in enumerate(planner_columns)}
+    margin = 0.5 * inch
+    time_col_width = 0.75 * inch
+    content_width = width - 2 * margin - time_col_width
+    col_width = content_width / len(planner_columns)
+    start_hour, end_hour = 7, 18
+    top_y = height - margin - 0.5 * inch
+    bottom_y = margin + 0.5 * inch
+    content_height = top_y - bottom_y
+
+    def get_y_for_time(t):
+        total_minutes = (t.hour - start_hour) * 60 + t.minute
+        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
+
+    # Header
+    day_of_year = report_date.timetuple().tm_yday
+    days_in_year = 366 if (report_date.year % 4 == 0 and report_date.year % 100 != 0) or (report_date.year % 400 == 0) else 365
+    c.setFont("Helvetica", 9)
+    c.drawRightString(width - margin, height - 0.4 * inch, f"{day_of_year}/{days_in_year - day_of_year}")
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
+
+    # Column headers
+    c.setFont("Helvetica-Bold", 11)
+    for i, name in enumerate(planner_columns):
+        x_center = margin + time_col_width + i * col_width + col_width / 2
+        c.drawCentredString(x_center, top_y + 10, name)
+
+    # Vertical and horizontal lines
+    for i in range(len(planner_columns) + 1):
+        x = margin + time_col_width + i * col_width
+        c.setLineWidth(0.5)
+        c.line(x, top_y, x, bottom_y)
+    c.line(margin, top_y, margin, bottom_y)
+
+    for hour in range(start_hour, end_hour + 1):
+        for minute in [0, 15, 30, 45]:
+            current_time = datetime.time(hour, minute)
+            y = get_y_for_time(current_time)
+            next_y = get_y_for_time((datetime.datetime.combine(datetime.date.today(), current_time) + datetime.timedelta(minutes=15)).time())
+            label_y = (y + next_y) / 2
+            c.setLineWidth(1.0 if minute == 0 else 0.25)
+            c.line(margin, y, width - margin, y)
+            if minute == 0:
+                display_hour = hour if hour <= 12 else hour - 12
+                c.setFont("Helvetica-Bold", 9)
+                c.drawString(margin + 3, label_y - 3, str(display_hour))
+                c.setFont("Helvetica", 7)
+                c.drawString(margin + 18, label_y - 3, "00")
+            else:
+                c.setFont("Helvetica", 6)
+                c.drawString(margin + 18, label_y - 2, f"{minute}")
+
+    # Job bars
+    for job in jobs_for_day:
+        truck_id = getattr(job, 'assigned_hauling_truck_id', None)
+        if getattr(job, 'assigned_crane_truck_id', None):
+            truck_id = "S17"
+        if truck_id not in column_map:
+            continue
+        col_index = column_map[truck_id]
+        column_start_x = margin + time_col_width + col_index * col_width
+        text_center_x = column_start_x + col_width / 2
+
+        start_time = getattr(job, 'scheduled_start_datetime').time()
+        end_time = getattr(job, 'scheduled_end_datetime').time()
+        dt_base = datetime.datetime.combine(datetime.date.today(), start_time)
+        y0 = get_y_for_time(start_time)
+        y1 = get_y_for_time((dt_base + datetime.timedelta(minutes=15)).time())
+        y2 = get_y_for_time((dt_base + datetime.timedelta(minutes=30)).time())
+        y3 = get_y_for_time((dt_base + datetime.timedelta(minutes=45)).time())
+
+        line1_y = (y0 + y1) / 2
+        line2_y = (y1 + y2) / 2
+        line3_y = (y2 + y3) / 2
+
+        # --- TEXT FOR DIARY ENTRY ---
+        
+        customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
+        
+        # FIX 1: Change top line to show full name (e.g., "Noah Hopwhistle")
+        customer_full_name = customer.customer_name if customer and hasattr(customer, 'customer_name') else "Unknown Customer"
+
+        # Get boat description (e.g., "29' Powerboat")
+        boat_id = getattr(job, 'boat_id', None)
+        boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
+        if boat:
+            boat_length = getattr(boat, 'boat_length', None)
+            boat_type = getattr(boat, 'boat_type', '')
+            boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown Boat"
+        else:
+            boat_desc = "Unknown Boat"
+
+        # FIX 2: Create location abbreviation and ensure NO other text is added
+        origin_address = getattr(job, 'pickup_street_address', '') or ''
+        dest_address = getattr(job, 'dropoff_street_address', '') or ''
+        if customer and hasattr(customer, 'street_address'):
+            if origin_address.upper() == 'HOME':
+                origin_address = customer.street_address
+            if dest_address.upper() == 'HOME':
+                dest_address = customer.street_address
+        origin_abbr = _abbreviate_town(origin_address)
+        dest_abbr = _abbreviate_town(dest_address)
+        location_label_only = f"{origin_abbr}-{dest_abbr}" # This variable now holds ONLY the abbreviation
+
+        # --- DRAW THE TEXT ---
+        # Line 1: Full Customer Name
+        c.setFont("Helvetica-Bold", 8)
+        c.drawCentredString(text_center_x, line1_y, customer_full_name)
+        
+        # Line 2: Boat Description
+        c.setFont("Helvetica", 7)
+        c.drawCentredString(text_center_x, line2_y, boat_desc)
+        
+        # Line 3: Location Abbreviation ONLY
+        c.drawCentredString(text_center_x, line3_y, location_label_only)
+
+        y_bar_start = y3 + 6
+        y_end = get_y_for_time(end_time)
+        c.setLineWidth(2)
+        c.line(text_center_x, y_bar_start, text_center_x, y_end)
+        c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+
+    # ✅ Draw bottom border ONCE here
+    c.setLineWidth(1.0)
+    c.line(margin, bottom_y, width - margin, bottom_y)
+
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+########################################################################################
+### END PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
+########################################################################################
+
+
+
 # --- Session State Initialization ---
 def initialize_session_state():
     defaults = {
