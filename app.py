@@ -368,6 +368,8 @@ if app_mode == "Schedule New Boat":
 elif app_mode == "Reporting":
     st.header("Reporting Dashboard")
     st.info("This section is for viewing and exporting scheduled jobs.")
+
+    # --- Job Table ---
     st.subheader("All Scheduled Jobs (Current Session)")
     if ecm.SCHEDULED_JOBS:
         display_data = []
@@ -375,17 +377,63 @@ elif app_mode == "Reporting":
             customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
             ramp = ecm.get_ramp_details(getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None))
             display_data.append({
-                "Job ID": job.job_id, "Status": job.job_status,
+                "Job ID": job.job_id,
+                "Status": job.job_status,
                 "Scheduled Date": job.scheduled_start_datetime.strftime("%Y-%m-%d") if job.scheduled_start_datetime else "N/A",
                 "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
-                "Service": job.service_type, "Customer": customer.customer_name if customer else "N/A",
-                "Truck": job.assigned_hauling_truck_id, "Ramp": ramp.ramp_name if ramp else "N/A"
+                "Service": job.service_type,
+                "Customer": customer.customer_name if customer else "N/A",
+                "Truck": job.assigned_hauling_truck_id,
+                "Ramp": ramp.ramp_name if ramp else "N/A"
             })
         st.dataframe(pd.DataFrame(display_data))
     else:
         st.write("No jobs scheduled yet.")
 
+    # --- Single Day Planner Export ---
+    st.subheader("Generate Daily Planner PDF")
+    selected_date = st.date_input("Select date to export:", value=datetime.date.today())
+    if st.button("📤 Generate PDF"):
+        jobs_today = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime.date() == selected_date]
+        if not jobs_today:
+            st.warning("No jobs scheduled for that date.")
+        else:
+            pdf = generate_daily_planner_pdf(selected_date, jobs_today)
+            st.download_button(
+                label="📥 Download Planner",
+                data=pdf,
+                file_name=f"Daily_Planner_{selected_date}.pdf",
+                mime="application/pdf"
+            )
+
+    # --- Multi-Day Export Tool ---
+    st.subheader("Export Multi-Day Planner")
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("Start Date", value=datetime.date.today(), key="multi_start")
+    with col2:
+        end_date = st.date_input("End Date", value=datetime.date.today() + datetime.timedelta(days=5), key="multi_end")
+
+    if st.button("📤 Generate Multi-Day Planner PDF"):
+        if start_date > end_date:
+            st.error("Start date must be before or equal to end date.")
+        else:
+            jobs_in_range = [j for j in ecm.SCHEDULED_JOBS if start_date <= j.scheduled_start_datetime.date() <= end_date]
+            if not jobs_in_range:
+                st.warning("No jobs scheduled in this date range.")
+            else:
+                merged_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
+                st.download_button(
+                    label="📥 Download Multi-Day Planner",
+                    data=merged_pdf,
+                    file_name=f"Planner_{start_date}_to_{end_date}.pdf",
+                    mime="application/pdf"
+                )
+
+    
+
 # --- PAGE 3: SETTINGS ---
 elif app_mode == "Settings":
     st.header("Application Settings")
     st.write("This section is under construction.")
+
