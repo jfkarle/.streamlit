@@ -285,76 +285,76 @@ if app_mode == "Schedule New Boat":
         else:
             st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
 
-   # --- Main Area Display Logic ---
-if st.session_state.found_slots and not st.session_state.selected_slot:
-    st.subheader("Please select your preferred slot:")
+    # --- Main Area Display Logic ---
+    if st.session_state.found_slots and not st.session_state.selected_slot:
+        st.subheader("Please select your preferred slot:")
 
-    # --- High Tide Summary Message ---
-    if st.session_state.get("search_requested_date") and st.session_state.get("current_job_request"):
-        ramp_id = st.session_state.current_job_request.get("selected_ramp_id")
-        date = st.session_state.search_requested_date
-        ramp_obj = ecm.ECM_RAMPS.get(ramp_id)
-        if ramp_obj:
-            tide_times = ecm.get_high_tide_times_for_ramp(ramp_id, date)
-        else:
-            tide_times = []
-        if tide_times:
-            primary_tide = ecm.format_time_for_display(tide_times[0])
-            ramp_name = ecm.ECM_RAMPS[ramp_id].ramp_name if ramp_id in ecm.ECM_RAMPS else "selected ramp"
-            st.markdown(f"""
-                <div style='background-color:#FFFCE0;border-left:6px solid #DAA520;padding:10px;border-radius:5px;margin-bottom:10px;'>
-                    <h5 style='margin:0;'>🌊 <b>High Tide on {date.strftime('%A, %B %d')} at {ramp_name} is approximately <u>{primary_tide}</u>.</b></h5>
-                </div>
-            """, unsafe_allow_html=True)
-
-    # --- Slot Cards ---
-    cols = st.columns(3)
-    for i, slot in enumerate(st.session_state.found_slots):
-        with cols[i % 3]:
-            with st.container(border=True):
-                if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
-                    st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
-
-                date_str = slot['date'].strftime('%a, %b %d, %Y')
-                time_str = ecm.format_time_for_display(slot.get('time'))
-                truck_id = slot.get('truck_id', 'N/A')
-                ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
-                ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
-                ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
-                tide_display_str = format_tides_for_display(slot, ecm_hours)
-
-                st.markdown(f"**Date:** {date_str}")
-                if slot.get('tide_rule_concise'):
-                    st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
-                if tide_display_str:
-                    st.markdown(tide_display_str)
-                st.markdown(f"**Time:** {time_str}")
-                st.markdown(f"**Truck:** {truck_id}")
-                st.markdown(f"**Ramp:** {ramp_name}")
-                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
-
-elif st.session_state.selected_slot:
-        # Confirmation Screen Logic
-        slot = st.session_state.selected_slot
-        st.subheader("Preview & Confirm Selection:")
-        st.success(f"You are considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
-        if slot.get('j17_needed'): st.write("J17 Crane will also be assigned.")
-        if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
-            new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
-            if new_job_id:
-                st.session_state.confirmation_message = message
-                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
-                    st.session_state.pop(key, None)
-                st.rerun()
-        # Display confirmation only if no slot is currently selected
-        if st.session_state.get("confirmation_message") and not st.session_state.get("selected_slot"):
-            st.success(f"✅ {st.session_state.confirmation_message}")
-            if st.button("Schedule Another Job", key="schedule_another"):
-                st.session_state.pop("confirmation_message", None)
-                st.rerun()
-            
+        # --- High Tide Summary Message ---
+        if st.session_state.get("search_requested_date") and st.session_state.get("current_job_request"):
+            ramp_id = st.session_state.current_job_request.get("selected_ramp_id")
+            date = st.session_state.search_requested_date
+            ramp_obj = ecm.ECM_RAMPS.get(ramp_id)
+            if ramp_obj:
+                tide_times = ecm.get_high_tide_times_for_ramp(ramp_id, date)
             else:
-                st.error(f"Failed to confirm job: {message}")
+                tide_times = []
+            if tide_times:
+                primary_tide = ecm.format_time_for_display(tide_times[0])
+                ramp_name = ecm.ECM_RAMPS[ramp_id].ramp_name if ramp_id in ecm.ECM_RAMPS else "selected ramp"
+                st.markdown(f"""
+                    <div style='background-color:#FFFCE0;border-left:6px solid #DAA520;padding:10px;border-radius:5px;margin-bottom:10px;'>
+                        <h5 style='margin:0;'>🌊 <b>High Tide on {date.strftime('%A, %B %d')} at {ramp_name} is approximately <u>{primary_tide}</u>.</b></h5>
+                    </div>
+                """, unsafe_allow_html=True)
+
+        # --- Slot Cards ---
+        cols = st.columns(3)
+        for i, slot in enumerate(st.session_state.found_slots):
+            with cols[i % 3]:
+                with st.container(border=True):
+                    if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
+                        st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
+
+                    date_str = slot['date'].strftime('%a, %b %d, %Y')
+                    time_str = ecm.format_time_for_display(slot.get('time'))
+                    truck_id = slot.get('truck_id', 'N/A')
+                    ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                    ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
+                    ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
+                    tide_display_str = format_tides_for_display(slot, ecm_hours)
+
+                    st.markdown(f"**Date:** {date_str}")
+                    if slot.get('tide_rule_concise'):
+                        st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
+                    if tide_display_str:
+                        st.markdown(tide_display_str)
+                    st.markdown(f"**Time:** {time_str}")
+                    st.markdown(f"**Truck:** {truck_id}")
+                    st.markdown(f"**Ramp:** {ramp_name}")
+                    st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+
+    elif st.session_state.selected_slot:
+            # Confirmation Screen Logic
+            slot = st.session_state.selected_slot
+            st.subheader("Preview & Confirm Selection:")
+            st.success(f"You are considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
+            if slot.get('j17_needed'): st.write("J17 Crane will also be assigned.")
+            if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
+                new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
+                if new_job_id:
+                    st.session_state.confirmation_message = message
+                    for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
+                        st.session_state.pop(key, None)
+                    st.rerun()
+            # Display confirmation only if no slot is currently selected
+            if st.session_state.get("confirmation_message") and not st.session_state.get("selected_slot"):
+                st.success(f"✅ {st.session_state.confirmation_message}")
+                if st.button("Schedule Another Job", key="schedule_another"):
+                    st.session_state.pop("confirmation_message", None)
+                    st.rerun()
+                
+                else:
+                    st.error(f"Failed to confirm job: {message}")
 
     elif st.session_state.get('current_job_request') and not st.session_state.found_slots:
         if st.session_state.info_message:
