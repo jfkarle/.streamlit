@@ -161,7 +161,7 @@ def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ra
     if needs_j17 and not check_truck_availability("J17", start_dt, start_dt + datetime.timedelta(hours=j17_duration)): return None
     return {'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'type': "Open", 'ramp_id': ramp.ramp_id if ramp else None, 'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0, **window_details}
 
-def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, ignore_forced_search=False, **kwargs):
+def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, relax_ramp=False, ignore_forced_search=False, **kwargs):
     try:
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError:
@@ -171,11 +171,29 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not customer or not boat:
         return [], "Error: Invalid Cust/Boat ID.", [], False
 
-    ramp_obj = get_ramp_details(selected_ramp_id)
-    if ramp_obj and boat.boat_type not in ramp_obj.allowed_boat_types:
-        return [], f"Ramp '{ramp_obj.ramp_name}' doesn't allow {boat.boat_type}s.", [], False
+# --- START OF MODIFIED BLOCK ---
     
+    # This new logic determines which ramps to search based on the relax_ramp checkbox
+    ramps_to_search = []
+    if relax_ramp:
+        # If relaxing, get a list of ALL ramps that allow this boat type
+        for ramp in ECM_RAMPS.values():
+            if boat.boat_type in ramp.allowed_boat_types:
+                ramps_to_search.append(ramp)
+    else:
+        # Otherwise, use the original behavior: just search the one selected ramp
+        ramp_obj_single = get_ramp_details(selected_ramp_id)
+        # For a launch or haul, a ramp is required.
+        if service_type in ["Launch", "Haul"]:
+            if not ramp_obj_single:
+                return [], "Error: A ramp must be selected for this service type.", [], False
+            if boat.boat_type not in ramp_obj_single.allowed_boat_types:
+                return [], f"Ramp '{ramp_obj_single.ramp_name}' doesn't allow {boat.boat_type}s.", [], False
+            ramps_to_search.append(ramp_obj_single)
+
     forced_date = None
+    # --- END OF MODIFIED BLOCK ---
+    
     if boat.boat_type.startswith("Sailboat") and ramp_obj and not ignore_forced_search:
         for job in SCHEDULED_JOBS:
             if getattr(job, 'assigned_crane_truck_id', None) and (getattr(job, 'pickup_ramp_id', None) == selected_ramp_id or getattr(job, 'dropoff_ramp_id', None) == selected_ramp_id) and abs((requested_date_obj - job.scheduled_start_datetime.date()).days) <= 7:
@@ -189,14 +207,19 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not trucks:
         return [], "No suitable trucks for this boat.", [], False
     
-    def search_day(s_date, slots_list, limit):
+  # --- START OF MODIFIED BLOCK ---
+    
+    def search_day(s_date, slots_list, limit, ramp_to_check): # Added ramp_to_check
         ecm_hours = get_ecm_operating_hours(s_date)
         if not ecm_hours:
             return
 
-        windows = get_final_schedulable_ramp_times(ramp_obj, boat, s_date) if ramp_obj else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
+        # Use the passed-in ramp_to_check instead of the old ramp_obj
+        windows = get_final_schedulable_ramp_times(ramp_to_check, boat, s_date) if ramp_to_check else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
         
         if not customer.is_ecm_customer:
+    # --- END OF MODIFIED BLOCK ---
+            
             min_start = (datetime.datetime.combine(s_date, ecm_hours['open']) + datetime.timedelta(hours=1.5)).time()
             windows = [{**w, 'start_time': max(w['start_time'], min_start)} for w in windows if max(w['start_time'], min_start) < w['end_time']]
         
@@ -222,24 +245,34 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     
                     p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
 
+    # --- START OF MODIFIED BLOCK ---
     potential_slots, was_forced = [], False
+    
+    # The list 'ramps_to_search' will have one ramp, or many, or be empty for 'Transport'
+    # The 'if ramps_to_search else [None]' part handles Transport jobs gracefully
+    ramps_to_iterate = ramps_to_search if service_type in ["Launch", "Haul"] else [None]
+
     if forced_date:
         was_forced = True
-        search_day(forced_date, potential_slots, 6)
+        for ramp in ramps_to_iterate:
+            search_day(forced_date, potential_slots, 6, ramp)
     else:
         slots_before, slots_after = [], []
         # Phase 1: Before
         d = max(TODAY_FOR_SIMULATION, requested_date_obj - datetime.timedelta(days=5))
         while d < requested_date_obj and len(slots_before) < 2:
-            search_day(d, slots_before, 2)
+            for ramp in ramps_to_iterate: # Loop through ramps
+                search_day(d, slots_before, 2, ramp)
             d += datetime.timedelta(days=1)
         # Phase 2: After
         d, i = requested_date_obj, 0
         while len(slots_after) < 4 and i < 45:
-            search_day(d, slots_after, 4)
+            for ramp in ramps_to_iterate: # Loop through ramps
+                search_day(d, slots_after, 4, ramp)
             d += datetime.timedelta(days=1)
             i += 1
         potential_slots = slots_before + slots_after
+    # --- END OF MODIFIED BLOCK ---
 
     if not potential_slots:
         return [], "No suitable slots found.", [], was_forced
