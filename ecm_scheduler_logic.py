@@ -71,23 +71,7 @@ class Ramp:
 class Customer:
     def __init__(self, c_id, name, truck_id=None, is_ecm=False): self.customer_id=c_id; self.customer_name=name; self.preferred_truck_id=truck_id; self.is_ecm_customer=is_ecm
 class Boat:
-    def __init__(self, boat_id, customer_id, boat_type, length_ft, # CORRECTED
-                 draft_ft=None, height_ft_keel_to_highest=None, keel_type=None, is_ecm_boat=None):
-        self.boat_id = boat_id
-        self.customer_id = customer_id
-        self.boat_type = boat_type
-        self.length_ft = length_ft # CORRECTED
-        self.draft_ft = draft_ft
-        self.height_ft_keel_to_highest = height_ft_keel_to_highest
-        self.keel_type = keel_type
-
-    @property
-    def is_ecm_boat(self):
-        customer = get_customer_details(self.customer_id)
-        return customer.is_ecm_customer if customer else False
-
-    def __repr__(self):
-        return f"Boat(ID: {self.boat_id}, CustID: {self.customer_id}, Type: {self.boat_type}, Len: {self.length_ft}ft)" # CORRECTED
+    def __init__(self, b_id, c_id, b_type, b_len, draft=None): self.boat_id=b_id; self.customer_id=c_id; self.boat_type=b_type; self.boat_length=b_len; self.draft_ft=draft
 class Job:
     def __init__(self, **kwargs): self.job_status = "Scheduled"; self.__dict__.update(kwargs)
 class OperatingHoursEntry:
@@ -122,42 +106,17 @@ operating_hours_rules = [
     OperatingHoursEntry("BusySaturday", 5, datetime.time(7,30), datetime.time(17,30)),
 ]
 LOADED_CUSTOMERS = {}; LOADED_BOATS = {}
-def load_customers_and_boats_from_csv(csv_filename="ECM Sample Cust.csv"):
-    global LOADED_CUSTOMERS, LOADED_BOATS, CUSTOMER_ID_FROM_CSV_COUNTER, BOAT_ID_FROM_CSV_COUNTER
-    LOADED_CUSTOMERS.clear(); LOADED_BOATS.clear()
-    current_cust_id = CUSTOMER_ID_FROM_CSV_COUNTER; current_boat_id = BOAT_ID_FROM_CSV_COUNTER
+def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
+    global LOADED_CUSTOMERS, LOADED_BOATS
     try:
-        with open(csv_filename, mode='r', encoding='utf-8-sig') as infile:
+        with open(filename, mode='r', encoding='utf-8-sig') as infile:
             reader = csv.DictReader(infile)
-            reader.fieldnames = [field.strip() for field in reader.fieldnames]
-            for row in reader:
-                try:
-                    cust_name = row.get("Customer Name")
-                    if not cust_name: continue
-                    is_ecm = row.get("Is ECM Boat", "False").strip().lower() == 'true'
-                    customer = Customer(customer_id=current_cust_id, customer_name=cust_name,
-                                        home_latitude=float(row["Home Latitude"]) if row.get("Home Latitude") else None,
-                                        home_longitude=float(row["Home Longitude"]) if row.get("Home Longitude") else None,
-                                        preferred_truck_id=row.get("PREFERRED TRUCK") if row.get("PREFERRED TRUCK") in ECM_TRUCKS else None,
-                                        is_ecm_customer=is_ecm)
-                    LOADED_CUSTOMERS[current_cust_id] = customer
-                    boat_type = row.get("Boat Type"); boat_len_str = row.get("Boat Length")
-                    if boat_type and boat_len_str:
-                        boat = Boat(
-                            boat_id=current_boat_id, customer_id=current_cust_id,
-                            boat_type=boat_type, length_ft=float(boat_len_str), # CORRECTED
-                            draft_ft=float(row.get("Boat Draft")) if row.get("Boat Draft") and row.get("Boat Draft").strip() else None
-                        )
-                        LOADED_BOATS[current_boat_id] = boat
-                        current_boat_id += 1
-                    current_cust_id += 1
-                except (ValueError, TypeError) as ve:
-                    print(f"Warning: Skipping row due to data conversion error: {row} - Error: {ve}")
-        print(f"Successfully loaded {len(LOADED_CUSTOMERS)} customers and {len(LOADED_BOATS)} boats from {csv_filename}.")
+            for i, row in enumerate(reader):
+                cust_id = f"C{1001+i}"; boat_id = f"B{5001+i}"
+                LOADED_CUSTOMERS[cust_id] = Customer(cust_id, row['customer_name'], row.get('preferred_truck'), row.get('is_ecm_boat','').lower()=='true')
+                LOADED_BOATS[boat_id] = Boat(boat_id, cust_id, row['boat_type'], float(row['boat_length']), float(row.get('boat_draft') or 0))
         return True
-    except FileNotFoundError:
-        print(f"Error: Customer CSV file '{csv_filename}' not found.")
-        return False
+    except FileNotFoundError: return False
 
 # --- Core Logic Functions ---
 get_customer_details = LOADED_CUSTOMERS.get; get_boat_details = LOADED_BOATS.get; get_ramp_details = ECM_RAMPS.get
@@ -220,19 +179,11 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
             
     return final_windows
 
-def get_suitable_trucks(boat_length_ft, preferred_truck_id=None): # CORRECTED
-    suitable_trucks_list = []
-    if preferred_truck_id and preferred_truck_id in ECM_TRUCKS:
-        truck = ECM_TRUCKS[preferred_truck_id]
-        if not truck.is_crane and (truck.max_boat_length_ft is None or boat_length_ft <= truck.max_boat_length_ft): # CORRECTED
-            suitable_trucks_list.append(truck.truck_id)
-    for truck_id, truck in ECM_TRUCKS.items():
-        if truck.is_crane: continue
-        if truck_id not in suitable_trucks_list:
-            if truck.max_boat_length_ft is None or boat_length_ft <= truck.max_boat_length_ft: # CORRECTED
-                suitable_trucks_list.append(truck.truck_id)
-    if not suitable_trucks_list: print(f"Warning: No suitable hauler for boat {boat_length_ft}ft.")
-    return suitable_trucks_list
+def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
+    all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and boat_len <= t.max_boat_length]
+    if force_preferred and pref_truck_id and any(t.truck_id == pref_truck_id for t in all_suitable):
+        return [t for t in all_suitable if t.truck_id == pref_truck_id]
+    return all_suitable
 
 def check_truck_availability(truck_id, start_dt, end_dt):
     for job in SCHEDULED_JOBS:
@@ -282,8 +233,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         job_duration_hours = 3.0 if boat.boat_type in ["Sailboat MD", "Sailboat MT"] else 1.5
         needs_j17 = boat.boat_type in ["Sailboat MD", "Sailboat MT"]
         j17_actual_busy_duration_hours = 1.0 if boat.boat_type == "Sailboat MD" else (1.5 if boat.boat_type == "Sailboat MT" else 0)
-        suitable_truck_ids = get_suitable_trucks(boat.length_ft, customer.preferred_truck_id) # CORRECTED
-        if not suitable_truck_ids: 
+        suitable_truck_ids = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id)
         
         ramp_obj = None; daily_windows = []
         if service_type in ["Launch", "Haul"]:
