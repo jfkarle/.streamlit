@@ -245,7 +245,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
         if not daily_windows: return []
 
-        for truck_id in suitable_truck_ids:
+        for truck in suitable_truck_ids:
             for window in daily_windows:
                 potential_time = window['start_time']
                 while potential_time < window['end_time']:
@@ -256,7 +256,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         potential_time = temp_dt.time()
                     if potential_time >= window['end_time']: break
                     
-                    slot_detail = _check_and_create_slot_detail(search_date, potential_time, truck_id, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours, needs_j17, j17_actual_busy_duration_hours, window)
+                    slot_detail = _check_and_create_slot_detail(search_date, potential_time, truck, customer, boat, service_type, ramp_obj, ecm_op_hours, job_duration_hours,
+                    needs_j17, j17_actual_busy_duration_hours,
+                    window
+                )
                     if slot_detail:
                         slots_found.append(slot_detail)
                     potential_time = (datetime.datetime.combine(datetime.date.min, potential_time) + datetime.timedelta(minutes=30)).time()
