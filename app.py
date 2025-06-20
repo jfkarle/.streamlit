@@ -305,12 +305,9 @@ if app_mode == "Schedule New Boat":
                 }
                 st.session_state.current_job_request = job_request
                 st.session_state.search_requested_date = requested_date_input
-                slots, message, debug_messages = ecm.find_available_job_slots(**job_request)
-                
-                st.session_state.info_message = message
-                st.session_state.found_slots = slots
-                st.session_state.last_debug_messages = debug_messages # Store the new debug messages
-                st.session_state.selected_slot = None # Reset selected slot
+                slots, message, _, was_forced = ecm.find_available_job_slots(**job_request)
+                st.session_state.info_message, st.session_state.found_slots = message, slots
+                st.session_state.selected_slot, st.session_state.was_forced_search = None, was_forced
                 st.rerun()
         else:
             st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
