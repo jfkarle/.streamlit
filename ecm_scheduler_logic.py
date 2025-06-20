@@ -286,13 +286,13 @@ def confirm_and_schedule_job(original_request, selected_slot):
     service_type = original_request['service_type']
 
     if service_type == "Launch":
-        pickup_addr = f"Cust: {customer.customer_name} Home"
+        pickup_addr = "HOME"
         dropoff_addr = ramp.ramp_name
         dropoff_rid = ramp.ramp_id
     elif service_type == "Haul":
         pickup_addr = ramp.ramp_name
         pickup_rid = ramp.ramp_id
-        dropoff_addr = f"Cust: {customer.customer_name}"
+        dropoff_addr = "HOME"
     
     # --- THIS IS THE CORRECTED PART ---
     # 4. Create the new Job object by passing arguments explicitly
