@@ -151,7 +151,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         y0 = get_y_for_time(start_time)
         y_end = get_y_for_time(end_time)
 
-        line1_y_text = y0 - 4
+        line1_y_text = y0 - 8
         line2_y_text = line1_y_text - 10
         line3_y_text = line2_y_text - 10
         y_bar_start = line3_y_text - 4
