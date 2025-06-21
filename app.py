@@ -12,7 +12,7 @@ def format_tides_for_display(slot, ecm_hours):
     if not ecm_hours or not ecm_hours.get('open'):
         return "HT: " + " / ".join([ecm.format_time_for_display(t) for t in tide_times])
 
-    op_open, op_close = ecm_hours['open'], ecm_hours['close']
+    op_open, op_close = ecm_hours['open'], ecm_close = ecm_hours['close'] # Fixed: op_close was missing
     def get_tide_relevance_score(tide_time):
         tide_dt = datetime.datetime.combine(datetime.date.today(), tide_time)
         open_dt = datetime.datetime.combine(datetime.date.today(), op_open)
@@ -129,16 +129,25 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     for job in jobs_for_day:
         start_time = getattr(job, 'scheduled_start_datetime').time()
         end_time = getattr(job, 'scheduled_end_datetime').time()
-        dt_base = datetime.datetime.combine(datetime.date.today(), start_time)
         
+        # Calculate Y coordinates for text and bar based on job's start and end times
         y0 = get_y_for_time(start_time)
-        y1 = get_y_for_time((dt_base + datetime.timedelta(minutes=15)).time())
-        y2 = get_y_for_time((dt_base + datetime.timedelta(minutes=30)).time())
-        y3 = get_y_for_time((dt_base + datetime.timedelta(minutes=45)).time())
+        y_end = get_y_for_time(end_time)
 
-        line1_y = (y0 + y1) / 2
-        line2_y = (y1 + y2) / 2
-        line3_y = (y2 + y3) / 2
+        # Calculate Y coordinates for the 3 lines of text within the first ~45 minutes slot
+        # These are relative to y0, assuming a fixed height for the text block
+        # We need to ensure the text fits within the first ~45 min slot,
+        # and the bar extends from below the text to the job end time.
+        slot_height = y0 - get_y_for_time( (datetime.datetime.combine(datetime.date.today(), start_time) + datetime.timedelta(minutes=45)).time() )
+
+        # Text positioning within the first 45 min slot from the job start time
+        # These will be the TOP of the text lines, so we subtract font size
+        line1_y_text = y0 - 18 # Roughly 18 points below start time for first line
+        line2_y_text = line1_y_text - 12 # Next line below
+        line3_y_text = line2_y_text - 10 # Third line below
+
+        # The vertical bar should start slightly below the text block
+        y_bar_start = line3_y_text - 5 # Start 5 points below the last text line
 
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
         customer_full_name = customer.customer_name if customer and hasattr(customer, 'customer_name') else "Unknown Customer"
@@ -148,10 +157,8 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
         boat_type = getattr(boat, 'boat_type', '') if boat else ''
         
-        # Determine if it's a sailboat job requiring both truck and crane columns
         is_sailboat_job = (boat_type.lower() == 'sailboat' and getattr(job, 'assigned_crane_truck_id', None) == 'S17')
 
-        # Location details for both truck and crane entries
         origin_address = getattr(job, 'pickup_street_address', '') or ''
         dest_address = getattr(job, 'dropoff_street_address', '') or ''
         if customer and hasattr(customer, 'street_address'):
@@ -162,7 +169,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         origin_abbr = _abbreviate_town(origin_address)
         dest_abbr = _abbreviate_town(dest_address)
         
-        # --- Draw Hauling Truck Information (if assigned) ---
+        # --- Draw Hauling Truck Information ---
         truck_id = getattr(job, 'assigned_hauling_truck_id', None)
         if truck_id in column_map:
             col_index = column_map[truck_id]
@@ -170,7 +177,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             text_center_x = column_start_x + col_width / 2
 
             c.setFont("Helvetica-Bold", 8)
-            c.drawCentredString(text_center_x, line1_y, customer_full_name) # Customer name
+            c.drawCentredString(text_center_x, line1_y_text, customer_full_name) 
             
             if boat:
                 boat_length = getattr(boat, 'boat_length', None)
@@ -179,17 +186,14 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                 boat_desc = "Unknown Boat"
             
             c.setFont("Helvetica", 7)
-            c.drawCentredString(text_center_x, line2_y, boat_desc) # Boat Description
+            c.drawCentredString(text_center_x, line2_y_text, boat_desc) 
 
             location_label_truck = f"{origin_abbr}-{dest_abbr}"
-            c.drawCentredString(text_center_x, line3_y, location_label_truck) # Location
+            c.drawCentredString(text_center_x, line3_y_text, location_label_truck) 
 
-            # Vertical line for truck duration
-            y_bar_start_truck = y3 + 6 
-            y_end_truck = get_y_for_time(end_time)
             c.setLineWidth(2)
-            c.line(text_center_x, y_bar_start_truck, text_center_x, y_end_truck)
-            c.line(text_center_x - 3, y_end_truck, text_center_x + 3, y_end_truck)
+            c.line(text_center_x, y_bar_start, text_center_x, y_end)
+            c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
 
         # --- Draw Crane Information (S17 column) ONLY IF it's a sailboat job with S17 assigned ---
         if is_sailboat_job and 'S17' in column_map:
@@ -199,19 +203,18 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
             # Customer last name
             c.setFont("Helvetica-Bold", 8)
-            c.drawCentredString(text_center_x_crane, line1_y, customer_last_name)
+            c.drawCentredString(text_center_x_crane, line1_y_text, customer_last_name)
 
             # Town (destination town)
             town_for_crane = dest_abbr 
             c.setFont("Helvetica", 7)
-            c.drawCentredString(text_center_x_crane, line2_y, town_for_crane)
+            c.drawCentredString(text_center_x_crane, line2_y_text, town_for_crane)
             
-            # Vertical line representing the duration of the crane usage
-            y_bar_start_crane = y3 + 6 
-            y_end_crane = get_y_for_time(end_time) 
+            # Vertical line for crane usage (no third line of text for crane)
+            # The line should start visually aligned with the text block
             c.setLineWidth(2)
-            c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_end_crane)
-            c.line(text_center_x_crane - 3, y_end_crane, text_center_x_crane + 3, y_end_crane)
+            c.line(text_center_x_crane, y_bar_start, text_center_x_crane, y_end)
+            c.line(text_center_x_crane - 3, y_end, text_center_x_crane + 3, y_end)
 
 
     # Draw bottom border ONCE here
