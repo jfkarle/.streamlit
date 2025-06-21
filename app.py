@@ -141,7 +141,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         y_end_index = (end_time.hour - 7) * 4 + end_time.minute // 15
         y_end = top_y - y_end_index * row_height
 
-        line1_y_text = y0 - row_height + 22
+        line1_y_text = y0 - 10
         line2_y_text = line1_y_text - 10
         line3_y_text = line2_y_text - 10
         y_bar_start = line3_y_text - 5
