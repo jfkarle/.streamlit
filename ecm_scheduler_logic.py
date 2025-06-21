@@ -203,9 +203,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     rules = BOOKING_RULES.get(boat.boat_type, {})
     duration = rules.get('truck_mins', 90) / 60.0
     j17_duration = rules.get('crane_mins', 0) / 60.0
+    
+    # --- START OF NEW MODIFICATION ---
+    # This flag identifies the specific job type we want to prioritize.
+    is_ecm_haul_priority = (service_type == "Haul" and customer.is_ecm_customer)
+    # --- END OF NEW MODIFICATION ---
+    
     trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
     if not trucks:
         return [], "No suitable trucks for this boat.", [], False
+
     
   # --- START OF MODIFIED BLOCK ---
     
@@ -243,50 +250,109 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         slots_list.append(slot)
                         return  # Exit immediately after finding the first valid slot for the day
                     
-                    p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
-
-    # --- START OF MODIFIED BLOCK ---
+                    p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).    #
+    # --- REPLACE THE OLD SEARCH LOOPS WITH THIS ENTIRE BLOCK ---
+    #
     potential_slots, was_forced = [], False
     
-    # The list 'ramps_to_search' will have one ramp, or many, or be empty for 'Transport'
-    # The 'if ramps_to_search else [None]' part handles Transport jobs gracefully
     ramps_to_iterate = ramps_to_search if service_type in ["Launch", "Haul"] else [None]
 
     if forced_date:
         was_forced = True
-        for ramp in ramps_to_iterate:
-            search_day(forced_date, potential_slots, 6, ramp)
+        for ramp_to_check in ramps_to_iterate:
+            ecm_hours = get_ecm_operating_hours(forced_date)
+            if not ecm_hours: continue
+            windows = get_final_schedulable_ramp_times(ramp_to_check, boat, forced_date) if ramp_to_check else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
+            for truck in trucks:
+                for w in windows:
+                    # FORWARD SEARCH (Forced date is always forward)
+                    p_time, p_end = w['start_time'], w['end_time']
+                    while p_time < p_end:
+                        if len(potential_slots) >= 6: break
+                        temp_dt = datetime.datetime.combine(forced_date, p_time)
+                        if temp_dt.minute % 30 != 0:
+                            p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
+                        if p_time >= p_end: break
+                        slot = _check_and_create_slot_detail(forced_date, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
+                        if slot:
+                            potential_slots.append(slot)
+                            break
+                        p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
+
     else:
         slots_before, slots_after = [], []
         # Phase 1: Before
         d = max(TODAY_FOR_SIMULATION, requested_date_obj - datetime.timedelta(days=5))
         while d < requested_date_obj and len(slots_before) < 2:
-            for ramp in ramps_to_iterate: # Loop through ramps
-                search_day(d, slots_before, 2, ramp)
+            for ramp_to_check in ramps_to_iterate:
+                ecm_hours = get_ecm_operating_hours(d)
+                if not ecm_hours: continue
+                windows = get_final_schedulable_ramp_times(ramp_to_check, boat, d) if ramp_to_check else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
+                for truck in trucks:
+                    for w in windows:
+                        p_start_time, p_end_time = w['start_time'], w['end_time']
+                        if is_ecm_haul_priority:
+                            end_dt = datetime.datetime.combine(d, p_end_time)
+                            p_time_dt = end_dt - datetime.timedelta(hours=duration)
+                            if p_time_dt.minute % 30 != 0: p_time_dt -= datetime.timedelta(minutes=p_time_dt.minute % 30)
+                            while p_time_dt.time() >= p_start_time:
+                                if len(slots_before) >= 2: break
+                                slot = _check_and_create_slot_detail(d, p_time_dt.time(), truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
+                                if slot:
+                                    slots_before.append(slot)
+                                    break
+                                p_time_dt -= datetime.timedelta(minutes=30)
+                        else:
+                            p_time = p_start_time
+                            while p_time < p_end_time:
+                                if len(slots_before) >= 2: break
+                                temp_dt = datetime.datetime.combine(d, p_time)
+                                if temp_dt.minute % 30 != 0: p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
+                                if p_time >= p_end_time: break
+                                slot = _check_and_create_slot_detail(d, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
+                                if slot:
+                                    slots_before.append(slot)
+                                    break
+                                p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
             d += datetime.timedelta(days=1)
+            
         # Phase 2: After
         d, i = requested_date_obj, 0
         while len(slots_after) < 4 and i < 45:
-            for ramp in ramps_to_iterate: # Loop through ramps
-                search_day(d, slots_after, 4, ramp)
+            for ramp_to_check in ramps_to_iterate:
+                ecm_hours = get_ecm_operating_hours(d)
+                if not ecm_hours: continue
+                windows = get_final_schedulable_ramp_times(ramp_to_check, boat, d) if ramp_to_check else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
+                for truck in trucks:
+                    for w in windows:
+                        p_start_time, p_end_time = w['start_time'], w['end_time']
+                        if is_ecm_haul_priority:
+                            end_dt = datetime.datetime.combine(d, p_end_time)
+                            p_time_dt = end_dt - datetime.timedelta(hours=duration)
+                            if p_time_dt.minute % 30 != 0: p_time_dt -= datetime.timedelta(minutes=p_time_dt.minute % 30)
+                            while p_time_dt.time() >= p_start_time:
+                                if len(slots_after) >= 4: break
+                                slot = _check_and_create_slot_detail(d, p_time_dt.time(), truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
+                                if slot:
+                                    slots_after.append(slot)
+                                    break
+                                p_time_dt -= datetime.timedelta(minutes=30)
+                        else:
+                            p_time = p_start_time
+                            while p_time < p_end_time:
+                                if len(slots_after) >= 4: break
+                                temp_dt = datetime.datetime.combine(d, p_time)
+                                if temp_dt.minute % 30 != 0: p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
+                                if p_time >= p_end_time: break
+                                slot = _check_and_create_slot_detail(d, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
+                                if slot:
+                                    slots_after.append(slot)
+                                    break
+                                p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
             d += datetime.timedelta(days=1)
             i += 1
         potential_slots = slots_before + slots_after
-    # --- END OF MODIFIED BLOCK ---
 
-    if not potential_slots:
-        return [], "No suitable slots found.", [], was_forced
-    
-    potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
-    top_slots = potential_slots[:6]
-    
-    expl = f"Found {len(top_slots)} available slots."
-    if was_forced and forced_date:
-        expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
-    elif top_slots:
-        expl = f"Found {len(top_slots)} available slots starting from {top_slots[0]['date'].strftime('%A, %b %d')}."
-    
-    return top_slots, expl, [], was_forced
 
 def confirm_and_schedule_job(original_request, selected_slot):
     # 1. Get all the required objects
