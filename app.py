@@ -12,7 +12,8 @@ def format_tides_for_display(slot, ecm_hours):
     if not ecm_hours or not ecm_hours.get('open'):
         return "HT: " + " / ".join([ecm.format_time_for_display(t) for t in tide_times])
 
-    op_open, op_close = ecm_hours['open'], ecm_close = ecm_hours['close'] # Fixed: op_close was missing
+    # CORRECTED LINE HERE
+    op_open, op_close = ecm_hours['open'], ecm_hours['close'] 
     def get_tide_relevance_score(tide_time):
         tide_dt = datetime.datetime.combine(datetime.date.today(), tide_time)
         open_dt = datetime.datetime.combine(datetime.date.today(), op_open)
@@ -134,12 +135,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         y0 = get_y_for_time(start_time)
         y_end = get_y_for_time(end_time)
 
-        # Calculate Y coordinates for the 3 lines of text within the first ~45 minutes slot
-        # These are relative to y0, assuming a fixed height for the text block
-        # We need to ensure the text fits within the first ~45 min slot,
-        # and the bar extends from below the text to the job end time.
-        slot_height = y0 - get_y_for_time( (datetime.datetime.combine(datetime.date.today(), start_time) + datetime.timedelta(minutes=45)).time() )
-
         # Text positioning within the first 45 min slot from the job start time
         # These will be the TOP of the text lines, so we subtract font size
         line1_y_text = y0 - 18 # Roughly 18 points below start time for first line
@@ -169,7 +164,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         origin_abbr = _abbreviate_town(origin_address)
         dest_abbr = _abbreviate_town(dest_address)
         
-        # --- Draw Hauling Truck Information ---
+        # --- Draw Hauling Truck Information (if assigned) ---
         truck_id = getattr(job, 'assigned_hauling_truck_id', None)
         if truck_id in column_map:
             col_index = column_map[truck_id]
@@ -211,7 +206,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.drawCentredString(text_center_x_crane, line2_y_text, town_for_crane)
             
             # Vertical line for crane usage (no third line of text for crane)
-            # The line should start visually aligned with the text block
             c.setLineWidth(2)
             c.line(text_center_x_crane, y_bar_start, text_center_x_crane, y_end)
             c.line(text_center_x_crane - 3, y_end, text_center_x_crane + 3, y_end)
@@ -365,12 +359,15 @@ if app_mode == "Schedule New Boat":
                     ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
                     ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
                     tide_display_str = format_tides_for_display(slot, ecm_hours)
-
+                    
                     st.markdown(f"**Date:** {date_str}")
                     if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
                     if tide_display_str: st.markdown(tide_display_str)
                     st.markdown(f"**Time:** {time_str}")
                     st.markdown(f"**Truck:** {truck_id}")
+                    # If J17 is needed, display it here explicitly.
+                    if slot.get('j17_needed'):
+                        st.markdown(f"**Crane:** J17")
                     st.markdown(f"**Ramp:** {ramp_name}")
                     st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
         st.markdown("---")
