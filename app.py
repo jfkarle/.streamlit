@@ -215,6 +215,10 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_end)
             c.line(text_center_x_crane - 3, y_end, text_center_x_crane + 3, y_end)
 
+    c.save()          # Ensure the canvas is finalized
+    buffer.seek(0)    # Rewind the stream before returning
+    return buffer     # ← THIS LINE IS MISSING
+
 ########################################################################################
 ### END PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
 ########################################################################################
