@@ -455,4 +455,3 @@ elif app_mode == "Reporting":
 elif app_mode == "Settings":
     st.header("Application Settings")
     st.write("This section is under construction.")
-
