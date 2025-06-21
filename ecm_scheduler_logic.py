@@ -323,7 +323,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
 def confirm_and_schedule_job(original_request, selected_slot):
     # 1. Get all the required objects
-    customer = get_customer_details(original_request['customer_id'])
+    customer = get_customer_details(original_request['customer_id'])  # Moved here
+
+    # ✅ Enforce complete home address for non-ECM boats
+    if customer and not customer.is_ecm_customer:
+        if not customer.home_line2 or not customer.home_citystatezip:
+            return None, (
+                f"Missing home address fields (`Bill to 2` and/or `Bill to 3`) for non-ECM boat "
+                f"'{customer.customer_name}'. Please update the file or choose a different customer."
+            )
+
     boat = get_boat_details(original_request['boat_id'])
     ramp = get_ramp_details(selected_slot.get('ramp_id'))
     
