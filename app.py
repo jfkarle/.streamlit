@@ -69,6 +69,11 @@ def _abbreviate_town(address):
     return address.title().split(',')[0]
 
 def generate_daily_planner_pdf(report_date, jobs_for_day):
+    from io import BytesIO
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
@@ -87,6 +92,17 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         total_minutes = (t.hour - start_hour) * 60 + t.minute
         return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
 
+    def _abbreviate_town(address):
+        if not address: return ""
+        address = address.lower()
+        for town, abbr in {
+            "scituate": "Sci", "green harbor": "Grn", "marshfield": "Mfield", "cohasset": "Coh",
+            "weymouth": "Wey", "plymouth": "Ply", "sandwich": "Sand", "duxbury": "Dux",
+            "humarock": "Huma", "pembroke": "Pembroke", "ecm": "Pembroke"
+        }.items():
+            if town in address: return abbr
+        return address.title().split(',')[0]
+
     # Header
     day_of_year = report_date.timetuple().tm_yday
     days_in_year = 366 if (report_date.year % 4 == 0 and report_date.year % 100 != 0) or (report_date.year % 400 == 0) else 365
@@ -101,7 +117,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         x_center = margin + time_col_width + i * col_width + col_width / 2
         c.drawCentredString(x_center, top_y + 10, name)
 
-    # Vertical and horizontal lines
+    # Grid lines
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width
         c.setLineWidth(0.5)
@@ -126,22 +142,16 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                 c.setFont("Helvetica", 6)
                 c.drawString(margin + 18, label_y - 2, f"{minute}")
 
-    # Job bars
     for job in jobs_for_day:
         start_time = getattr(job, 'scheduled_start_datetime').time()
         end_time = getattr(job, 'scheduled_end_datetime').time()
-        
-        # Calculate Y coordinates for text and bar based on job's start and end times
         y0 = get_y_for_time(start_time)
         y_end = get_y_for_time(end_time)
-
-        # Text positioning within the first 45 min slot from the job start time
-        line1_y_text = y0 - 10  # Adjust downward to center between lines
+        line_height = (y0 - y_end) / ((end_time.hour - start_time.hour) * 4 or 1)
+        line1_y_text = y0 - (line_height / 2) + 4
         line2_y_text = line1_y_text - 10
         line3_y_text = line2_y_text - 10
-
-        # The vertical bar should start slightly below the text block
-        y_bar_start = line3_y_text - 5 # Start 5 points below the last text line
+        y_bar_start = line3_y_text - 5
 
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
         customer_full_name = customer.customer_name if customer and hasattr(customer, 'customer_name') else "Unknown Customer"
@@ -150,8 +160,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         boat_id = getattr(job, 'boat_id', None)
         boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
         boat_type = getattr(boat, 'boat_type', '') if boat else ''
-        
-        is_sailboat_job = (boat_type.lower() == 'sailboat' and getattr(job, 'assigned_crane_truck_id', None) == 'J17')
+        is_sailboat_job = boat and 'sailboat' in boat_type.lower() and getattr(job, 'assigned_crane_truck_id', '').upper() == 'J17'
 
         origin_address = getattr(job, 'pickup_street_address', '') or ''
         dest_address = getattr(job, 'dropoff_street_address', '') or ''
@@ -162,66 +171,51 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                 dest_address = customer.street_address
         origin_abbr = _abbreviate_town(origin_address)
         dest_abbr = _abbreviate_town(dest_address)
-        
-        # --- Draw Hauling Truck Information (if assigned) ---
+
         truck_id = getattr(job, 'assigned_hauling_truck_id', None)
         if truck_id in column_map:
             col_index = column_map[truck_id]
             column_start_x = margin + time_col_width + col_index * col_width
             text_center_x = column_start_x + col_width / 2
 
-            # Truck column text:
-            c.setFont("Helvetica-Bold", 8)  # line 1
-            c.setFont("Helvetica", 7)       # line 2 and 3
-            
+            c.setFont("Helvetica-Bold", 8)
+            c.drawCentredString(text_center_x, line1_y_text, customer_full_name)
+
             if boat:
                 boat_length = getattr(boat, 'boat_length', None)
                 boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown Boat"
             else:
                 boat_desc = "Unknown Boat"
-            
-            c.setFont("Helvetica", 7)
-            c.drawCentredString(text_center_x, line2_y_text, boat_desc) 
 
+            c.setFont("Helvetica", 7)
+            c.drawCentredString(text_center_x, line2_y_text, boat_desc)
             location_label_truck = f"{origin_abbr}-{dest_abbr}"
-            c.drawCentredString(text_center_x, line3_y_text, location_label_truck) 
+            c.drawCentredString(text_center_x, line3_y_text, location_label_truck)
 
             c.setLineWidth(2)
             c.line(text_center_x, y_bar_start, text_center_x, y_end)
             c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
 
-        # --- Draw Crane Information (J17 column) ONLY IF it's a sailboat job with J17 assigned ---
-        # --- Draw Crane Information (J17 column) if it's a sailboat job ---
         if is_sailboat_job and 'J17' in column_map:
             col_index_crane = column_map['J17']
             column_start_x_crane = margin + time_col_width + col_index_crane * col_width
             text_center_x_crane = column_start_x_crane + col_width / 2
 
-            # J17 column text:
-            c.setFont("Helvetica-Bold", 8)  # line 1
-            c.setFont("Helvetica", 7)       # line 2
-
-            # Draw Customer last name at the first text line position
             c.setFont("Helvetica-Bold", 8)
             c.drawCentredString(text_center_x_crane, line1_y_text, customer_last_name)
-
-            # Draw the town at the second text line position
-            town_for_crane = dest_abbr
             c.setFont("Helvetica", 7)
-            c.drawCentredString(text_center_x_crane, line2_y_text, town_for_crane)
+            c.drawCentredString(text_center_x_crane, line2_y_text, dest_abbr)
 
-            # CORRECTED LOGIC: Calculate the bar start position based on the crane's OWN text block (2 lines).
-            # It should start just below the second line of text.
             y_bar_start_crane = line3_y_text - 5
 
-            # Draw the vertical bar using the NEWLY calculated start position
             c.setLineWidth(2)
             c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_end)
             c.line(text_center_x_crane - 3, y_end, text_center_x_crane + 3, y_end)
 
-    c.save()          # Ensure the canvas is finalized
-    buffer.seek(0)    # Rewind the stream before returning
-    return buffer     # ← THIS LINE IS MISSING
+    c.save()
+    buffer.seek(0)
+    return buffer
+
 
 ########################################################################################
 ### END PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
