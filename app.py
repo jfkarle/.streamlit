@@ -1,6 +1,3 @@
-# app.py
-# FINAL, CORRECTED AND VERIFIED VERSION
-
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
@@ -130,18 +127,10 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
     # Job bars
     for job in jobs_for_day:
-        truck_id = getattr(job, 'assigned_hauling_truck_id', None)
-        if getattr(job, 'assigned_crane_truck_id', None):
-            truck_id = "S17"
-        if truck_id not in column_map:
-            continue
-        col_index = column_map[truck_id]
-        column_start_x = margin + time_col_width + col_index * col_width
-        text_center_x = column_start_x + col_width / 2
-
         start_time = getattr(job, 'scheduled_start_datetime').time()
         end_time = getattr(job, 'scheduled_end_datetime').time()
         dt_base = datetime.datetime.combine(datetime.date.today(), start_time)
+        
         y0 = get_y_for_time(start_time)
         y1 = get_y_for_time((dt_base + datetime.timedelta(minutes=15)).time())
         y2 = get_y_for_time((dt_base + datetime.timedelta(minutes=30)).time())
@@ -151,24 +140,20 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         line2_y = (y1 + y2) / 2
         line3_y = (y2 + y3) / 2
 
-        # --- TEXT FOR DIARY ENTRY ---
-        
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
-        
-        # FIX 1: Change top line to show full name (e.g., "Noah Hopwhistle")
         customer_full_name = customer.customer_name if customer and hasattr(customer, 'customer_name') else "Unknown Customer"
+        customer_last_name = customer_full_name.split()[-1] if customer_full_name != "Unknown Customer" else "Unknown"
 
-        # Get boat description (e.g., "29' Powerboat")
+
         boat_id = getattr(job, 'boat_id', None)
         boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
-        if boat:
-            boat_length = getattr(boat, 'boat_length', None)
-            boat_type = getattr(boat, 'boat_type', '')
-            boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown Boat"
-        else:
-            boat_desc = "Unknown Boat"
+        
+        boat_type = getattr(boat, 'boat_type', '') if boat else ''
+        
+        # Determine if it's a sailboat job requiring both truck and crane columns
+        is_sailboat_job = (boat_type.lower() == 'sailboat' and getattr(job, 'assigned_crane_truck_id', None) == 'S17')
 
-        # FIX 2: Create location abbreviation and ensure NO other text is added
+        # Location details for both truck and crane entries
         origin_address = getattr(job, 'pickup_street_address', '') or ''
         dest_address = getattr(job, 'dropoff_street_address', '') or ''
         if customer and hasattr(customer, 'street_address'):
@@ -178,27 +163,67 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                 dest_address = customer.street_address
         origin_abbr = _abbreviate_town(origin_address)
         dest_abbr = _abbreviate_town(dest_address)
-        location_label_only = f"{origin_abbr}-{dest_abbr}" # This variable now holds ONLY the abbreviation
-
-        # --- DRAW THE TEXT ---
-        # Line 1: Full Customer Name
-        c.setFont("Helvetica-Bold", 8)
-        c.drawCentredString(text_center_x, line1_y, customer_full_name)
         
-        # Line 2: Boat Description
-        c.setFont("Helvetica", 7)
-        c.drawCentredString(text_center_x, line2_y, boat_desc)
-        
-        # Line 3: Location Abbreviation ONLY
-        c.drawCentredString(text_center_x, line3_y, location_label_only)
+        # --- Handle Truck Information ---
+        truck_id = getattr(job, 'assigned_hauling_truck_id', None)
+        if truck_id in column_map:
+            col_index = column_map[truck_id]
+            column_start_x = margin + time_col_width + col_index * col_width
+            text_center_x = column_start_x + col_width / 2
 
-        y_bar_start = y3 + 6
-        y_end = get_y_for_time(end_time)
-        c.setLineWidth(2)
-        c.line(text_center_x, y_bar_start, text_center_x, y_end)
-        c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+            # Draw Truck details
+            c.setFont("Helvetica-Bold", 8)
+            c.drawCentredString(text_center_x, line1_y, customer_full_name) # Customer name
+            
+            # Get boat description (e.g., "29' Powerboat")
+            if boat:
+                boat_length = getattr(boat, 'boat_length', None)
+                boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown Boat"
+            else:
+                boat_desc = "Unknown Boat"
+            
+            c.setFont("Helvetica", 7)
+            c.drawCentredString(text_center_x, line2_y, boat_desc) # Boat Description
 
-    # ✅ Draw bottom border ONCE here
+            # Location abbreviation for truck
+            location_label_truck = f"{origin_abbr}-{dest_abbr}"
+            c.drawCentredString(text_center_x, line3_y, location_label_truck) # Location
+
+            # Draw vertical line for truck duration (if not a sailboat job, it represents the whole job)
+            if not is_sailboat_job:
+                y_bar_start = y3 + 6
+                y_end = get_y_for_time(end_time)
+                c.setLineWidth(2)
+                c.line(text_center_x, y_bar_start, text_center_x, y_end)
+                c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+
+        # --- Handle Crane Information (S17 column) for Sailboat Jobs ---
+        if is_sailboat_job:
+            crane_truck_id = 'S17' # Hardcoded as per requirement for sailboat jobs
+            if crane_truck_id in column_map:
+                col_index_crane = column_map[crane_truck_id]
+                column_start_x_crane = margin + time_col_width + col_index_crane * col_width
+                text_center_x_crane = column_start_x_crane + col_width / 2
+
+                # Customer last name
+                c.setFont("Helvetica-Bold", 8)
+                c.drawCentredString(text_center_x_crane, line1_y, customer_last_name)
+
+                # Town (destination town)
+                town_for_crane = dest_abbr # Use the destination town abbreviation
+                c.setFont("Helvetica", 7)
+                c.drawCentredString(text_center_x_crane, line2_y, town_for_crane)
+                
+                # Vertical line representing the duration of the crane usage
+                # The vertical line should start slightly below the text, similar to the truck's line.
+                y_bar_start_crane = y3 + 6 
+                y_end_crane = get_y_for_time(end_time) 
+                c.setLineWidth(2)
+                c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_end_crane)
+                c.line(text_center_x_crane - 3, y_end_crane, text_center_x_crane + 3, y_end_crane)
+
+
+    # Draw bottom border ONCE here
     c.setLineWidth(1.0)
     c.line(margin, bottom_y, width - margin, bottom_y)
 
@@ -395,16 +420,52 @@ elif app_mode == "Reporting":
         for job in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max):
             customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
             ramp = ecm.get_ramp_details(getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None))
-            display_data.append({
-                "Job ID": job.job_id,
-                "Status": job.job_status,
-                "Scheduled Date": job.scheduled_start_datetime.strftime("%Y-%m-%d") if job.scheduled_start_datetime else "N/A",
-                "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
-                "Service": job.service_type,
-                "Customer": customer.customer_name if customer else "N/A",
-                "Truck": job.assigned_hauling_truck_id,
-                "Ramp": ramp.ramp_name if ramp else "N/A"
-            })
+            
+            # Separate Truck and Crane info for Sailboat jobs on the dashboard display
+            truck_info = job.assigned_hauling_truck_id if job.assigned_hauling_truck_id else "N/A"
+            crane_info = job.assigned_crane_truck_id if job.assigned_crane_truck_id else "N/A"
+
+            # Check if it's a sailboat job requiring both truck and crane
+            boat_id = getattr(job, 'boat_id', None)
+            boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
+            is_sailboat = boat and getattr(boat, 'boat_type', '').lower() == 'sailboat'
+
+            if is_sailboat and crane_info != "N/A":
+                display_data.append({
+                    "Job ID": job.job_id,
+                    "Status": job.job_status,
+                    "Scheduled Date": job.scheduled_start_datetime.strftime("%Y-%m-%d") if job.scheduled_start_datetime else "N/A",
+                    "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
+                    "Service": job.service_type,
+                    "Customer": customer.customer_name if customer else "N/A",
+                    "Truck": truck_info, # Truck row
+                    "Crane": "", # Empty for truck row
+                    "Ramp": ramp.ramp_name if ramp else "N/A"
+                })
+                # Add a separate row for Crane
+                display_data.append({
+                    "Job ID": "", # Keep Job ID empty for the crane row
+                    "Status": "", # Keep Status empty
+                    "Scheduled Date": "", # Keep Date empty
+                    "Scheduled Time": "", # Keep Time empty
+                    "Service": "", # Keep Service empty
+                    "Customer": "", # Keep Customer empty
+                    "Truck": "", # Empty for crane row
+                    "Crane": crane_info, # Crane row
+                    "Ramp": "" # Keep Ramp empty
+                })
+            else:
+                display_data.append({
+                    "Job ID": job.job_id,
+                    "Status": job.job_status,
+                    "Scheduled Date": job.scheduled_start_datetime.strftime("%Y-%m-%d") if job.scheduled_start_datetime else "N/A",
+                    "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
+                    "Service": job.service_type,
+                    "Customer": customer.customer_name if customer else "N/A",
+                    "Truck": truck_info,
+                    "Crane": crane_info if crane_info != "N/A" else "", # Display crane if exists and not N/A
+                    "Ramp": ramp.ramp_name if ramp else "N/A"
+                })
         st.dataframe(pd.DataFrame(display_data))
     else:
         st.write("No jobs scheduled yet.")
@@ -455,3 +516,4 @@ elif app_mode == "Reporting":
 elif app_mode == "Settings":
     st.header("Application Settings")
     st.write("This section is under construction.")
+
