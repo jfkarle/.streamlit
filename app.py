@@ -73,6 +73,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.units import inch
+    import datetime
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
@@ -83,10 +84,14 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     time_col_width = 0.75 * inch
     content_width = width - 2 * margin - time_col_width
     col_width = content_width / len(planner_columns)
+    start_hour, end_hour = 7, 18
     top_y = height - margin - 0.5 * inch
     bottom_y = margin + 0.5 * inch
-    row_height = 30  # points per row
-    num_rows = int((top_y - bottom_y) / row_height)
+    content_height = top_y - bottom_y
+
+    def get_y_for_time(t):
+        total_minutes = (t.hour - start_hour) * 60 + t.minute
+        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
 
     def _abbreviate_town(address):
         if not address: return ""
@@ -114,17 +119,23 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         c.drawCentredString(x_center, top_y + 10, name)
 
     # Horizontal lines and time labels
-    for i in range(num_rows + 1):
-        y = top_y - i * row_height
-        c.setLineWidth(1.0 if i % 4 == 0 else 0.25)
-        c.line(margin, y, width - margin, y)
-        if i % 4 == 0:
-            hour = 7 + i // 4
-            display_hour = hour if hour <= 12 else hour - 12
-            c.setFont("Helvetica-Bold", 9)
-            c.drawString(margin + 3, y - row_height / 2 - 3, str(display_hour))
-            c.setFont("Helvetica", 7)
-            c.drawString(margin + 18, y - row_height / 2 - 3, "00")
+    for hour in range(start_hour, end_hour + 1):
+        for minute in [0, 15, 30, 45]:
+            current_time = datetime.time(hour, minute)
+            y = get_y_for_time(current_time)
+            next_y = get_y_for_time((datetime.datetime.combine(datetime.date.today(), current_time) + datetime.timedelta(minutes=15)).time())
+            label_y = (y + next_y) / 2
+            c.setLineWidth(1.0 if minute == 0 else 0.25)
+            c.line(margin, y, width - margin, y)
+            if minute == 0:
+                display_hour = hour if hour <= 12 else hour - 12
+                c.setFont("Helvetica-Bold", 9)
+                c.drawString(margin + 3, label_y - 3, str(display_hour))
+                c.setFont("Helvetica", 7)
+                c.drawString(margin + 18, label_y - 3, "00")
+            else:
+                c.setFont("Helvetica", 6)
+                c.drawString(margin + 18, label_y - 2, f"{minute}")
 
     # Vertical lines
     for i in range(len(planner_columns) + 1):
@@ -136,12 +147,11 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     for job in jobs_for_day:
         start_time = getattr(job, 'scheduled_start_datetime').time()
         end_time = getattr(job, 'scheduled_end_datetime').time()
-        start_index = (start_time.hour - 7) * 4 + start_time.minute // 15
-        y0 = top_y - start_index * row_height
-        y_end_index = (end_time.hour - 7) * 4 + end_time.minute // 15
-        y_end = top_y - y_end_index * row_height
 
-        line1_y_text = y0 - 10
+        y0 = get_y_for_time(start_time)
+        y_end = get_y_for_time(end_time)
+
+        line1_y_text = y0 - 4
         line2_y_text = line1_y_text - 10
         line3_y_text = line2_y_text - 10
         y_bar_start = line3_y_text - 5
@@ -194,8 +204,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
             j17_duration = datetime.timedelta(minutes=90 if 'mt' in boat_type.lower() else 60)
             crane_end_time = (datetime.datetime.combine(report_date, start_time) + j17_duration).time()
-            crane_end_index = (crane_end_time.hour - 7) * 4 + crane_end_time.minute // 15
-            y_crane_end = top_y - crane_end_index * row_height
+            y_crane_end = get_y_for_time(crane_end_time)
             y_bar_start_crane = line2_y_text - 15
 
             c.setLineWidth(2)
