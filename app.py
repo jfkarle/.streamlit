@@ -163,7 +163,8 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         boat_id = getattr(job, 'boat_id', None)
         boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
         boat_type = getattr(boat, 'boat_type', '') if boat else ''
-        is_sailboat_job = boat and 'sailboat' in boat_type.lower() and getattr(job, 'assigned_crane_truck_id', '').upper() == 'J17'
+        assigned_crane = getattr(job, 'assigned_crane_truck_id', '') or ''
+        is_sailboat_job = boat and 'sailboat' in boat_type.lower() and 'j17' in assigned_crane.lower()
 
         origin_address = getattr(job, 'pickup_street_address', '') or ''
         dest_address = getattr(job, 'dropoff_street_address', '') or ''
