@@ -75,6 +75,8 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     from reportlab.lib.units import inch
     import datetime
 
+    row_height = 30  # points per row
+    
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
