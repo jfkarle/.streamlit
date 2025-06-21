@@ -103,7 +103,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             if town in address: return abbr
         return address.title().split(',')[0]
 
-    # Header
     day_of_year = report_date.timetuple().tm_yday
     days_in_year = 366 if (report_date.year % 4 == 0 and report_date.year % 100 != 0) or (report_date.year % 400 == 0) else 365
     c.setFont("Helvetica", 9)
@@ -111,13 +110,11 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.setFont("Helvetica-Bold", 12)
     c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
 
-    # Column headers
     c.setFont("Helvetica-Bold", 11)
     for i, name in enumerate(planner_columns):
         x_center = margin + time_col_width + i * col_width + col_width / 2
         c.drawCentredString(x_center, top_y + 10, name)
 
-    # Grid lines
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width
         c.setLineWidth(0.5)
@@ -147,10 +144,14 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         end_time = getattr(job, 'scheduled_end_datetime').time()
         y0 = get_y_for_time(start_time)
         y_end = get_y_for_time(end_time)
-        block_mid = (y0 + y_end) / 2
-        line1_y_text = y0 - 4
-        line2_y_text = line1_y_text - 10
-        line3_y_text = line2_y_text - 10
+
+        font_size_main = 8
+        font_size_sub = 7
+        text_line_height = 10
+        text_block_height = 3 * text_line_height
+        line1_y_text = y0 - text_line_height
+        line2_y_text = line1_y_text - text_line_height
+        line3_y_text = line2_y_text - text_line_height
         y_bar_start = line3_y_text - 5
 
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
@@ -178,7 +179,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             column_start_x = margin + time_col_width + col_index * col_width
             text_center_x = column_start_x + col_width / 2
 
-            c.setFont("Helvetica-Bold", 8)
+            c.setFont("Helvetica-Bold", font_size_main)
             c.drawCentredString(text_center_x, line1_y_text, customer_full_name)
 
             if boat:
@@ -187,7 +188,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             else:
                 boat_desc = "Unknown Boat"
 
-            c.setFont("Helvetica", 7)
+            c.setFont("Helvetica", font_size_sub)
             c.drawCentredString(text_center_x, line2_y_text, boat_desc)
             location_label_truck = f"{origin_abbr}-{dest_abbr}"
             c.drawCentredString(text_center_x, line3_y_text, location_label_truck)
@@ -201,25 +202,20 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             column_start_x_crane = margin + time_col_width + col_index_crane * col_width
             text_center_x_crane = column_start_x_crane + col_width / 2
 
-            c.setFont("Helvetica-Bold", 8)
+            c.setFont("Helvetica-Bold", font_size_main)
             c.drawCentredString(text_center_x_crane, line1_y_text, customer_last_name)
-            c.setFont("Helvetica", 7)
+            c.setFont("Helvetica", font_size_sub)
             c.drawCentredString(text_center_x_crane, line2_y_text, dest_abbr)
 
-            # Crane duration logic
-            duration_minutes = 60  # default
-            if 'mt' in boat_type.lower():
-                duration_minutes = 90
-            elif 'dt' in boat_type.lower():
-                duration_minutes = 60
-
-            crane_start = getattr(job, 'scheduled_start_datetime')
-            crane_end = (crane_start + datetime.timedelta(minutes=duration_minutes)).time()
-            crane_y_end = get_y_for_time(crane_end)
+            # Determine crane end time using correct duration
+            duration_minutes = 60 if 'DT' in boat_type else 90
+            crane_end_dt = (datetime.datetime.combine(datetime.date.today(), start_time) + datetime.timedelta(minutes=duration_minutes)).time()
+            y_crane_end = get_y_for_time(crane_end_dt)
+            y_bar_start_crane = line2_y_text - 10
 
             c.setLineWidth(2)
-            c.line(text_center_x_crane, y_bar_start, text_center_x_crane, crane_y_end)
-            c.line(text_center_x_crane - 3, crane_y_end, text_center_x_crane + 3, crane_y_end)
+            c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_crane_end)
+            c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
 
     c.save()
     buffer.seek(0)
