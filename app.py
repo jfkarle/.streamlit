@@ -505,9 +505,3 @@ elif app_mode == "Reporting":
 elif app_mode == "Settings":
     st.header("Application Settings")
     st.write("This section is under construction.")
-
-
-
-
-
-See code and undesired result.  The code SHOULD BE generating a second diary entry in the crane column showing crane j17 details and duration for the job
