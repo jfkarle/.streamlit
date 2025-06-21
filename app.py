@@ -83,14 +83,10 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     time_col_width = 0.75 * inch
     content_width = width - 2 * margin - time_col_width
     col_width = content_width / len(planner_columns)
-    start_hour, end_hour = 7, 18
     top_y = height - margin - 0.5 * inch
     bottom_y = margin + 0.5 * inch
-    content_height = top_y - bottom_y
-
-    def get_y_for_time(t):
-        total_minutes = (t.hour - start_hour) * 60 + t.minute
-        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
+    row_height = 30  # points per row
+    num_rows = int((top_y - bottom_y) / row_height)
 
     def _abbreviate_town(address):
         if not address: return ""
@@ -103,6 +99,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             if town in address: return abbr
         return address.title().split(',')[0]
 
+    # Header
     day_of_year = report_date.timetuple().tm_yday
     days_in_year = 366 if (report_date.year % 4 == 0 and report_date.year % 100 != 0) or (report_date.year % 400 == 0) else 365
     c.setFont("Helvetica", 9)
@@ -110,48 +107,43 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.setFont("Helvetica-Bold", 12)
     c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
 
+    # Column headers
     c.setFont("Helvetica-Bold", 11)
     for i, name in enumerate(planner_columns):
         x_center = margin + time_col_width + i * col_width + col_width / 2
         c.drawCentredString(x_center, top_y + 10, name)
 
+    # Horizontal lines and time labels
+    for i in range(num_rows + 1):
+        y = top_y - i * row_height
+        c.setLineWidth(1.0 if i % 4 == 0 else 0.25)
+        c.line(margin, y, width - margin, y)
+        if i % 4 == 0:
+            hour = 7 + i // 4
+            display_hour = hour if hour <= 12 else hour - 12
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(margin + 3, y - row_height / 2 - 3, str(display_hour))
+            c.setFont("Helvetica", 7)
+            c.drawString(margin + 18, y - row_height / 2 - 3, "00")
+
+    # Vertical lines
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width
         c.setLineWidth(0.5)
         c.line(x, top_y, x, bottom_y)
     c.line(margin, top_y, margin, bottom_y)
 
-    for hour in range(start_hour, end_hour + 1):
-        for minute in [0, 15, 30, 45]:
-            current_time = datetime.time(hour, minute)
-            y = get_y_for_time(current_time)
-            next_y = get_y_for_time((datetime.datetime.combine(datetime.date.today(), current_time) + datetime.timedelta(minutes=15)).time())
-            label_y = (y + next_y) / 2
-            c.setLineWidth(1.0 if minute == 0 else 0.25)
-            c.line(margin, y, width - margin, y)
-            if minute == 0:
-                display_hour = hour if hour <= 12 else hour - 12
-                c.setFont("Helvetica-Bold", 9)
-                c.drawString(margin + 3, label_y - 3, str(display_hour))
-                c.setFont("Helvetica", 7)
-                c.drawString(margin + 18, label_y - 3, "00")
-            else:
-                c.setFont("Helvetica", 6)
-                c.drawString(margin + 18, label_y - 2, f"{minute}")
-
     for job in jobs_for_day:
         start_time = getattr(job, 'scheduled_start_datetime').time()
         end_time = getattr(job, 'scheduled_end_datetime').time()
-        y0 = get_y_for_time(start_time)
-        y_end = get_y_for_time(end_time)
+        start_index = (start_time.hour - 7) * 4 + start_time.minute // 15
+        y0 = top_y - start_index * row_height
+        y_end_index = (end_time.hour - 7) * 4 + end_time.minute // 15
+        y_end = top_y - y_end_index * row_height
 
-        font_size_main = 8
-        font_size_sub = 7
-        text_line_height = 10
-        text_block_height = 3 * text_line_height
-        line1_y_text = y0 - text_line_height
-        line2_y_text = line1_y_text - text_line_height
-        line3_y_text = line2_y_text - text_line_height
+        line1_y_text = y0 - row_height + 22
+        line2_y_text = line1_y_text - 10
+        line3_y_text = line2_y_text - 10
         y_bar_start = line3_y_text - 5
 
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
@@ -179,20 +171,13 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             column_start_x = margin + time_col_width + col_index * col_width
             text_center_x = column_start_x + col_width / 2
 
-            c.setFont("Helvetica-Bold", font_size_main)
+            c.setFont("Helvetica-Bold", 8)
             c.drawCentredString(text_center_x, line1_y_text, customer_full_name)
-
-            if boat:
-                boat_length = getattr(boat, 'boat_length', None)
-                boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown Boat"
-            else:
-                boat_desc = "Unknown Boat"
-
-            c.setFont("Helvetica", font_size_sub)
+            boat_length = getattr(boat, 'boat_length', None)
+            boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown Boat"
+            c.setFont("Helvetica", 7)
             c.drawCentredString(text_center_x, line2_y_text, boat_desc)
-            location_label_truck = f"{origin_abbr}-{dest_abbr}"
-            c.drawCentredString(text_center_x, line3_y_text, location_label_truck)
-
+            c.drawCentredString(text_center_x, line3_y_text, f"{origin_abbr}-{dest_abbr}")
             c.setLineWidth(2)
             c.line(text_center_x, y_bar_start, text_center_x, y_end)
             c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
@@ -202,16 +187,16 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             column_start_x_crane = margin + time_col_width + col_index_crane * col_width
             text_center_x_crane = column_start_x_crane + col_width / 2
 
-            c.setFont("Helvetica-Bold", font_size_main)
+            c.setFont("Helvetica-Bold", 8)
             c.drawCentredString(text_center_x_crane, line1_y_text, customer_last_name)
-            c.setFont("Helvetica", font_size_sub)
+            c.setFont("Helvetica", 7)
             c.drawCentredString(text_center_x_crane, line2_y_text, dest_abbr)
 
-            # Determine crane end time using correct duration
-            duration_minutes = 60 if 'DT' in boat_type else 90
-            crane_end_dt = (datetime.datetime.combine(datetime.date.today(), start_time) + datetime.timedelta(minutes=duration_minutes)).time()
-            y_crane_end = get_y_for_time(crane_end_dt)
-            y_bar_start_crane = line2_y_text - 10
+            j17_duration = datetime.timedelta(minutes=90 if 'mt' in boat_type.lower() else 60)
+            crane_end_time = (datetime.datetime.combine(report_date, start_time) + j17_duration).time()
+            crane_end_index = (crane_end_time.hour - 7) * 4 + crane_end_time.minute // 15
+            y_crane_end = top_y - crane_end_index * row_height
+            y_bar_start_crane = line2_y_text - 15
 
             c.setLineWidth(2)
             c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_crane_end)
@@ -220,6 +205,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.save()
     buffer.seek(0)
     return buffer
+
 
 
 
