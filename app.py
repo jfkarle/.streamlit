@@ -206,9 +206,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer.seek(0)
     return buffer
 
-
-
-
 ########################################################################################
 ### END PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
 ########################################################################################
