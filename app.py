@@ -147,11 +147,11 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         end_time = getattr(job, 'scheduled_end_datetime').time()
         y0 = get_y_for_time(start_time)
         y_end = get_y_for_time(end_time)
-        line_height = (y0 - y_end) / ((end_time.hour - start_time.hour) * 4 or 1)
-        line1_y_text = y0 - (line_height / 2) + 4
-        line2_y_text = line1_y_text - 10
-        line3_y_text = line2_y_text - 10
-        y_bar_start = line3_y_text - 5
+        block_mid = (y0 + y_end) / 2
+        line1_y_text = block_mid + 10
+        line2_y_text = block_mid
+        line3_y_text = block_mid - 10
+        y_bar_start = y0
 
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
         customer_full_name = customer.customer_name if customer and hasattr(customer, 'customer_name') else "Unknown Customer"
@@ -206,15 +206,25 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.setFont("Helvetica", 7)
             c.drawCentredString(text_center_x_crane, line2_y_text, dest_abbr)
 
-            y_bar_start_crane = line3_y_text - 5
+            # Crane duration logic
+            duration_minutes = 60  # default
+            if 'mt' in boat_type.lower():
+                duration_minutes = 90
+            elif 'dt' in boat_type.lower():
+                duration_minutes = 60
+
+            crane_start = getattr(job, 'scheduled_start_datetime')
+            crane_end = (crane_start + datetime.timedelta(minutes=duration_minutes)).time()
+            crane_y_end = get_y_for_time(crane_end)
 
             c.setLineWidth(2)
-            c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_end)
-            c.line(text_center_x_crane - 3, y_end, text_center_x_crane + 3, y_end)
+            c.line(text_center_x_crane, y_bar_start, text_center_x_crane, crane_y_end)
+            c.line(text_center_x_crane - 3, crane_y_end, text_center_x_crane + 3, crane_y_end)
 
     c.save()
     buffer.seek(0)
     return buffer
+
 
 
 ########################################################################################
