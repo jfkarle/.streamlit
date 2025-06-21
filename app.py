@@ -467,10 +467,10 @@ elif app_mode == "Reporting":
         if not jobs_today:
             st.warning("No jobs scheduled for that date.")
         else:
-            pdf = generate_daily_planner_pdf(selected_date, jobs_today)
+            pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
             st.download_button(
                 label="📥 Download Planner",
-                data=pdf,
+                data=pdf_buffer.getvalue(),  # ← this is the fix
                 file_name=f"Daily_Planner_{selected_date}.pdf",
                 mime="application/pdf"
             )
