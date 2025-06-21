@@ -148,10 +148,10 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         y0 = get_y_for_time(start_time)
         y_end = get_y_for_time(end_time)
         block_mid = (y0 + y_end) / 2
-        line1_y_text = block_mid + 10
-        line2_y_text = block_mid
-        line3_y_text = block_mid - 10
-        y_bar_start = y0
+        line1_y_text = y0 - 4
+        line2_y_text = line1_y_text - 10
+        line3_y_text = line2_y_text - 10
+        y_bar_start = line3_y_text - 5
 
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
         customer_full_name = customer.customer_name if customer and hasattr(customer, 'customer_name') else "Unknown Customer"
