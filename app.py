@@ -72,7 +72,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
-    planner_columns = ["S20/33", "S21/77", "S23/55", "S17"]
+    planner_columns = ["S20/33", "S21/77", "S23/55", "J17"]
     column_map = {name: i for i, name in enumerate(planner_columns)}
     margin = 0.5 * inch
     time_col_width = 0.75 * inch
@@ -152,7 +152,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
         boat_type = getattr(boat, 'boat_type', '') if boat else ''
         
-        is_sailboat_job = (boat_type.lower() == 'sailboat' and getattr(job, 'assigned_crane_truck_id', None) == 'S17')
+        is_sailboat_job = (boat_type.lower() == 'sailboat' and getattr(job, 'assigned_crane_truck_id', None) == 'J17')
 
         origin_address = getattr(job, 'pickup_street_address', '') or ''
         dest_address = getattr(job, 'dropoff_street_address', '') or ''
@@ -190,10 +190,10 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.line(text_center_x, y_bar_start, text_center_x, y_end)
             c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
 
-        # --- Draw Crane Information (S17 column) ONLY IF it's a sailboat job with S17 assigned ---
-        # --- Draw Crane Information (S17 column) if it's a sailboat job ---
-        if is_sailboat_job and 'S17' in column_map:
-            col_index_crane = column_map['S17']
+        # --- Draw Crane Information (J17 column) ONLY IF it's a sailboat job with J17 assigned ---
+        # --- Draw Crane Information (J17 column) if it's a sailboat job ---
+        if is_sailboat_job and 'J17' in column_map:
+            col_index_crane = column_map['J17']
             column_start_x_crane = margin + time_col_width + col_index_crane * col_width
             text_center_x_crane = column_start_x_crane + col_width / 2
 
