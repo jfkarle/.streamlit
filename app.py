@@ -136,10 +136,9 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         y_end = get_y_for_time(end_time)
 
         # Text positioning within the first 45 min slot from the job start time
-        # These will be the TOP of the text lines, so we subtract font size
-        line1_y_text = y0 - 18 # Roughly 18 points below start time for first line
-        line2_y_text = line1_y_text - 12 # Next line below
-        line3_y_text = line2_y_text - 10 # Third line below
+        line1_y_text = y0 - 10  # Adjust downward to center between lines
+        line2_y_text = line1_y_text - 10
+        line3_y_text = line2_y_text - 10
 
         # The vertical bar should start slightly below the text block
         y_bar_start = line3_y_text - 5 # Start 5 points below the last text line
@@ -171,8 +170,9 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             column_start_x = margin + time_col_width + col_index * col_width
             text_center_x = column_start_x + col_width / 2
 
-            c.setFont("Helvetica-Bold", 8)
-            c.drawCentredString(text_center_x, line1_y_text, customer_full_name) 
+            # Truck column text:
+            c.setFont("Helvetica-Bold", 8)  # line 1
+            c.setFont("Helvetica", 7)       # line 2 and 3
             
             if boat:
                 boat_length = getattr(boat, 'boat_length', None)
@@ -197,6 +197,10 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             column_start_x_crane = margin + time_col_width + col_index_crane * col_width
             text_center_x_crane = column_start_x_crane + col_width / 2
 
+            # J17 column text:
+            c.setFont("Helvetica-Bold", 8)  # line 1
+            c.setFont("Helvetica", 7)       # line 2
+
             # Draw Customer last name at the first text line position
             c.setFont("Helvetica-Bold", 8)
             c.drawCentredString(text_center_x_crane, line1_y_text, customer_last_name)
@@ -208,7 +212,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
             # CORRECTED LOGIC: Calculate the bar start position based on the crane's OWN text block (2 lines).
             # It should start just below the second line of text.
-            y_bar_start_crane = line2_y_text - 15
+            y_bar_start_crane = line3_y_text - 5
 
             # Draw the vertical bar using the NEWLY calculated start position
             c.setLineWidth(2)
