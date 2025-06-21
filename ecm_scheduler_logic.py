@@ -50,7 +50,7 @@ class Ramp:
         self.ramp_id=r_id; self.ramp_name=name; self.noaa_station_id=station; self.tide_calculation_method=tide_method
         self.tide_offset_hours1=offset; self.allowed_boat_types=boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
 class Customer:
-    def __init__(self, c_id, name, street_address, truck_id=None, is_ecm=False, home_line2="", home_citystatezip=""): self.customer_id=c_id; self.customer_name=name; self.street_address=street_address; self.preferred_truck_id=truck_id; self.is_ecm_customer=is_ecm
+        def __init__(self, c_id, name, street_address, truck_id=None, is_ecm=False, home_line2="", home_citystatezip=""): self.customer_id=c_id; self.customer_name=name; self.street_address=street_address; self.preferred_truck_id=truck_id; self.is_ecm_customer=is_ecm
         self.home_line2 = home_line2
         self.home_citystatezip = home_citystatezip
 class Boat:
@@ -92,9 +92,9 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
             reader = csv.DictReader(infile)
             for i, row in enumerate(reader):
                 cust_id = f"C{1001+i}"; boat_id = f"B{5001+i}"
-                home_line2 = row.get('Bill to 2', '').strip()
-                home_citystatezip = row.get('Bill to 3', '').strip()
-                LOADED_CUSTOMERS[cust_id] = Customer(cust_id, row['customer_name'], row.get('street_address', ''), row.get('preferred_truck'), row.get('is_ecm_boat','').lower()=='true', home_line2, home_citystatezip)
+        home_line2 = row.get('Bill to 2', '').strip()
+        home_citystatezip = row.get('Bill to 3', '').strip()
+        LOADED_CUSTOMERS[cust_id] = Customer(cust_id, row['customer_name'], row.get('street_address', ''), row.get('preferred_truck'), row.get('is_ecm_boat','').lower()=='true', home_line2, home_citystatezip)
                 LOADED_BOATS[boat_id] = Boat(boat_id, cust_id, row['boat_type'], float(row['boat_length']), float(row.get('boat_draft') or 0))
         return True
     except FileNotFoundError: return False
