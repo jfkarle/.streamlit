@@ -91,13 +91,31 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
         with open(filename, mode='r', encoding='utf-8-sig') as infile:
             reader = csv.DictReader(infile)
             for i, row in enumerate(reader):
-                cust_id = f"C{1001+i}"; boat_id = f"B{5001+i}"
-        home_line2 = row.get('Bill to 2', '').strip()
-        home_citystatezip = row.get('Bill to 3', '').strip()
-        LOADED_CUSTOMERS[cust_id] = Customer(cust_id, row['customer_name'], row.get('street_address', ''), row.get('preferred_truck'), row.get('is_ecm_boat','').lower()=='true', home_line2, home_citystatezip)
-                LOADED_BOATS[boat_id] = Boat(boat_id, cust_id, row['boat_type'], float(row['boat_length']), float(row.get('boat_draft') or 0))
+                cust_id = f"C{1001+i}"
+                boat_id = f"B{5001+i}"
+                home_line2 = row.get('Bill to 2', '').strip()
+                home_citystatezip = row.get('Bill to 3', '').strip()
+
+                LOADED_CUSTOMERS[cust_id] = Customer(
+                    cust_id,
+                    row['customer_name'],
+                    row.get('street_address', ''),
+                    row.get('preferred_truck'),
+                    row.get('is_ecm_boat', '').lower() == 'true',
+                    home_line2,
+                    home_citystatezip
+                )
+
+                LOADED_BOATS[boat_id] = Boat(
+                    boat_id,
+                    cust_id,
+                    row['boat_type'],
+                    float(row['boat_length']),
+                    float(row.get('boat_draft') or 0)
+                )
         return True
-    except FileNotFoundError: return False
+    except FileNotFoundError:
+        return False
 
 # --- Core Logic Functions ---
 get_customer_details = LOADED_CUSTOMERS.get; get_boat_details = LOADED_BOATS.get; get_ramp_details = ECM_RAMPS.get
