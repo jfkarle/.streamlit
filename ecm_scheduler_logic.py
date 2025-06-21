@@ -160,7 +160,9 @@ def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ra
     needs_j17 = BOOKING_RULES.get(boat.boat_type, {}).get('crane_mins', 0) > 0
     if needs_j17 and not check_truck_availability("J17", start_dt, start_dt + datetime.timedelta(hours=j17_duration)): return None
     return {'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'type': "Open", 'ramp_id': ramp.ramp_id if ramp else None, 'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0, **window_details}
-
+#
+# --- PASTE THIS ENTIRE CORRECTED FUNCTION ---
+#
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, relax_ramp=False, ignore_forced_search=False, **kwargs):
     try:
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
@@ -171,19 +173,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not customer or not boat:
         return [], "Error: Invalid Cust/Boat ID.", [], False
 
-# --- START OF MODIFIED BLOCK ---
-    
-    # This new logic determines which ramps to search based on the relax_ramp checkbox
     ramps_to_search = []
     if relax_ramp:
-        # If relaxing, get a list of ALL ramps that allow this boat type
         for ramp in ECM_RAMPS.values():
             if boat.boat_type in ramp.allowed_boat_types:
                 ramps_to_search.append(ramp)
     else:
-        # Otherwise, use the original behavior: just search the one selected ramp
         ramp_obj_single = get_ramp_details(selected_ramp_id)
-        # For a launch or haul, a ramp is required.
         if service_type in ["Launch", "Haul"]:
             if not ramp_obj_single:
                 return [], "Error: A ramp must be selected for this service type.", [], False
@@ -192,8 +188,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             ramps_to_search.append(ramp_obj_single)
 
     forced_date = None
-    # --- END OF MODIFIED BLOCK ---
-    ramp_obj = get_ramp_details(selected_ramp_id) # Define ramp_obj for this specific check
+    ramp_obj = get_ramp_details(selected_ramp_id)
     if boat.boat_type.startswith("Sailboat") and ramp_obj and not ignore_forced_search:
         for job in SCHEDULED_JOBS:
             if getattr(job, 'assigned_crane_truck_id', None) and (getattr(job, 'pickup_ramp_id', None) == selected_ramp_id or getattr(job, 'dropoff_ramp_id', None) == selected_ramp_id) and abs((requested_date_obj - job.scheduled_start_datetime.date()).days) <= 7:
@@ -203,58 +198,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     rules = BOOKING_RULES.get(boat.boat_type, {})
     duration = rules.get('truck_mins', 90) / 60.0
     j17_duration = rules.get('crane_mins', 0) / 60.0
-    
-    # --- START OF NEW MODIFICATION ---
-    # This flag identifies the specific job type we want to prioritize.
     is_ecm_haul_priority = (service_type == "Haul" and customer.is_ecm_customer)
-    # --- END OF NEW MODIFICATION ---
-    
     trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
     if not trucks:
         return [], "No suitable trucks for this boat.", [], False
 
-    
-  # --- START OF MODIFIED BLOCK ---
-    
-    def search_day(s_date, slots_list, limit, ramp_to_check): # Added ramp_to_check
-        ecm_hours = get_ecm_operating_hours(s_date)
-        if not ecm_hours:
-            return
-
-        # Use the passed-in ramp_to_check instead of the old ramp_obj
-        windows = get_final_schedulable_ramp_times(ramp_to_check, boat, s_date) if ramp_to_check else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
-        
-        if not customer.is_ecm_customer:
-    # --- END OF MODIFIED BLOCK ---
-            
-            min_start = (datetime.datetime.combine(s_date, ecm_hours['open']) + datetime.timedelta(hours=1.5)).time()
-            windows = [{**w, 'start_time': max(w['start_time'], min_start)} for w in windows if max(w['start_time'], min_start) < w['end_time']]
-        
-        for truck in trucks:
-            for w in windows:
-                p_time, p_end = w['start_time'], w['end_time']
-                while p_time < p_end:
-                    if len(slots_list) >= limit:
-                        return # Exit if we've already hit the overall limit
-
-                    temp_dt = datetime.datetime.combine(s_date, p_time)
-                    if temp_dt.minute % 30 != 0:
-                        p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
-                    if p_time >= p_end:
-                        break
-
-                    slot = _check_and_create_slot_detail(s_date, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
-                    
-                    # --- THIS IS THE KEY CHANGE ---
-                    if slot:
-                        slots_list.append(slot)
-                        return  # Exit immediately after finding the first valid slot for the day
-                    
-                    p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).    #
-    # --- REPLACE THE OLD SEARCH LOOPS WITH THIS ENTIRE BLOCK ---
-    #
     potential_slots, was_forced = [], False
-    
     ramps_to_iterate = ramps_to_search if service_type in ["Launch", "Haul"] else [None]
 
     if forced_date:
@@ -265,7 +214,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             windows = get_final_schedulable_ramp_times(ramp_to_check, boat, forced_date) if ramp_to_check else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
             for truck in trucks:
                 for w in windows:
-                    # FORWARD SEARCH (Forced date is always forward)
                     p_time, p_end = w['start_time'], w['end_time']
                     while p_time < p_end:
                         if len(potential_slots) >= 6: break
@@ -278,7 +226,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                             potential_slots.append(slot)
                             break
                         p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
-
     else:
         slots_before, slots_after = [], []
         # Phase 1: Before
@@ -289,6 +236,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 if not ecm_hours: continue
                 windows = get_final_schedulable_ramp_times(ramp_to_check, boat, d) if ramp_to_check else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
                 for truck in trucks:
+                    if len(slots_before) >= 2: break
                     for w in windows:
                         p_start_time, p_end_time = w['start_time'], w['end_time']
                         if is_ecm_haul_priority:
@@ -314,6 +262,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                                     slots_before.append(slot)
                                     break
                                 p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
+                        if len(slots_before) >= 2: break
             d += datetime.timedelta(days=1)
             
         # Phase 2: After
@@ -324,6 +273,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 if not ecm_hours: continue
                 windows = get_final_schedulable_ramp_times(ramp_to_check, boat, d) if ramp_to_check else [{'start_time': ecm_hours['open'], 'end_time': ecm_hours['close']}]
                 for truck in trucks:
+                    if len(slots_after) >= 4: break
                     for w in windows:
                         p_start_time, p_end_time = w['start_time'], w['end_time']
                         if is_ecm_haul_priority:
@@ -349,9 +299,25 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                                     slots_after.append(slot)
                                     break
                                 p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
+                        if len(slots_after) >= 4: break
             d += datetime.timedelta(days=1)
             i += 1
         potential_slots = slots_before + slots_after
+
+    if not potential_slots:
+        return [], "No suitable slots found.", [], was_forced
+    
+    potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
+    top_slots = potential_slots[:6]
+    
+    expl = f"Found {len(top_slots)} available slots."
+    if was_forced and forced_date:
+        expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
+    elif top_slots:
+        expl = f"Found {len(top_slots)} available slots starting from {top_slots[0]['date'].strftime('%A, %b %d')}."
+    
+    return top_slots, expl, [], was_forced
+
 
 
 def confirm_and_schedule_job(original_request, selected_slot):
