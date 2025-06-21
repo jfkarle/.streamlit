@@ -50,7 +50,12 @@ class Ramp:
         self.ramp_id=r_id; self.ramp_name=name; self.noaa_station_id=station; self.tide_calculation_method=tide_method
         self.tide_offset_hours1=offset; self.allowed_boat_types=boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
 class Customer:
-        def __init__(self, c_id, name, street_address, truck_id=None, is_ecm=False, home_line2="", home_citystatezip=""): self.customer_id=c_id; self.customer_name=name; self.street_address=street_address; self.preferred_truck_id=truck_id; self.is_ecm_customer=is_ecm
+    def __init__(self, c_id, name, street_address, truck_id=None, is_ecm=False, home_line2="", home_citystatezip=""):
+        self.customer_id = c_id
+        self.customer_name = name
+        self.street_address = street_address
+        self.preferred_truck_id = truck_id
+        self.is_ecm_customer = is_ecm
         self.home_line2 = home_line2
         self.home_citystatezip = home_citystatezip
 class Boat:
