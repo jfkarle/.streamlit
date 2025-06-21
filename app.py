@@ -164,18 +164,16 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         origin_abbr = _abbreviate_town(origin_address)
         dest_abbr = _abbreviate_town(dest_address)
         
-        # --- Handle Truck Information ---
+        # --- Draw Hauling Truck Information ---
         truck_id = getattr(job, 'assigned_hauling_truck_id', None)
         if truck_id in column_map:
             col_index = column_map[truck_id]
             column_start_x = margin + time_col_width + col_index * col_width
             text_center_x = column_start_x + col_width / 2
 
-            # Draw Truck details
             c.setFont("Helvetica-Bold", 8)
             c.drawCentredString(text_center_x, line1_y, customer_full_name) # Customer name
             
-            # Get boat description (e.g., "29' Powerboat")
             if boat:
                 boat_length = getattr(boat, 'boat_length', None)
                 boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown Boat"
@@ -185,21 +183,19 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.setFont("Helvetica", 7)
             c.drawCentredString(text_center_x, line2_y, boat_desc) # Boat Description
 
-            # Location abbreviation for truck
             location_label_truck = f"{origin_abbr}-{dest_abbr}"
             c.drawCentredString(text_center_x, line3_y, location_label_truck) # Location
 
-            # Draw vertical line for truck duration (if not a sailboat job, it represents the whole job)
-            if not is_sailboat_job:
-                y_bar_start = y3 + 6
-                y_end = get_y_for_time(end_time)
-                c.setLineWidth(2)
-                c.line(text_center_x, y_bar_start, text_center_x, y_end)
-                c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+            # Vertical line for truck duration (always drawn for the hauling truck)
+            y_bar_start = y3 + 6
+            y_end = get_y_for_time(end_time)
+            c.setLineWidth(2)
+            c.line(text_center_x, y_bar_start, text_center_x, y_end)
+            c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
 
-        # --- Handle Crane Information (S17 column) for Sailboat Jobs ---
+        # --- Draw Crane Information (S17 column) for Sailboat Jobs ---
         if is_sailboat_job:
-            crane_truck_id = 'S17' # Hardcoded as per requirement for sailboat jobs
+            crane_truck_id = 'S17' 
             if crane_truck_id in column_map:
                 col_index_crane = column_map[crane_truck_id]
                 column_start_x_crane = margin + time_col_width + col_index_crane * col_width
@@ -215,7 +211,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                 c.drawCentredString(text_center_x_crane, line2_y, town_for_crane)
                 
                 # Vertical line representing the duration of the crane usage
-                # The vertical line should start slightly below the text, similar to the truck's line.
                 y_bar_start_crane = y3 + 6 
                 y_end_crane = get_y_for_time(end_time) 
                 c.setLineWidth(2)
@@ -431,30 +426,7 @@ elif app_mode == "Reporting":
             is_sailboat = boat and getattr(boat, 'boat_type', '').lower() == 'sailboat'
 
             if is_sailboat and crane_info != "N/A":
-                display_data.append({
-                    "Job ID": job.job_id,
-                    "Status": job.job_status,
-                    "Scheduled Date": job.scheduled_start_datetime.strftime("%Y-%m-%d") if job.scheduled_start_datetime else "N/A",
-                    "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
-                    "Service": job.service_type,
-                    "Customer": customer.customer_name if customer else "N/A",
-                    "Truck": truck_info, # Truck row
-                    "Crane": "", # Empty for truck row
-                    "Ramp": ramp.ramp_name if ramp else "N/A"
-                })
-                # Add a separate row for Crane
-                display_data.append({
-                    "Job ID": "", # Keep Job ID empty for the crane row
-                    "Status": "", # Keep Status empty
-                    "Scheduled Date": "", # Keep Date empty
-                    "Scheduled Time": "", # Keep Time empty
-                    "Service": "", # Keep Service empty
-                    "Customer": "", # Keep Customer empty
-                    "Truck": "", # Empty for crane row
-                    "Crane": crane_info, # Crane row
-                    "Ramp": "" # Keep Ramp empty
-                })
-            else:
+                # First row for Truck
                 display_data.append({
                     "Job ID": job.job_id,
                     "Status": job.job_status,
@@ -463,7 +435,32 @@ elif app_mode == "Reporting":
                     "Service": job.service_type,
                     "Customer": customer.customer_name if customer else "N/A",
                     "Truck": truck_info,
-                    "Crane": crane_info if crane_info != "N/A" else "", # Display crane if exists and not N/A
+                    "Crane": "", # Intentionally empty for the truck row
+                    "Ramp": ramp.ramp_name if ramp else "N/A"
+                })
+                # Second row for Crane (distinct, consecutive row)
+                display_data.append({
+                    "Job ID": "", # Empty for continuity
+                    "Status": "",
+                    "Scheduled Date": "",
+                    "Scheduled Time": "",
+                    "Service": "",
+                    "Customer": "",
+                    "Truck": "", # Intentionally empty for the crane row
+                    "Crane": crane_info,
+                    "Ramp": "" # Empty for continuity
+                })
+            else:
+                # Standard job (or sailboat job without crane)
+                display_data.append({
+                    "Job ID": job.job_id,
+                    "Status": job.job_status,
+                    "Scheduled Date": job.scheduled_start_datetime.strftime("%Y-%m-%d") if job.scheduled_start_datetime else "N/A",
+                    "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
+                    "Service": job.service_type,
+                    "Customer": customer.customer_name if customer else "N/A",
+                    "Truck": truck_info,
+                    "Crane": crane_info if crane_info != "N/A" else "",
                     "Ramp": ramp.ramp_name if ramp else "N/A"
                 })
         st.dataframe(pd.DataFrame(display_data))
