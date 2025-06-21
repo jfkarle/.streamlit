@@ -113,7 +113,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
 
     # Column headers
-    c.setFont("Helvetica-Bold", 11)
+    c.setFont("Helvetica-Bold", 14)
     for i, name in enumerate(planner_columns):
         x_center = margin + time_col_width + i * col_width + col_width / 2
         c.drawCentredString(x_center, top_y + 10, name)
@@ -154,7 +154,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         line1_y_text = y0 - 4
         line2_y_text = line1_y_text - 10
         line3_y_text = line2_y_text - 10
-        y_bar_start = line3_y_text - 5
+        y_bar_start = line3_y_text - 4
 
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
         customer_full_name = customer.customer_name if customer and hasattr(customer, 'customer_name') else "Unknown Customer"
