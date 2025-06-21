@@ -144,10 +144,8 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         customer_full_name = customer.customer_name if customer and hasattr(customer, 'customer_name') else "Unknown Customer"
         customer_last_name = customer_full_name.split()[-1] if customer_full_name != "Unknown Customer" else "Unknown"
 
-
         boat_id = getattr(job, 'boat_id', None)
         boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
-        
         boat_type = getattr(boat, 'boat_type', '') if boat else ''
         
         # Determine if it's a sailboat job requiring both truck and crane columns
@@ -164,7 +162,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         origin_abbr = _abbreviate_town(origin_address)
         dest_abbr = _abbreviate_town(dest_address)
         
-        # --- Draw Hauling Truck Information ---
+        # --- Draw Hauling Truck Information (if assigned) ---
         truck_id = getattr(job, 'assigned_hauling_truck_id', None)
         if truck_id in column_map:
             col_index = column_map[truck_id]
@@ -186,36 +184,34 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             location_label_truck = f"{origin_abbr}-{dest_abbr}"
             c.drawCentredString(text_center_x, line3_y, location_label_truck) # Location
 
-            # Vertical line for truck duration (always drawn for the hauling truck)
-            y_bar_start = y3 + 6
-            y_end = get_y_for_time(end_time)
+            # Vertical line for truck duration
+            y_bar_start_truck = y3 + 6 
+            y_end_truck = get_y_for_time(end_time)
             c.setLineWidth(2)
-            c.line(text_center_x, y_bar_start, text_center_x, y_end)
-            c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+            c.line(text_center_x, y_bar_start_truck, text_center_x, y_end_truck)
+            c.line(text_center_x - 3, y_end_truck, text_center_x + 3, y_end_truck)
 
-        # --- Draw Crane Information (S17 column) for Sailboat Jobs ---
-        if is_sailboat_job:
-            crane_truck_id = 'S17' 
-            if crane_truck_id in column_map:
-                col_index_crane = column_map[crane_truck_id]
-                column_start_x_crane = margin + time_col_width + col_index_crane * col_width
-                text_center_x_crane = column_start_x_crane + col_width / 2
+        # --- Draw Crane Information (S17 column) ONLY IF it's a sailboat job with S17 assigned ---
+        if is_sailboat_job and 'S17' in column_map:
+            col_index_crane = column_map['S17']
+            column_start_x_crane = margin + time_col_width + col_index_crane * col_width
+            text_center_x_crane = column_start_x_crane + col_width / 2
 
-                # Customer last name
-                c.setFont("Helvetica-Bold", 8)
-                c.drawCentredString(text_center_x_crane, line1_y, customer_last_name)
+            # Customer last name
+            c.setFont("Helvetica-Bold", 8)
+            c.drawCentredString(text_center_x_crane, line1_y, customer_last_name)
 
-                # Town (destination town)
-                town_for_crane = dest_abbr # Use the destination town abbreviation
-                c.setFont("Helvetica", 7)
-                c.drawCentredString(text_center_x_crane, line2_y, town_for_crane)
-                
-                # Vertical line representing the duration of the crane usage
-                y_bar_start_crane = y3 + 6 
-                y_end_crane = get_y_for_time(end_time) 
-                c.setLineWidth(2)
-                c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_end_crane)
-                c.line(text_center_x_crane - 3, y_end_crane, text_center_x_crane + 3, y_end_crane)
+            # Town (destination town)
+            town_for_crane = dest_abbr 
+            c.setFont("Helvetica", 7)
+            c.drawCentredString(text_center_x_crane, line2_y, town_for_crane)
+            
+            # Vertical line representing the duration of the crane usage
+            y_bar_start_crane = y3 + 6 
+            y_end_crane = get_y_for_time(end_time) 
+            c.setLineWidth(2)
+            c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_end_crane)
+            c.line(text_center_x_crane - 3, y_end_crane, text_center_x_crane + 3, y_end_crane)
 
 
     # Draw bottom border ONCE here
