@@ -29,10 +29,16 @@ def format_time_for_display(time_obj):
 
 
 def get_concise_tide_rule(ramp, boat):
-    if ramp.tide_calculation_method == "AnyTide": return "Any Tide"
-    if ramp.tide_offset_hours1: return f"{float(ramp.tide_offset_hours1):g}hrs +/- HT"
+    if ramp.tide_calculation_method == "AnyTide":
+        return "Any Tide"
+    if ramp.tide_calculation_method == "AnyTideWithDraftRule":
+        if boat.draft_ft is not None and boat.draft_ft < 5.0:
+            return "Any Tide (<5' Draft)"
+        return "3 hrs +/- High Tide (≥5' Draft)"
+    if ramp.tide_offset_hours1:
+        return f"{float(ramp.tide_offset_hours1):g} hrs +/- HT"
     return "Tide Rule N/A"
-
+    
 def is_j17_at_ramp(check_date, ramp_id):
     if not ramp_id: return False
     return ramp_id in crane_daily_status.get(check_date.strftime('%Y-%m-%d'), {}).get('ramps_visited', set())
@@ -133,10 +139,21 @@ def get_ecm_operating_hours(date):
     return None
 
 def calculate_ramp_windows(ramp, boat, tide_data, date):
-    if ramp.tide_calculation_method == "AnyTide": return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
-    if not tide_data: return []
+    if ramp.tide_calculation_method == "AnyTide":
+        return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
+    if ramp.tide_calculation_method == "AnyTideWithDraftRule":
+        if boat.draft_ft is not None and boat.draft_ft < 5.0:
+            return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
+        offset = datetime.timedelta(hours=3)
+        return [{'start_time': (datetime.datetime.combine(date, t['time']) - offset).time(),
+                 'end_time': (datetime.datetime.combine(date, t['time']) + offset).time()}
+                for t in tide_data if t['type'] == 'H']
+    if not tide_data:
+        return []
     offset = datetime.timedelta(hours=float(ramp.tide_offset_hours1 or 0))
-    return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(), 'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()} for t in tide_data if t['type']=='H']
+    return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(), 
+             'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()} 
+            for t in tide_data if t['type']=='H']
 
 def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
     ecm_hours = get_ecm_operating_hours(date_to_check)
@@ -175,9 +192,20 @@ def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
 
 def check_truck_availability(truck_id, start_dt, end_dt):
     for job in SCHEDULED_JOBS:
-        if job.job_status == "Scheduled" and (getattr(job, 'assigned_hauling_truck_id', None) == truck_id or (getattr(job, 'assigned_crane_truck_id', None) == truck_id and truck_id == "J17")):
+        if job.job_status == "Scheduled" and (
+            getattr(job, 'assigned_hauling_truck_id', None) == truck_id or
+            (getattr(job, 'assigned_crane_truck_id', None) == truck_id and truck_id == "J17")
+        ):
+            job_start = job.scheduled_start_datetime
             job_end = getattr(job, 'j17_busy_end_datetime', job.scheduled_end_datetime) if truck_id == "J17" else job.scheduled_end_datetime
-            if start_dt < job_end and end_dt > job.scheduled_start_datetime: return False
+            
+            # ⬇️ Log if there's a conflict
+            if start_dt < job_end and end_dt > job_start:
+                print(f"[DEBUG] Conflict for truck {truck_id}:")
+                print(f"    Requested window: {start_dt.strftime('%Y-%m-%d %I:%M %p')} to {end_dt.strftime('%I:%M %p')}")
+                print(f"    Conflicts with: {job.customer_name}, from {job_start.strftime('%I:%M %p')} to {job_end.strftime('%I:%M %p')} on {job_start.date()}")
+                return False
+
     return True
 
 def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ramp, ecm_hours, duration, j17_duration, window_details):
@@ -187,9 +215,7 @@ def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ra
     needs_j17 = BOOKING_RULES.get(boat.boat_type, {}).get('crane_mins', 0) > 0
     if needs_j17 and not check_truck_availability("J17", start_dt, start_dt + datetime.timedelta(hours=j17_duration)): return None
     return {'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'type': "Open", 'ramp_id': ramp.ramp_id if ramp else None, 'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0, **window_details}
-#
-# --- PASTE THIS ENTIRE CORRECTED FUNCTION ---
-#
+
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, relax_ramp=False, ignore_forced_search=False, **kwargs):
     try:
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
@@ -197,8 +223,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], "Error: Invalid date format.", [], False
     
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
+
+    for job in SCHEDULED_JOBS:
+        if job.customer_id == customer_id and job.job_status == "Scheduled":
+            return [], f"Error: Customer '{get_customer_details(customer_id).customer_name}' is already scheduled.", [], False
     if not customer or not boat:
-        print("DEBUG: Missing customer or boat object.")
         return [], "Error: Invalid Cust/Boat ID.", [], False
 
     ramps_to_search = []
@@ -249,6 +278,20 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         if temp_dt.minute % 30 != 0:
                             p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
                         if p_time >= p_end: break
+                        
+                        
+                        # ⬇️ INSERT DEBUG PRINT HERE
+                        print(f"[DEBUG] Evaluating slot:")
+                        print(f"    Date: {d}, Time: {p_time}")
+                        print(f"    Truck: {truck.truck_id}")
+                        print(f"    Duration: {duration} hr")
+                        print(f"    Window: {p_start_time} to {p_end_time}")
+                        print(f"    Ramp: {ramp_to_check.ramp_name if ramp_to_check else 'N/A'}")
+
+                        # ⬇️ Original line follows immediately
+                        
+                        
+                        
                         slot = _check_and_create_slot_detail(forced_date, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
                         if slot:
                             potential_slots.append(slot)
@@ -320,8 +363,19 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                             while p_time < p_end_time:
                                 if len(slots_after) >= 4: break
                                 temp_dt = datetime.datetime.combine(d, p_time)
-                                if temp_dt.minute % 30 != 0: p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
+                                if temp_dt.minute % 30 != 0:
+                                    p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
                                 if p_time >= p_end_time: break
+                        
+                                # ⬇️ INSERT DEBUG PRINT HERE
+                                print(f"[DEBUG] Evaluating slot:")
+                                print(f"    Date: {d}, Time: {p_time}")
+                                print(f"    Truck: {truck.truck_id}")
+                                print(f"    Duration: {duration} hr")
+                                print(f"    Window: {p_start_time} to {p_end_time}")
+                                print(f"    Ramp: {ramp_to_check.ramp_name if ramp_to_check else 'N/A'}")
+                        
+                                # ⬇️ Original line follows immediately
                                 slot = _check_and_create_slot_detail(d, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
                                 if slot:
                                     slots_after.append(slot)
