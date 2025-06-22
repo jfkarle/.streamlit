@@ -192,14 +192,13 @@ def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ra
 #
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, relax_ramp=False, ignore_forced_search=False, **kwargs):
     try:
-        customer = get_customer_details(customer_id)
-        boat = get_boat_details(boat_id)
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError:
         return [], "Error: Invalid date format.", [], False
     
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
     if not customer or not boat:
+        print("DEBUG: Missing customer or boat object.")
         return [], "Error: Invalid Cust/Boat ID.", [], False
 
     ramps_to_search = []
