@@ -8,34 +8,17 @@ import requests
 # --- Utility Functions ---
 
 def fetch_noaa_tides(station_id, date_to_check):
-    import streamlit as st  # Ensure this is at top of your file if not already present
     date_str = date_to_check.strftime("%Y%m%d")
     base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-    params = {
-        "product": "predictions",
-        "application": "ecm-boat-scheduler",
-        "begin_date": date_str,
-        "end_date": date_str,
-        "datum": "MLLW",
-        "station": station_id,
-        "time_zone": "lst_ldt",
-        "units": "english",
-        "interval": "hilo",
-        "format": "json"
-    }
+    params = {"product":"predictions", "application":"ecm-boat-scheduler", "begin_date":date_str, "end_date":date_str, "datum":"MLLW", "station":station_id, "time_zone":"lst_ldt", "units":"english", "interval":"hilo", "format":"json"}
     try:
         resp = requests.get(base, params=params, timeout=10)
-        if st.session_state.get("debug_mode", False):
-            st.write("NOAA Request URL:", resp.url)
         resp.raise_for_status()
-        data = resp.json().get("predictions", [])
-        if not data:
-            st.warning(f"⚠️ NOAA returned no tide data for station {station_id}. Check if the station is offline or invalid.")
-            return []
-        return [{'type': i["type"].upper(), 'time': datetime.datetime.strptime(i["t"], "%Y-%m-%d %H:%M").time()} for i in data]
+        return [{'type': i["type"].upper(), 'time': datetime.datetime.strptime(i["t"], "%Y-%m-%d %H:%M").time()} for i in resp.json().get("predictions", [])]
     except Exception as e:
-        st.error(f"⚠️ NOAA tide fetch failed for station {station_id}: {e}")
+        print(f"ERROR fetching tides for station {station_id}: {e}")
         return []
+
 def format_time_for_display(time_obj):
     """Formats a time object for display, e.g., 8:00 AM."""
     if not isinstance(time_obj, datetime.time):
@@ -100,7 +83,7 @@ ECM_RAMPS = {
     "GreenHarborSafeHarbor": Ramp("GreenHarborSafeHarbor", "Safe Harbor (Green Harbor)", "8446009", "HoursAroundHighTide", 1.0, ["Powerboat"]), # VERIFIED
     "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor (Jericho Road)", "8445138", "AnyTideWithDraftRule"), # CORRECTED
     "CohassetParkerAve": Ramp("CohassetHarbor", "Cohasset Harbor (Parker Ave)", "8444762", "HoursAroundHighTide", 3.0), # CORRECTED
-    "HullASt": Ramp("HullASt", "Hull (A St, Sunset, Steamboat)", "8444351", "HoursAroundHighTide_WithDraftRule", 3.0), # CORRECTED
+    "HullASt": Ramp("HullASt", "Hull (A St, Sunset, Steamboat)", "8444199", "HoursAroundHighTide_WithDraftRule", 3.0), # CORRECTED
     "HinghamHarbor": Ramp("HinghamHarbor", "Hingham Harbor", "8444775", "HoursAroundHighTide", 3.0), # CORRECTED
     "WeymouthWessagusset": Ramp("WeymouthWessagusset", "Weymouth Harbor (Wessagusset)", "8444788", "HoursAroundHighTide", 3.0), # CORRECTED
 }
@@ -220,8 +203,7 @@ def check_truck_availability(truck_id, start_dt, end_dt):
             if start_dt < job_end and end_dt > job_start:
                 print(f"[DEBUG] Conflict for truck {truck_id}:")
                 print(f"    Requested window: {start_dt.strftime('%Y-%m-%d %I:%M %p')} to {end_dt.strftime('%I:%M %p')}")
-                cust_name = get_customer_details(job.customer_id).customer_name if hasattr(job, 'customer_id') else "Unknown"
-                print(f"    Conflicts with: {cust_name}, from {job_start.strftime('%I:%M %p')} to {job_end.strftime('%I:%M %p')} on {job_start.date()}")
+                print(f"    Conflicts with: {job.customer_name}, from {job_start.strftime('%I:%M %p')} to {job_end.strftime('%I:%M %p')} on {job_start.date()}")
                 return False
 
     return True
@@ -240,7 +222,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     except ValueError:
         return [], "Error: Invalid date format.", [], False
     
-    customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
+    # Check for duplicate customer scheduling
+    
+    for job in SCHEDULED_JOBS:
+    
+        if job.customer_id == customer_id and job.job_status == "Scheduled":
+    
+            return [], f"Error: Customer '{get_customer_details(customer_id).customer_name}' is already scheduled.", [], False
+
     if not customer or not boat:
         return [], "Error: Invalid Cust/Boat ID.", [], False
 
@@ -292,6 +281,20 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         if temp_dt.minute % 30 != 0:
                             p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
                         if p_time >= p_end: break
+                        
+                        
+                        # ⬇️ INSERT DEBUG PRINT HERE
+                        print(f"[DEBUG] Evaluating slot:")
+                        print(f"    Date: {d}, Time: {p_time}")
+                        print(f"    Truck: {truck.truck_id}")
+                        print(f"    Duration: {duration} hr")
+                        print(f"    Window: {p_start_time} to {p_end_time}")
+                        print(f"    Ramp: {ramp_to_check.ramp_name if ramp_to_check else 'N/A'}")
+
+                        # ⬇️ Original line follows immediately
+                        
+                        
+                        
                         slot = _check_and_create_slot_detail(forced_date, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
                         if slot:
                             potential_slots.append(slot)
