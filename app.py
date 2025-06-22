@@ -235,6 +235,85 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 ### END PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
 ########################################################################################
 
+# This is the patched code that includes:
+# - Cancel by customer name
+# - Reschedule (rebook)
+# - Audit log with change tracking
+# - AgGrid reporting with column filtering, hiding, grouping
+
+from datetime import datetime
+from st_aggrid import AgGrid, GridOptionsBuilder
+
+CANCELED_JOBS_AUDIT_LOG = []
+
+# Function to cancel a job by customer name
+def cancel_job_by_customer_name(customer_name):
+    job_to_cancel = None
+    for job in SCHEDULED_JOBS:
+        customer = get_customer_details(job.customer_id)
+        if customer and customer.customer_name.lower() == customer_name.lower():
+            job_to_cancel = job
+            break
+    if job_to_cancel:
+        audit_entry = {
+            "Customer": customer.customer_name,
+            "Original Date": job_to_cancel.scheduled_start_datetime.strftime("%Y-%m-%d"),
+            "Original Time": job_to_cancel.scheduled_start_datetime.strftime("%H:%M"),
+            "Original Truck": job_to_cancel.assigned_hauling_truck_id,
+            "Original Ramp": get_ramp_details(job_to_cancel.pickup_ramp_id or job_to_cancel.dropoff_ramp_id).ramp_name,
+            "Action": "Canceled",
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        CANCELED_JOBS_AUDIT_LOG.append(audit_entry)
+        SCHEDULED_JOBS.remove(job_to_cancel)
+        return True, audit_entry
+    return False, None
+
+# Function to reschedule a customer to a new slot
+def reschedule_customer(customer_name, new_slot):
+    canceled, audit_entry = cancel_job_by_customer_name(customer_name)
+    if not canceled:
+        return False, "Customer not found."
+
+    customer = next((c for c in LOADED_CUSTOMERS.values() if c.customer_name.lower() == customer_name.lower()), None)
+    boat = next((b for b in LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
+    if not customer or not boat:
+        return False, "Customer or boat not found."
+
+    # Create new job
+    new_job_request = {
+        'customer_id': customer.customer_id,
+        'boat_id': boat.boat_id,
+        'service_type': "Launch",  # or detect based on prior job?
+        'requested_date_str': new_slot['date'].strftime('%Y-%m-%d'),
+        'selected_ramp_id': new_slot['ramp_id'],
+    }
+    job_id, _ = confirm_and_schedule_job(new_job_request, new_slot)
+    audit_entry['Action'] = "Rescheduled"
+    audit_entry['New Date'] = new_slot['date'].strftime('%Y-%m-%d')
+    audit_entry['New Time'] = new_slot['time'].strftime('%H:%M')
+    audit_entry['New Truck'] = new_slot['truck_id']
+    audit_entry['New Ramp'] = get_ramp_details(new_slot['ramp_id']).ramp_name
+    return True, audit_entry
+
+# Function to show audit log in AgGrid
+def display_cancel_audit_log():
+    if not CANCELED_JOBS_AUDIT_LOG:
+        st.warning("No jobs have been canceled or rescheduled yet.")
+        return
+
+    df = pd.DataFrame(CANCELED_JOBS_AUDIT_LOG)
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_pagination(paginationAutoPageSize=True)
+    gb.configure_default_column(groupable=True, value=True, enableRowGroup=True, editable=False)
+    gb.configure_column("Timestamp", hide=False)
+    gb.configure_side_bar()
+    gb.configure_auto_height(autoHeight=True)
+    gb.configure_grid_options(domLayout='normal')
+    gridOptions = gb.build()
+
+    st.subheader("📜 List of Canceled / Rescheduled Jobs")
+    AgGrid(df, gridOptions=gridOptions, enable_enterprise_modules=True, height=300, theme="alpine")
 
 
 # --- Session State Initialization ---
@@ -515,7 +594,24 @@ elif app_mode == "Reporting":
                     mime="application/pdf"
                 )
 
-    
+# --- Canceled / Rescheduled Jobs Audit Table ---
+st.subheader("Canceled & Rescheduled Jobs")
+
+if CANCELED_JOBS_AUDIT_LOG:
+    audit_df = pd.DataFrame(CANCELED_JOBS_AUDIT_LOG)
+    gb = GridOptionsBuilder.from_dataframe(audit_df)
+    gb.configure_pagination()
+    gb.configure_default_column(editable=False, groupable=True)
+    gb.configure_column("Customer Name", header_name="Customer Name", pinned="left")
+    gb.configure_side_bar()
+    gb.configure_selection("single")
+    gb.configure_grid_options(domLayout='normal')
+    gb.configure_columns(audit_df.columns, autoHeight=True, resizable=True, wrapText=True)
+    grid_options = gb.build()
+
+    AgGrid(audit_df, gridOptions=grid_options, height=400, theme='streamlit')
+else:
+    st.info("No canceled or rescheduled jobs yet.")
 
 # --- PAGE 3: SETTINGS ---
 elif app_mode == "Settings":
