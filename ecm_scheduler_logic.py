@@ -265,6 +265,20 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         if temp_dt.minute % 30 != 0:
                             p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
                         if p_time >= p_end: break
+                        
+                        
+                        # ⬇️ INSERT DEBUG PRINT HERE
+                        print(f"[DEBUG] Evaluating slot:")
+                        print(f"    Date: {d}, Time: {p_time}")
+                        print(f"    Truck: {truck.truck_id}")
+                        print(f"    Duration: {duration} hr")
+                        print(f"    Window: {p_start_time} to {p_end_time}")
+                        print(f"    Ramp: {ramp_to_check.ramp_name if ramp_to_check else 'N/A'}")
+
+                        # ⬇️ Original line follows immediately
+                        
+                        
+                        
                         slot = _check_and_create_slot_detail(forced_date, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
                         if slot:
                             potential_slots.append(slot)
