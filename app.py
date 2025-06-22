@@ -1,3 +1,4 @@
+import uuid
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
@@ -350,7 +351,7 @@ if app_mode == "Schedule New Boat":
     # Display confirmation after rerun (TOP LEVEL)
     if st.session_state.get("confirmation_message") and not st.session_state.get("selected_slot"):
         st.success(f"✅ {st.session_state.confirmation_message}")
-        if st.button("Schedule Another Job", key="schedule_another"):
+        if st.button("Schedule Another Job", key=f"schedule_another_{uuid.uuid4()}"):
             st.session_state.pop("confirmation_message", None)
             st.rerun()
     
@@ -483,7 +484,7 @@ if app_mode == "Schedule New Boat":
     
     elif st.session_state.get("confirmation_message"):
         st.success(f"✅ {st.session_state.confirmation_message}")
-        if st.button("Schedule Another Job", key="schedule_another"):
+        if st.button("Schedule Another Job", key=f"schedule_another_{uuid.uuid4()}"):
             st.session_state.pop("confirmation_message", None)
             st.rerun()
     
