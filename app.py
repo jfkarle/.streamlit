@@ -462,24 +462,24 @@ if app_mode == "Schedule New Boat":
         st.markdown("---")
     
         elif st.session_state.selected_slot:
-        # Confirmation Screen Logic
-        slot = st.session_state.selected_slot
-        st.subheader("Preview & Confirm Selection:")
-        st.success(f"You are considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
-        if slot.get('j17_needed'):
-            st.write("J17 Crane will also be assigned.")
-    
-        if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
-            new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
-    
-            if new_job_id:
-                st.session_state.confirmation_message = message
-                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
-                    st.session_state.pop(key, None)
-                st.rerun()
-            else:
-                st.session_state.pop("confirmation_message", None)
-                st.error(f"❌ Failed to confirm job: {message}")
+            # Confirmation Screen Logic
+            slot = st.session_state.selected_slot
+            st.subheader("Preview & Confirm Selection:")
+            st.success(f"You are considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
+            if slot.get('j17_needed'):
+                st.write("J17 Crane will also be assigned.")
+        
+            if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
+                new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
+        
+                if new_job_id:
+                    st.session_state.confirmation_message = message
+                    for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
+                        st.session_state.pop(key, None)
+                    st.rerun()
+                else:
+                    st.session_state.pop("confirmation_message", None)
+                    st.error(f"❌ Failed to confirm job: {message}")
     
         elif st.session_state.get("confirmation_message"):
             # Display confirmation only after successful scheduling
