@@ -8,17 +8,34 @@ import requests
 # --- Utility Functions ---
 
 def fetch_noaa_tides(station_id, date_to_check):
+    import streamlit as st  # Ensure this is at top of your file if not already present
     date_str = date_to_check.strftime("%Y%m%d")
     base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-    params = {"product":"predictions", "application":"ecm-boat-scheduler", "begin_date":date_str, "end_date":date_str, "datum":"MLLW", "station":station_id, "time_zone":"lst_ldt", "units":"english", "interval":"hilo", "format":"json"}
+    params = {
+        "product": "predictions",
+        "application": "ecm-boat-scheduler",
+        "begin_date": date_str,
+        "end_date": date_str,
+        "datum": "MLLW",
+        "station": station_id,
+        "time_zone": "lst_ldt",
+        "units": "english",
+        "interval": "hilo",
+        "format": "json"
+    }
     try:
         resp = requests.get(base, params=params, timeout=10)
+        if st.session_state.get("debug_mode", False):
+            st.write("NOAA Request URL:", resp.url)
         resp.raise_for_status()
-        return [{'type': i["type"].upper(), 'time': datetime.datetime.strptime(i["t"], "%Y-%m-%d %H:%M").time()} for i in resp.json().get("predictions", [])]
+        data = resp.json().get("predictions", [])
+        if not data:
+            st.warning(f"⚠️ NOAA returned no tide data for station {station_id}. Check if the station is offline or invalid.")
+            return []
+        return [{'type': i["type"].upper(), 'time': datetime.datetime.strptime(i["t"], "%Y-%m-%d %H:%M").time()} for i in data]
     except Exception as e:
-        print(f"ERROR fetching tides for station {station_id}: {e}")
+        st.error(f"⚠️ NOAA tide fetch failed for station {station_id}: {e}")
         return []
-
 def format_time_for_display(time_obj):
     """Formats a time object for display, e.g., 8:00 AM."""
     if not isinstance(time_obj, datetime.time):
