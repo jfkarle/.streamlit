@@ -29,10 +29,16 @@ def format_time_for_display(time_obj):
 
 
 def get_concise_tide_rule(ramp, boat):
-    if ramp.tide_calculation_method == "AnyTide": return "Any Tide"
-    if ramp.tide_offset_hours1: return f"{float(ramp.tide_offset_hours1):g}hrs +/- HT"
+    if ramp.tide_calculation_method == "AnyTide":
+        return "Any Tide"
+    if ramp.tide_calculation_method == "AnyTideWithDraftRule":
+        if boat.draft_ft is not None and boat.draft_ft < 5.0:
+            return "Any Tide (<5' Draft)"
+        return "3 hrs +/- High Tide (≥5' Draft)"
+    if ramp.tide_offset_hours1:
+        return f"{float(ramp.tide_offset_hours1):g} hrs +/- HT"
     return "Tide Rule N/A"
-
+    
 def is_j17_at_ramp(check_date, ramp_id):
     if not ramp_id: return False
     return ramp_id in crane_daily_status.get(check_date.strftime('%Y-%m-%d'), {}).get('ramps_visited', set())
@@ -133,10 +139,21 @@ def get_ecm_operating_hours(date):
     return None
 
 def calculate_ramp_windows(ramp, boat, tide_data, date):
-    if ramp.tide_calculation_method == "AnyTide": return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
-    if not tide_data: return []
+    if ramp.tide_calculation_method == "AnyTide":
+        return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
+    if ramp.tide_calculation_method == "AnyTideWithDraftRule":
+        if boat.draft_ft is not None and boat.draft_ft < 5.0:
+            return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
+        offset = datetime.timedelta(hours=3)
+        return [{'start_time': (datetime.datetime.combine(date, t['time']) - offset).time(),
+                 'end_time': (datetime.datetime.combine(date, t['time']) + offset).time()}
+                for t in tide_data if t['type'] == 'H']
+    if not tide_data:
+        return []
     offset = datetime.timedelta(hours=float(ramp.tide_offset_hours1 or 0))
-    return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(), 'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()} for t in tide_data if t['type']=='H']
+    return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(), 
+             'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()} 
+            for t in tide_data if t['type']=='H']
 
 def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
     ecm_hours = get_ecm_operating_hours(date_to_check)
