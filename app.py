@@ -1,4 +1,3 @@
-import uuid
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
@@ -242,7 +241,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 # - Audit log with change tracking
 # - AgGrid reporting with column filtering, hiding, grouping
 
-from datetime import datetime as dt
+from datetime import datetime
 from st_aggrid import AgGrid, GridOptionsBuilder
 
 CANCELED_JOBS_AUDIT_LOG = []
@@ -351,7 +350,7 @@ if app_mode == "Schedule New Boat":
     # Display confirmation after rerun (TOP LEVEL)
     if st.session_state.get("confirmation_message") and not st.session_state.get("selected_slot"):
         st.success(f"✅ {st.session_state.confirmation_message}")
-        if st.button("Schedule Another Job", key=f"schedule_another_{uuid.uuid4()}"):
+        if st.button("Schedule Another Job", key="schedule_another"):
             st.session_state.pop("confirmation_message", None)
             st.rerun()
     
@@ -389,7 +388,7 @@ if app_mode == "Schedule New Boat":
             st.sidebar.markdown("---")
 
             service_type_input = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
-            default_date = dt.now().date() + datetime.timedelta(days=7)
+            default_date = ecm.TODAY_FOR_SIMULATION + datetime.timedelta(days=7)
             requested_date_input = st.sidebar.date_input("Requested Date:", value=default_date)
             selected_ramp_id_input = None
             if service_type_input in ["Launch", "Haul"]:
@@ -435,14 +434,15 @@ if app_mode == "Schedule New Boat":
     # --- Main Area Display Logic ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
-    
+        
+        # This is the full, detailed card display logic
         cols = st.columns(3)
         for i, slot in enumerate(st.session_state.found_slots):
             with cols[i % 3]:
                 with st.container(border=True):
                     if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
                         st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
-    
+                    
                     date_str = slot['date'].strftime('%a, %b %d, %Y')
                     time_str = ecm.format_time_for_display(slot.get('time'))
                     truck_id = slot.get('truck_id', 'N/A')
@@ -450,44 +450,42 @@ if app_mode == "Schedule New Boat":
                     ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
                     ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
                     tide_display_str = format_tides_for_display(slot, ecm_hours)
-    
+                    
                     st.markdown(f"**Date:** {date_str}")
                     if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
                     if tide_display_str: st.markdown(tide_display_str)
                     st.markdown(f"**Time:** {time_str}")
                     st.markdown(f"**Truck:** {truck_id}")
+                    # If J17 is needed, display it here explicitly.
                     if slot.get('j17_needed'):
-                        st.markdown("**Crane:** J17")
+                        st.markdown(f"**Crane:** J17")
                     st.markdown(f"**Ramp:** {ramp_name}")
                     st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
         st.markdown("---")
-    
+
     elif st.session_state.selected_slot:
         # Confirmation Screen Logic
         slot = st.session_state.selected_slot
         st.subheader("Preview & Confirm Selection:")
         st.success(f"You are considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
-        if slot.get('j17_needed'):
-            st.write("J17 Crane will also be assigned.")
-    
+        if slot.get('j17_needed'): st.write("J17 Crane will also be assigned.")
         if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
             new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
-    
             if new_job_id:
                 st.session_state.confirmation_message = message
                 for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
                     st.session_state.pop(key, None)
                 st.rerun()
-            else:
+        # Display confirmation only if no slot is currently selected
+        if st.session_state.get("confirmation_message") and not st.session_state.get("selected_slot"):
+            st.success(f"✅ {st.session_state.confirmation_message}")
+            if st.button("Schedule Another Job", key="schedule_another"):
                 st.session_state.pop("confirmation_message", None)
-                st.error(f"❌ Failed to confirm job: {message}")
-    
-    elif st.session_state.get("confirmation_message"):
-        st.success(f"✅ {st.session_state.confirmation_message}")
-        if st.button("Schedule Another Job", key=f"schedule_another_{uuid.uuid4()}"):
-            st.session_state.pop("confirmation_message", None)
-            st.rerun()
-    
+                st.rerun()
+            
+            else:
+                st.error(f"Failed to confirm job: {message}")
+
     elif st.session_state.get('current_job_request') and not st.session_state.found_slots:
         if st.session_state.info_message:
             st.warning(st.session_state.info_message)
