@@ -388,7 +388,7 @@ if app_mode == "Schedule New Boat":
             st.sidebar.markdown("---")
 
             service_type_input = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
-            default_date = ecm.TODAY_FOR_SIMULATION + datetime.timedelta(days=7)
+            default_date = datetime.date.today() + datetime.timedelta(days=7)
             requested_date_input = st.sidebar.date_input("Requested Date:", value=default_date)
             selected_ramp_id_input = None
             if service_type_input in ["Launch", "Haul"]:
