@@ -462,29 +462,32 @@ if app_mode == "Schedule New Boat":
         st.markdown("---")
     
     elif st.session_state.selected_slot:
-        # Confirmation Screen Logic
-        slot = st.session_state.selected_slot
-        st.subheader("Preview & Confirm Selection:")
-        st.success(f"You are considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
-        if slot.get('j17_needed'):
-            st.write("J17 Crane will also be assigned.")
-    
-        if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
-            new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
-    
-            if new_job_id:
-                st.session_state.confirmation_message = message
-                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
-                    st.session_state.pop(key, None)
-                st.rerun()
-            else:
-                st.session_state.pop("confirmation_message", None)
-                st.error(f"❌ Failed to confirm job: {message}")
-    
-    elif st.session_state.get("confirmation_message"):
-        st.success(f"✅ {st.session_state.confirmation_message}")
-        if st.button("Schedule Another Job", key="schedule_another"):
+    # Confirmation Screen Logic
+    slot = st.session_state.selected_slot
+    st.subheader("Preview & Confirm Selection:")
+    st.success(f"You are considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
+    if slot.get('j17_needed'):
+        st.write("J17 Crane will also be assigned.")
+
+    if st.button("CONFIRM THIS JOB", key="confirm_final_job"):
+        new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
+
+        if new_job_id:
+            st.session_state.confirmation_message = message
+            st.session_state.confirmed_job_id = new_job_id  # Save job ID for success block
+            for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
+                st.session_state.pop(key, None)
+            st.rerun()
+        else:
             st.session_state.pop("confirmation_message", None)
+            st.error(f"❌ Failed to confirm job: {message}")
+
+    elif st.session_state.get("confirmation_message") and st.session_state.get("confirmed_job_id"):
+        # Display confirmation only after successful scheduling
+        st.success(f"✅ {st.session_state.confirmation_message}")
+        if st.button("Schedule Another Job", key="schedule_another_success"):
+            st.session_state.pop("confirmation_message", None)
+            st.session_state.pop("confirmed_job_id", None)
             st.rerun()
     
     elif st.session_state.get('current_job_request') and not st.session_state.found_slots:
