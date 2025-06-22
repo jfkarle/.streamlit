@@ -594,26 +594,3 @@ elif app_mode == "Reporting":
                     mime="application/pdf"
                 )
 
-# --- Canceled / Rescheduled Jobs Audit Table ---
-st.subheader("Canceled & Rescheduled Jobs")
-
-if CANCELED_JOBS_AUDIT_LOG:
-    audit_df = pd.DataFrame(CANCELED_JOBS_AUDIT_LOG)
-    gb = GridOptionsBuilder.from_dataframe(audit_df)
-    gb.configure_pagination()
-    gb.configure_default_column(editable=False, groupable=True)
-    gb.configure_column("Customer Name", header_name="Customer Name", pinned="left")
-    gb.configure_side_bar()
-    gb.configure_selection("single")
-    gb.configure_grid_options(domLayout='normal')
-    gb.configure_columns(audit_df.columns, autoHeight=True, resizable=True, wrapText=True)
-    grid_options = gb.build()
-
-    AgGrid(audit_df, gridOptions=grid_options, height=400, theme='streamlit')
-else:
-    st.info("No canceled or rescheduled jobs yet.")
-
-# --- PAGE 3: SETTINGS ---
-elif app_mode == "Settings":
-    st.header("Application Settings")
-    st.write("This section is under construction.")
