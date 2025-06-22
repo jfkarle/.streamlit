@@ -17,6 +17,8 @@ def fetch_noaa_tides(station_id, date_to_check):
         return [{'type': i["type"].upper(), 'time': datetime.datetime.strptime(i["t"], "%Y-%m-%d %H:%M").time()} for i in resp.json().get("predictions", [])]
     except Exception as e:
         print(f"ERROR fetching tides for station {station_id}: {e}")
+        
+        st.warning(f"Tide data fetch failed or station ID '{station_id}' is invalid or offline.")
         return []
 
 def format_time_for_display(time_obj):
@@ -481,3 +483,57 @@ def confirm_and_schedule_job(original_request, selected_slot):
             
     # 7. Return success message
     return new_job.job_id, f"SUCCESS: Job {new_job.job_id} for {customer.customer_name} scheduled."
+
+
+
+from datetime import datetime
+from st_aggrid import AgGrid, GridOptionsBuilder
+
+CANCELED_JOBS_AUDIT_LOG = []
+
+def cancel_job_by_customer_name(customer_name):
+    job_to_cancel = None
+    for job in SCHEDULED_JOBS:
+        customer = get_customer_details(job.customer_id)
+        if customer and customer.customer_name.lower() == customer_name.lower():
+            job_to_cancel = job
+            break
+    if job_to_cancel:
+        audit_entry = {
+            "Customer": customer.customer_name,
+            "Original Date": job_to_cancel.scheduled_start_datetime.strftime("%Y-%m-%d"),
+            "Original Time": job_to_cancel.scheduled_start_datetime.strftime("%H:%M"),
+            "Original Truck": job_to_cancel.assigned_hauling_truck_id,
+            "Original Ramp": get_ramp_details(job_to_cancel.pickup_ramp_id or job_to_cancel.dropoff_ramp_id).ramp_name,
+            "Action": "Canceled",
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        CANCELED_JOBS_AUDIT_LOG.append(audit_entry)
+        SCHEDULED_JOBS.remove(job_to_cancel)
+        return True, audit_entry
+    return False, None
+
+def reschedule_customer(customer_name, new_slot):
+    canceled, audit_entry = cancel_job_by_customer_name(customer_name)
+    if not canceled:
+        return False, "Customer not found."
+
+    customer = next((c for c in LOADED_CUSTOMERS.values() if c.customer_name.lower() == customer_name.lower()), None)
+    boat = next((b for b in LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
+    if not customer or not boat:
+        return False, "Customer or boat not found."
+
+    new_job_request = {
+        'customer_id': customer.customer_id,
+        'boat_id': boat.boat_id,
+        'service_type': "Launch",
+        'requested_date_str': new_slot['date'].strftime('%Y-%m-%d'),
+        'selected_ramp_id': new_slot['ramp_id'],
+    }
+    job_id, _ = confirm_and_schedule_job(new_job_request, new_slot)
+    audit_entry['Action'] = "Rescheduled"
+    audit_entry['New Date'] = new_slot['date'].strftime('%Y-%m-%d')
+    audit_entry['New Time'] = new_slot['time'].strftime('%H:%M')
+    audit_entry['New Truck'] = new_slot['truck_id']
+    audit_entry['New Ramp'] = get_ramp_details(new_slot['ramp_id']).ramp_name
+    return True, audit_entry
