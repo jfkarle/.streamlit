@@ -241,7 +241,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 # - Audit log with change tracking
 # - AgGrid reporting with column filtering, hiding, grouping
 
-from datetime import datetime
+from datetime import datetime as dt
 from st_aggrid import AgGrid, GridOptionsBuilder
 
 CANCELED_JOBS_AUDIT_LOG = []
@@ -388,7 +388,7 @@ if app_mode == "Schedule New Boat":
             st.sidebar.markdown("---")
 
             service_type_input = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
-            default_date = datetime.date.today() + datetime.timedelta(days=7)
+            default_date = dt.now().date() + datetime.timedelta(days=7)
             requested_date_input = st.sidebar.date_input("Requested Date:", value=default_date)
             selected_ramp_id_input = None
             if service_type_input in ["Launch", "Haul"]:
