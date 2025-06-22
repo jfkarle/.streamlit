@@ -461,7 +461,7 @@ if app_mode == "Schedule New Boat":
                     st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
         st.markdown("---")
     
-    elif st.session_state.selected_slot:
+        elif st.session_state.selected_slot:
         # Confirmation Screen Logic
         slot = st.session_state.selected_slot
         st.subheader("Preview & Confirm Selection:")
@@ -481,12 +481,13 @@ if app_mode == "Schedule New Boat":
                 st.session_state.pop("confirmation_message", None)
                 st.error(f"❌ Failed to confirm job: {message}")
     
-    elif st.session_state.get("confirmation_message"):
-        st.success(f"✅ {st.session_state.confirmation_message}")
-        if st.button("Schedule Another Job", key="schedule_another"):
-            st.session_state.pop("confirmation_message", None)
-            st.rerun()
-    
+        elif st.session_state.get("confirmation_message"):
+            # Display confirmation only after successful scheduling
+            st.success(f"✅ {st.session_state.confirmation_message}")
+            if st.button("Schedule Another Job", key="schedule_another_unique"):
+                st.session_state.pop("confirmation_message", None)
+                st.rerun()
+        
     elif st.session_state.get('current_job_request') and not st.session_state.found_slots:
         if st.session_state.info_message:
             st.warning(st.session_state.info_message)
