@@ -2,6 +2,7 @@ import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
 import pandas as pd
+import csv
 
 st.set_page_config(layout="wide")
 
@@ -383,6 +384,69 @@ if app_mode == "Schedule New Boat":
         customer_boats = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == selected_customer_obj.customer_id]
         if customer_boats:
             selected_boat_obj = customer_boats[0]
+
+### Check for complete customer record boat length, draft, type, preferred ramp etc
+
+def validate_and_correct_customer_data(customer, boat):
+    missing_fields = []
+    
+    if not boat.boat_type:
+        missing_fields.append("Boat Type")
+    if not boat.boat_length or boat.boat_length <= 0:
+        missing_fields.append("Boat Length")
+    if boat.draft_ft is None or boat.draft_ft <= 0:
+        missing_fields.append("Boat Draft")
+    if not customer.preferred_truck_id:
+        missing_fields.append("Preferred Truck")
+    if customer.is_ecm_customer not in [True, False]:
+        missing_fields.append("ECM Boat Flag")
+
+    if not missing_fields:
+        return True  # All good
+
+    st.warning(f"Missing Required Info: {', '.join(missing_fields)}")
+
+    with st.form("edit_customer_data_form"):
+        new_boat_type = st.selectbox("Boat Type", ["Powerboat", "Sailboat MT", "Sailboat DT"], index=0)
+        new_length = st.number_input("Boat Length (ft)", min_value=1.0, value=boat.boat_length or 20.0)
+        new_draft = st.number_input("Boat Draft (ft)", min_value=0.5, value=boat.draft_ft or 2.0)
+        new_ecm_flag = st.radio("Is ECM Boat?", [True, False], index=0)
+        new_truck = st.selectbox("Preferred Truck", list(ecm.ECM_TRUCKS.keys()))
+        submitted = st.form_submit_button("Update & Continue")
+
+    if submitted:
+        # Update in memory
+        boat.boat_type = new_boat_type
+        boat.boat_length = new_length
+        boat.draft_ft = new_draft
+        customer.is_ecm_customer = new_ecm_flag
+        customer.preferred_truck_id = new_truck
+
+        # Rewrite CSV
+        updated_rows = []
+        with open("ECM Sample Cust.csv", "r", encoding='utf-8-sig') as infile:
+            reader = csv.DictReader(infile)
+            for row in reader:
+                if row["customer_name"] == customer.customer_name:
+                    row["boat_type"] = new_boat_type
+                    row["boat_length"] = str(new_length)
+                    row["boat_draft"] = str(new_draft)
+                    row["is_ecm_boat"] = "TRUE" if new_ecm_flag else "FALSE"
+                    row["preferred_truck"] = new_truck
+                updated_rows.append(row)
+
+        with open("ECM Sample Cust.csv", "w", newline='', encoding='utf-8-sig') as outfile:
+            writer = csv.DictWriter(outfile, fieldnames=updated_rows[0].keys())
+            writer.writeheader()
+            writer.writerows(updated_rows)
+
+        st.success("Customer record updated. Re-running scheduling search...")
+        st.rerun()
+
+    return False  # Still waiting on form submit
+
+### END Check for complete customer record boat length, draft, type, preferred ramp etc
+
             st.sidebar.markdown("---")
             st.sidebar.subheader("Selected Customer & Boat:")
             st.sidebar.write(f"**Customer:** {selected_customer_obj.customer_name}")
@@ -404,8 +468,6 @@ if app_mode == "Schedule New Boat":
                 selected_ramp_id_input = st.sidebar.selectbox("Select Ramp:", ramp_options)
             
             st.sidebar.markdown("---")
-
-            # --- START OF MODIFIED BLOCK ---
             
             # 1. ADD CHECKBOXES FOR RELAXATION OPTIONS
             relax_truck_input = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
