@@ -462,17 +462,25 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         if requested_slot:
             potential_slots.append(requested_slot)
         potential_slots += slots_before + slots_after
+        
         if not potential_slots:
             return [], "No suitable slots found.", [], was_forced
+        
+        # Deduplicate by (date, time, truck_id)
+        seen = set()
+        unique_slots = []
+        for slot in potential_slots:
+            key = (slot['date'], slot['time'], slot['truck_id'])
+            if key not in seen:
+                seen.add(key)
+                unique_slots.append(slot)
+        potential_slots = unique_slots
+        
+        # Sort and limit
         potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
         top_slots = potential_slots[:6]
-        expl = f"Found {len(top_slots)} available slots."
-    if was_forced and forced_date:
-        expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
-    elif top_slots:
-        expl = f"Found {len(top_slots)} available slots starting from {top_slots[0]['date'].strftime('%A, %b %d')}."
-    
-    return top_slots, expl, [], was_forced
+
+expl = f"Found {len(top_slots)} available slots."    
 
 
 
