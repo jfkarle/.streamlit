@@ -289,7 +289,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         
                         # ⬇️ INSERT DEBUG PRINT HERE
                         print(f"[DEBUG] Evaluating slot:")
-                        print(f"    Date: {d}, Time: {p_time}")
+                        print(f"    Date: {forced_date}, Time: {p_time}")
                         print(f"    Truck: {truck.truck_id}")
                         print(f"    Duration: {duration} hr")
                         print(f"    Window: {p_start_time} to {p_end_time}")
