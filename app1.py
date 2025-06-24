@@ -501,9 +501,8 @@ def validate_and_correct_customer_data(customer, boat):
                 st.session_state.selected_slot, st.session_state.was_forced_search = None, was_forced
                 st.rerun()
             # --- END OF MODIFIED BLOCK ---
-
-        else:
-            st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
+    else:
+        st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
 
 # --- Main Area Display Logic ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
