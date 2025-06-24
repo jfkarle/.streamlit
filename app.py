@@ -384,6 +384,10 @@ if app_mode == "Schedule New Boat":
         customer_boats = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == selected_customer_obj.customer_id]
         if customer_boats:
             selected_boat_obj = customer_boats[0]
+            # Validate required fields before proceeding
+            is_valid = validate_and_correct_customer_data(selected_customer_obj, selected_boat_obj)
+            if not is_valid:
+                st.stop()
 
 ### Check for complete customer record boat length, draft, type, preferred ramp etc
 
@@ -404,7 +408,7 @@ def validate_and_correct_customer_data(customer, boat):
     if not missing_fields:
         return True  # All good
 
-    st.warning(f"Missing Required Info: {', '.join(missing_fields)}")
+    st.warning("🚨 The following fields are missing: " + ", ".join([f"**{field}**" for field in missing_fields]))
 
     with st.form("edit_customer_data_form"):
         new_boat_type = st.selectbox("Boat Type", ["Powerboat", "Sailboat MT", "Sailboat DT"], index=0)
