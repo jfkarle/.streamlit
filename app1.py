@@ -378,7 +378,7 @@ if app_mode == "Schedule New Boat":
             selected_customer_obj = customer_options.get(chosen_name)
         else:
             st.sidebar.warning("No customer found.")
-    
+
     if selected_customer_obj:
         st.sidebar.success(f"Selected: {selected_customer_obj.customer_name}")
         customer_boats = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == selected_customer_obj.customer_id]
@@ -388,6 +388,8 @@ if app_mode == "Schedule New Boat":
             is_valid = validate_and_correct_customer_data(selected_customer_obj, selected_boat_obj)
             if not is_valid:
                 st.stop()
+        else:
+            st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
 
 ### Check for complete customer record boat length, draft, type, preferred ramp etc
 
