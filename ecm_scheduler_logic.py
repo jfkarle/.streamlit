@@ -211,7 +211,9 @@ def check_truck_availability(truck_id, start_dt, end_dt):
             if start_dt < job_end and end_dt > job_start:
                 print(f"[DEBUG] Conflict for truck {truck_id}:")
                 print(f"    Requested window: {start_dt.strftime('%Y-%m-%d %I:%M %p')} to {end_dt.strftime('%I:%M %p')}")
-                print(f"    Conflicts with: {job['customer_name']}, from {job_start.strftime('%I:%M %p')} to {job_end.strftime('%I:%M %p')} on {job_start.date()}")
+                customer = get_customer_details(job.customer_id)
+                customer_name = customer.customer_name if customer else "Unknown"
+                print(f"    Conflicts with: {customer_name}, from {job_start.strftime('%I:%M %p')} to {job_end.strftime('%I:%M %p')} on {job_start.date()}")
                 return False
 
     return True
