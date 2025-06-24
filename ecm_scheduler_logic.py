@@ -117,12 +117,19 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
                     home_citystatezip
                 )
 
+                try:
+                    boat_length = float(row.get('boat_length', '').strip())
+                    boat_draft = float(row.get('boat_draft', '').strip() or 0)
+                except ValueError:
+                    print(f"Skipping row {i} due to invalid boat_length or boat_draft")
+                    continue
+                
                 LOADED_BOATS[boat_id] = Boat(
                     boat_id,
                     cust_id,
                     row['boat_type'],
-                    float(row['boat_length']),
-                    float(row.get('boat_draft') or 0)
+                    boat_length,
+                    boat_draft
                 )
         return True
     except FileNotFoundError:
