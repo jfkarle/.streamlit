@@ -1,13 +1,13 @@
-import streamlit as st
-import datetime
-import ecm_scheduler_logic as ecm
-import pandas as pd
-import csv
+    import streamlit as st
+    import datetime
+    import ecm_scheduler_logic as ecm
+    import pandas as pd
+    import csv
 
-st.set_page_config(layout="wide")
+    st.set_page_config(layout="wide")
 
-# --- Helper Functions ---
-def format_tides_for_display(slot, ecm_hours):
+    # --- Helper Functions ---
+    def format_tides_for_display(slot, ecm_hours):
     tide_times = slot.get('high_tide_times', [])
     if not tide_times: return ""
     if not ecm_hours or not ecm_hours.get('open'):
@@ -29,13 +29,13 @@ def format_tides_for_display(slot, ecm_hours):
     secondary_tides_str = " / ".join([ecm.format_time_for_display(t) for t in sorted_tides[1:]])
     return f"**HIGH TIDE: {primary_tide_str}** (and {secondary_tides_str.lower()})"
 
-def handle_slot_selection(slot_data):
+    def handle_slot_selection(slot_data):
     st.session_state.selected_slot = slot_data
 
-from io import BytesIO
-from PyPDF2 import PdfMerger
+    from io import BytesIO
+    from PyPDF2 import PdfMerger
 
-def generate_multi_day_planner_pdf(start_date, end_date, jobs):
+    def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     merger = PdfMerger()
     for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
         jobs_for_day = [j for j in jobs if j.scheduled_start_datetime.date() == single_date]
@@ -47,18 +47,18 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     merger.close()
     output.seek(0)
     return output
-    
 
-########################################################################################
-### BEGIN  PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
-########################################################################################
 
-from io import BytesIO
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
+    ########################################################################################
+    ### BEGIN  PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
+    ########################################################################################
 
-def _abbreviate_town(address):
+    from io import BytesIO
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+
+    def _abbreviate_town(address):
     if not address: return ""
     address = address.lower()
     for town, abbr in {
@@ -69,7 +69,7 @@ def _abbreviate_town(address):
         if town in address: return abbr
     return address.title().split(',')[0]
 
-def generate_daily_planner_pdf(report_date, jobs_for_day):
+    def generate_daily_planner_pdf(report_date, jobs_for_day):
     from io import BytesIO
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
@@ -77,7 +77,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     import datetime
 
     row_height = 30  # points per row
-    
+
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
@@ -200,15 +200,15 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         col_index_crane = column_map['J17']
         column_start_x_crane = margin + time_col_width + col_index_crane * col_width
         text_center_x_crane = column_start_x_crane + col_width / 2
-    
+
         # Set fonts and write LASTNAME
         c.setFont("Helvetica-Bold", 8)
         c.drawCentredString(text_center_x_crane, line1_y_text, customer_last_name)
-    
+
         # Write DEST TOWN
         c.setFont("Helvetica", 7)
         c.drawCentredString(text_center_x_crane, line2_y_text, dest_abbr)
-    
+
         # If Sailboat MT, write TRANSPORT
         if 'mt' in boat_type.lower():
             c.drawCentredString(text_center_x_crane, line3_y_text, "TRANSPORT")
@@ -217,12 +217,12 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         else:
             j17_duration = datetime.timedelta(minutes=60)
             y_bar_start_crane = line2_y_text - 15
-    
+
         # Compute crane end time
         crane_end_time = (datetime.datetime.combine(report_date, start_time) + j17_duration).time()
         crane_end_index = (crane_end_time.hour - 7) * 4 + crane_end_time.minute // 15
         y_crane_end = top_y - crane_end_index * row_height
-    
+
         # Draw vertical bar
         c.setLineWidth(2)
         c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_crane_end)
@@ -232,27 +232,27 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer.seek(0)
     return buffer
 
-########################################################################################
-### END PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
-########################################################################################
+    ########################################################################################
+    ### END PDF Page Generation Tool AFTER Helper function BEFORE Session State Init ###
+    ########################################################################################
 
-########################################################################################
-### BEGINI Cancel, Rebook
-########################################################################################
+    ########################################################################################
+    ### BEGINI Cancel, Rebook
+    ########################################################################################
 
-# This is the patched code that includes:
-# - Cancel by customer name
-# - Reschedule (rebook)
-# - Audit log with change tracking
-# - AgGrid reporting with column filtering, hiding, grouping
+    # This is the patched code that includes:
+    # - Cancel by customer name
+    # - Reschedule (rebook)
+    # - Audit log with change tracking
+    # - AgGrid reporting with column filtering, hiding, grouping
 
-from datetime import datetime
-from st_aggrid import AgGrid, GridOptionsBuilder
+    from datetime import datetime
+    from st_aggrid import AgGrid, GridOptionsBuilder
 
-CANCELED_JOBS_AUDIT_LOG = []
+    CANCELED_JOBS_AUDIT_LOG = []
 
-# Function to cancel a job by customer name
-def cancel_job_by_customer_name(customer_name):
+    # Function to cancel a job by customer name
+    def cancel_job_by_customer_name(customer_name):
     job_to_cancel = None
     for job in SCHEDULED_JOBS:
         customer = get_customer_details(job.customer_id)
@@ -274,8 +274,8 @@ def cancel_job_by_customer_name(customer_name):
         return True, audit_entry
     return False, None
 
-# Function to reschedule a customer to a new slot
-def reschedule_customer(customer_name, new_slot):
+    # Function to reschedule a customer to a new slot
+    def reschedule_customer(customer_name, new_slot):
     canceled, audit_entry = cancel_job_by_customer_name(customer_name)
     if not canceled:
         return False, "Customer not found."
@@ -301,8 +301,8 @@ def reschedule_customer(customer_name, new_slot):
     audit_entry['New Ramp'] = get_ramp_details(new_slot['ramp_id']).ramp_name
     return True, audit_entry
 
-# Function to show audit log in AgGrid
-def display_cancel_audit_log():
+    # Function to show audit log in AgGrid
+    def display_cancel_audit_log():
     if not CANCELED_JOBS_AUDIT_LOG:
         st.warning("No jobs have been canceled or rescheduled yet.")
         return
@@ -319,14 +319,14 @@ def display_cancel_audit_log():
 
     st.subheader("📜 List of Canceled / Rescheduled Jobs")
     AgGrid(df, gridOptions=gridOptions, enable_enterprise_modules=True, height=300, theme="alpine")
-    
-########################################################################################
-### END  Cancel, Rebook
-########################################################################################
+
+    ########################################################################################
+    ### END  Cancel, Rebook
+    ########################################################################################
 
 
-# --- Session State Initialization ---
-def initialize_session_state():
+    # --- Session State Initialization ---
+    def initialize_session_state():
     defaults = {
         'data_loaded': False, 'info_message': "", 'current_job_request': None,
         'found_slots': [], 'selected_slot': None, 'search_requested_date': None,
@@ -335,23 +335,23 @@ def initialize_session_state():
     for key, default_value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = default_value
-    
+
     if not st.session_state.data_loaded:
         if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"):
             st.session_state.data_loaded = True
         else:
             st.error("Failed to load customer and boat data.")
 
-# --- Main App Execution ---
-initialize_session_state()
-st.title("Marine Transportation")
+    # --- Main App Execution ---
+    initialize_session_state()
+    st.title("Marine Transportation")
 
-# --- NAVIGATION SIDEBAR ---
-st.sidebar.title("Navigation")
-app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
+    # --- NAVIGATION SIDEBAR ---
+    st.sidebar.title("Navigation")
+    app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
 
-# --- PAGE 1: SCHEDULER ---
-if app_mode == "Schedule New Boat":
+    # --- PAGE 1: SCHEDULER ---
+    if app_mode == "Schedule New Boat":
     if st.session_state.info_message:
         st.info(st.session_state.info_message)
         st.session_state.info_message = ""
@@ -362,7 +362,7 @@ if app_mode == "Schedule New Boat":
         if st.button("Schedule Another Job", key="schedule_another"):
             st.session_state.pop("confirmation_message", None)
             st.rerun()
-    
+
 
     st.sidebar.header("New Job Request")
     customer_name_search_input = st.sidebar.text_input("Enter Customer Name:", help="e.g., Olivia, James, Tho")
@@ -391,11 +391,11 @@ if app_mode == "Schedule New Boat":
         else:
             st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
 
-### Check for complete customer record boat length, draft, type, preferred ramp etc
+    ### Check for complete customer record boat length, draft, type, preferred ramp etc
 
-def validate_and_correct_customer_data(customer, boat):
+    def validate_and_correct_customer_data(customer, boat):
     missing_fields = []
-    
+
     if not boat.boat_type:
         missing_fields.append("Boat Type")
     if not boat.boat_length or boat.boat_length <= 0:
@@ -451,7 +451,7 @@ def validate_and_correct_customer_data(customer, boat):
 
     return False  # Still waiting on form submit
 
-### END Check for complete customer record boat length, draft, type, preferred ramp etc
+    ### END Check for complete customer record boat length, draft, type, preferred ramp etc
 
             st.sidebar.markdown("---")
             st.sidebar.subheader("Selected Customer & Boat:")
@@ -506,7 +506,7 @@ def validate_and_correct_customer_data(customer, boat):
     else:
         st.sidebar.error(f"No boat found for {selected_customer_obj.customer_name}.")
 
-# --- Main Area Display Logic ---
+    # --- Main Area Display Logic ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
         
@@ -565,8 +565,8 @@ def validate_and_correct_customer_data(customer, boat):
         if st.session_state.info_message:
             st.warning(st.session_state.info_message)
 
-# --- PAGE 2: REPORTING ---
-elif app_mode == "Reporting":
+    # --- PAGE 2: REPORTING ---
+    elif app_mode == "Reporting":
     st.header("Reporting Dashboard")
     st.info("This section is for viewing and exporting scheduled jobs.")
 
@@ -669,9 +669,9 @@ elif app_mode == "Reporting":
                     mime="application/pdf"
                 )
 
-    
 
-# --- PAGE 3: SETTINGS ---
-elif app_mode == "Settings":
+
+    # --- PAGE 3: SETTINGS ---
+    elif app_mode == "Settings":
     st.header("Application Settings")
     st.write("This section is under construction.")
