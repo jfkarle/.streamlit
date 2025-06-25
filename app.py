@@ -186,24 +186,31 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             col_index_crane = column_map['J17']
             column_start_x_crane = margin + time_col_width + col_index_crane * col_width
             text_center_x_crane = column_start_x_crane + col_width / 2
-
+        
             # Set fonts and write LASTNAME
             c.setFont("Helvetica-Bold", 8)
             c.drawCentredString(text_center_x_crane, line1_y_text, customer_last_name)
-
+        
             # Write DEST TOWN
             c.setFont("Helvetica", 7)
             c.drawCentredString(text_center_x_crane, line2_y_text, dest_abbr)
-
+        
             # If Sailboat MT, write TRANSPORT
-            crane_end_time = job.j17_busy_end_datetime.time() if job.j17_busy_end_datetime else end_time
-            y_bar_start_crane = line3_y_text - 5  # You can adjust this if needed for visual spacing
-
-            # Compute crane end time
-            crane_end_time = (datetime.datetime.combine(report_date, start_time) + j17_duration).time()
+            if 'mt' in boat_type.lower():
+                c.drawCentredString(text_center_x_crane, line3_y_text, "TRANSPORT")
+                y_bar_start_crane = line3_y_text - 5
+            else:
+                y_bar_start_crane = line2_y_text - 15
+        
+            # ✅ Use the real J17 busy end time
+            if hasattr(job, 'j17_busy_end_datetime') and job.j17_busy_end_datetime:
+                crane_end_time = job.j17_busy_end_datetime.time()
+            else:
+                crane_end_time = end_time  # Fallback in case data missing
+        
             crane_end_index = (crane_end_time.hour - 7) * 4 + crane_end_time.minute // 15
             y_crane_end = top_y - crane_end_index * row_height
-
+        
             # Draw vertical bar
             c.setLineWidth(2)
             c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_crane_end)
