@@ -257,12 +257,13 @@ def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date_obj, tr
                         p_time = (datetime.datetime.combine(datetime.date.min, p_time) + timedelta(minutes=30)).time()
     return grouping_slot
     
+
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, relax_ramp=False, ignore_forced_search=False, **kwargs):
     try:
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError:
         return [], "Error: Invalid date format.", [], False
-    
+
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
 
     for job in SCHEDULED_JOBS:
@@ -292,7 +293,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             if getattr(job, 'assigned_crane_truck_id', None) and (getattr(job, 'pickup_ramp_id', None) == selected_ramp_id or getattr(job, 'dropoff_ramp_id', None) == selected_ramp_id) and abs((requested_date_obj - job.scheduled_start_datetime.date()).days) <= 7:
                 forced_date = job.scheduled_start_datetime.date()
                 break
-    
+
     rules = BOOKING_RULES.get(boat.boat_type, {})
     duration = rules.get('truck_mins', 90) / 60.0
     j17_duration = rules.get('crane_mins', 0) / 60.0
@@ -324,13 +325,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             if requested_slot:
                 break
 
-            crane_grouping_slot = None
+        crane_grouping_slot = None
         if boat.boat_type.lower().startswith("sailboat") and ramp_obj:
             crane_grouping_slot = get_j17_crane_grouping_slot(
                 boat, customer, ramp_obj, requested_date_obj,
                 trucks, duration, j17_duration, service_type
             )
-    
+
     if not trucks:
         return [], "No suitable trucks for this boat.", [], False
 
@@ -352,32 +353,30 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         if temp_dt.minute % 30 != 0:
                             p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
                         if p_time >= p_end: break
-                        
-                        
-                        # ⬇️ INSERT DEBUG PRINT HERE
-                        print(f"[DEBUG] Evaluating slot:")
-                        print(f"    Date: {forced_date}, Time: {p_time}")
-                        print(f"    Truck: {truck.truck_id}")
-                        print(f"    Duration: {duration} hr")
-                        print(f"    Window: {p_start_time} to {p_end_time}")
-                        print(f"    Ramp: {ramp_to_check.ramp_name if ramp_to_check else 'N/A'}")
-
-                        # ⬇️ Original line follows immediately
-    
                         slot = _check_and_create_slot_detail(forced_date, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
                         if slot:
                             potential_slots.append(slot)
                             break
                         p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
-    
-        if not potential_slots:
-            # No slots found on forced date, fall back to normal non-forced search
-            forced_date = None
-            was_forced = False
 
+        if potential_slots:
+            seen = set()
+            unique_slots = []
+            for slot in potential_slots:
+                key = (slot['date'], slot['time'], slot['truck_id'])
+                if key not in seen:
+                    seen.add(key)
+                    unique_slots.append(slot)
+            potential_slots = unique_slots
 
+            potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
+            top_slots = potential_slots[:6]
+            expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
+            return top_slots, expl, [], was_forced
 
-
+    # Continue normal search...
+    # Rest of your 'else' search logic stays as-is below.
+## End "expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."" Correction 9:19 AM
         
         else:
             # Deduplicate forced date slots and return
