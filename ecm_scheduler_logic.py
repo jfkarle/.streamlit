@@ -374,7 +374,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             # No slots found on forced date, fall back to normal non-forced search
             forced_date = None
             was_forced = False
-            # Let the normal scheduling phases below continue (Before / After)
+
+
+
+
+        
         else:
             # Deduplicate forced date slots and return
             seen = set()
