@@ -30,7 +30,7 @@ def format_time_for_display(time_obj):
 
 def get_high_tide_times_for_ramp_and_date(ramp_obj, date_obj):
     """Return a list of high tide times (as datetime.time) for a given ramp and date."""
-    ramp_tide_station_id = ramp_obj.tide_station_id
+    ramp_tide_station_id = ramp_obj.noaa_station_id
     if not ramp_tide_station_id:
         return []
 
