@@ -556,6 +556,51 @@ elif app_mode == "Reporting":
                 )
 
 # --- PAGE 3: SETTINGS ---
+#OLD "HOld this space" code
+# elif app_mode == "Settings":
+    ### st.header("Application Settings")
+    ### st.write("This section is under construction.")
+
+
 elif app_mode == "Settings":
     st.header("Application Settings")
-    st.write("This section is under construction.")
+
+    # --- Cancel Job Section ---
+    st.subheader("Cancel a Scheduled Job")
+    customer_name_to_cancel = st.text_input("Enter Customer Name to Cancel Job:")
+    if st.button("Cancel Job"):
+        success, audit = cancel_job_by_customer_name(customer_name_to_cancel)
+        if success:
+            st.success(f"✅ Job for '{customer_name_to_cancel}' canceled successfully.")
+        else:
+            st.error(f"❌ Could not find a scheduled job for '{customer_name_to_cancel}'.")
+
+    st.markdown("---")
+
+    # --- Audit Log Display ---
+    st.subheader("Canceled / Rescheduled Jobs Audit Log")
+    display_cancel_audit_log()
+
+    st.markdown("---")
+
+    # --- Reschedule Job Section ---
+    st.subheader("Reschedule a Canceled Job")
+    customer_name_to_reschedule = st.text_input("Enter Customer Name to Reschedule:")
+
+    new_date = st.date_input("Select New Date for Job Reschedule:", value=datetime.date.today())
+    new_time = st.time_input("Select New Time for Job Reschedule:", value=datetime.time(9, 0))
+    new_truck = st.selectbox("Select Truck for Reschedule:", list(ecm.ECM_TRUCKS.keys()))
+    new_ramp_id = st.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys()))
+
+    if st.button("Reschedule Job"):
+        new_slot = {
+            'date': new_date,
+            'time': new_time,
+            'truck_id': new_truck,
+            'ramp_id': new_ramp_id
+        }
+        success, audit = reschedule_customer(customer_name_to_reschedule, new_slot)
+        if success:
+            st.success(f"✅ Job for '{customer_name_to_reschedule}' rescheduled successfully.")
+        else:
+            st.error(f"❌ Failed to reschedule job: {audit}")
