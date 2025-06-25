@@ -482,7 +482,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
         top_slots = potential_slots[:6]
         
-        # Explanation string (protect against NameError)
+        # Explanation string (avoid NameError)
         if was_forced and forced_date:
             expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
         elif top_slots:
