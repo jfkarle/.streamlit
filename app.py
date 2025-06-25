@@ -205,20 +205,13 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             # ✅ Use the real J17 busy end time
             if hasattr(job, 'j17_busy_end_datetime') and job.j17_busy_end_datetime:
                 crane_end_time = job.j17_busy_end_datetime.time()
-            else:
-                crane_end_time = end_time  # Fallback in case data missing
-        
-            crane_end_index = (crane_end_time.hour - 7) * 4 + crane_end_time.minute // 15
-            y_crane_end = top_y - crane_end_index * row_height
-        
-            # Draw vertical bar
-            c.setLineWidth(2)
-            c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_crane_end)
-            c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
-
-    c.save()
-    buffer.seek(0)
-    return buffer
+                y_crane_end = get_y_for_time(crane_end_time)
+                c.setLineWidth(2)
+                c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_crane_end)
+                c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
+                c.save()
+                buffer.seek(0)
+                return buffer
 
 
 # --- Cancel, Rebook, and Audit ---
