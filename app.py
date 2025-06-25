@@ -196,13 +196,8 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.drawCentredString(text_center_x_crane, line2_y_text, dest_abbr)
 
             # If Sailboat MT, write TRANSPORT
-            if 'mt' in boat_type.lower():
-                c.drawCentredString(text_center_x_crane, line3_y_text, "TRANSPORT")
-                j17_duration = datetime.timedelta(minutes=90)
-                y_bar_start_crane = line3_y_text - 5
-            else:
-                j17_duration = datetime.timedelta(minutes=60)
-                y_bar_start_crane = line2_y_text - 15
+            crane_end_time = job.j17_busy_end_datetime.time() if job.j17_busy_end_datetime else end_time
+            y_bar_start_crane = line3_y_text - 5  # You can adjust this if needed for visual spacing
 
             # Compute crane end time
             crane_end_time = (datetime.datetime.combine(report_date, start_time) + j17_duration).time()
