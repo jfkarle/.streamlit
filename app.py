@@ -291,6 +291,27 @@ def display_cancel_audit_log():
 
 # --- Session State Initialization ---
 
+
+def find_next_available_slot_after(date_obj, customer_id, boat_id, service_type, selected_ramp_id, relax_truck, relax_ramp):
+    import datetime as dt
+    max_search_days = 45
+    next_date = date_obj + dt.timedelta(days=1)
+    for _ in range(max_search_days):
+        date_str = next_date.strftime('%Y-%m-%d')
+        slots, message, _, _ = ecm.find_available_job_slots(
+            customer_id=customer_id,
+            boat_id=boat_id,
+            service_type=service_type,
+            requested_date_str=date_str,
+            selected_ramp_id=selected_ramp_id,
+            force_preferred_truck=(not relax_truck),
+            relax_ramp=relax_ramp,
+            ignore_forced_search=True
+        )
+        if slots:
+            return slots[0]
+        next_date += dt.timedelta(days=1)
+    return None
 def initialize_session_state():
     defaults = {
         'data_loaded': False, 'info_message': "", 'current_job_request': None,
@@ -485,6 +506,47 @@ if app_mode == "Schedule New Boat":
             else:
                 st.error(f"Failed to confirm job: {message}")
 
+
+if st.session_state.info_message and "crane job" in st.session_state.info_message.lower() and not st.session_state.found_slots:
+    forced_date = st.session_state.search_requested_date
+    st.error(f"No suitable time slots available on that crane grouping day ({forced_date.strftime('%A, %b %d')}).")
+
+    next_slot = find_next_available_slot_after(
+        forced_date,
+        selected_customer_obj.customer_id,
+        selected_boat_obj.boat_id,
+        service_type_input,
+        selected_ramp_id_input,
+        relax_truck_input,
+        relax_ramp_input
+    )
+
+    if next_slot:
+        slot_date_str = next_slot['date'].strftime('%A, %b %d')
+        slot_time_str = ecm.format_time_for_display(next_slot['time'])
+        ramp_details = ecm.get_ramp_details(next_slot['ramp_id'])
+        ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
+        st.info(f"Next available slot: {slot_date_str} at {slot_time_str} with Truck {next_slot['truck_id']} at Ramp {ramp_name}.")
+
+        if st.button("Select This Slot", key="select_next_available_slot"):
+            st.session_state.selected_slot = next_slot
+            st.rerun()
+
+        if st.button("Search Next Available Slot", key="search_next_slot"):
+            even_next_slot = find_next_available_slot_after(
+                next_slot['date'],
+                selected_customer_obj.customer_id,
+                selected_boat_obj.boat_id,
+                service_type_input,
+                selected_ramp_id_input,
+                relax_truck_input,
+                relax_ramp_input
+            )
+            if even_next_slot:
+                st.session_state.selected_slot = even_next_slot
+                st.rerun()
+            else:
+                st.error("No more available slots found within the search range.")
     elif st.session_state.get('current_job_request') and not st.session_state.found_slots:
         if st.session_state.info_message:
             st.warning(st.session_state.info_message)
@@ -556,51 +618,6 @@ elif app_mode == "Reporting":
                 )
 
 # --- PAGE 3: SETTINGS ---
-#OLD "HOld this space" code
-# elif app_mode == "Settings":
-    ### st.header("Application Settings")
-    ### st.write("This section is under construction.")
-
-
 elif app_mode == "Settings":
     st.header("Application Settings")
-
-    # --- Cancel Job Section ---
-    st.subheader("Cancel a Scheduled Job")
-    customer_name_to_cancel = st.text_input("Enter Customer Name to Cancel Job:")
-    if st.button("Cancel Job"):
-        success, audit = cancel_job_by_customer_name(customer_name_to_cancel)
-        if success:
-            st.success(f"✅ Job for '{customer_name_to_cancel}' canceled successfully.")
-        else:
-            st.error(f"❌ Could not find a scheduled job for '{customer_name_to_cancel}'.")
-
-    st.markdown("---")
-
-    # --- Audit Log Display ---
-    st.subheader("Canceled / Rescheduled Jobs Audit Log")
-    display_cancel_audit_log()
-
-    st.markdown("---")
-
-    # --- Reschedule Job Section ---
-    st.subheader("Reschedule a Canceled Job")
-    customer_name_to_reschedule = st.text_input("Enter Customer Name to Reschedule:")
-
-    new_date = st.date_input("Select New Date for Job Reschedule:", value=datetime.date.today())
-    new_time = st.time_input("Select New Time for Job Reschedule:", value=datetime.time(9, 0))
-    new_truck = st.selectbox("Select Truck for Reschedule:", list(ecm.ECM_TRUCKS.keys()))
-    new_ramp_id = st.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys()))
-
-    if st.button("Reschedule Job"):
-        new_slot = {
-            'date': new_date,
-            'time': new_time,
-            'truck_id': new_truck,
-            'ramp_id': new_ramp_id
-        }
-        success, audit = reschedule_customer(customer_name_to_reschedule, new_slot)
-        if success:
-            st.success(f"✅ Job for '{customer_name_to_reschedule}' rescheduled successfully.")
-        else:
-            st.error(f"❌ Failed to reschedule job: {audit}")
+    st.write("This section is under construction.")
