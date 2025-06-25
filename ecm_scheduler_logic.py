@@ -363,14 +363,36 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         print(f"    Ramp: {ramp_to_check.ramp_name if ramp_to_check else 'N/A'}")
 
                         # ⬇️ Original line follows immediately
-                        
-                        
-                        
+    
                         slot = _check_and_create_slot_detail(forced_date, p_time, truck, customer, boat, service_type, ramp_to_check, ecm_hours, duration, j17_duration, w)
                         if slot:
                             potential_slots.append(slot)
                             break
                         p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
+    
+        # After collecting forced date slots
+        if not potential_slots:
+            return [], "No suitable slots found.", [], was_forced
+    
+        # Deduplicate
+        seen = set()
+        unique_slots = []
+        for slot in potential_slots:
+            key = (slot['date'], slot['time'], slot['truck_id'])
+            if key not in seen:
+                seen.add(key)
+                unique_slots.append(slot)
+        potential_slots = unique_slots
+    
+        # Sort and limit
+        potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
+        top_slots = potential_slots[:6]
+    
+        # Build expl
+        expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
+    
+        return top_slots, expl, [], was_forced 
+    
     else:
         slots_before, slots_after = [], []
         # Phase 1: Before
