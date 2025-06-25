@@ -332,6 +332,29 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 trucks, duration, j17_duration, service_type
             )
 
+        # ✅ Your new explanatory message block (correctly outside both loops)
+        if not requested_slot and not crane_grouping_slot:
+        tide_times = get_high_tide_times_for_ramp_and_date(ramp_obj, requested_date_obj)
+        explanation_parts = []
+    
+        if not tide_times:
+            explanation_parts.append(f"No high tide on {requested_date_str} at {ramp_obj.ramp_name}.")
+        else:
+            ecm_open = ecm_hours_requested.get('open')
+            ecm_close = ecm_hours_requested.get('close')
+            too_early = all(t < datetime.time(8, 0) for t in tide_times)
+            too_late = all(t > datetime.time(14, 30) for t in tide_times)
+    
+            if too_early:
+                explanation_parts.append(f"Tide times are before allowed truck start time (8:00 AM).")
+            if too_late:
+                explanation_parts.append(f"Tide times are after allowed truck start cutoff (2:30 PM).")
+    
+        if not explanation_parts:
+            explanation_parts.append(f"No trucks or time slots available on {requested_date_str}.")
+    
+        requested_date_reason_message = f"Requested date '{requested_date_str}' cannot be scheduled: {' '.join(explanation_parts)}"   
+   
     if not trucks:
         return [], "No suitable trucks for this boat.", [], False
 
@@ -376,7 +399,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     # Continue normal search...
     # Rest of your 'else' search logic stays as-is below.
-## End "expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."" Correction 9:19 AM
+    ## End "expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."" Correction 9:19 AM
         
         else:
             # Deduplicate forced date slots and return
@@ -395,27 +418,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
             expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
             return top_slots, expl, [], was_forced
-
-    
-        # Deduplicate
-        seen = set()
-        unique_slots = []
-        for slot in potential_slots:
-            key = (slot['date'], slot['time'], slot['truck_id'])
-            if key not in seen:
-                seen.add(key)
-                unique_slots.append(slot)
-        potential_slots = unique_slots
-    
-        # Sort and limit
-        potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
-        top_slots = potential_slots[:6]
-    
-        # Build expl
-        expl = f"Found slots on {forced_date.strftime('%A, %b %d')} to group with an existing crane job."
-    
-        return top_slots, expl, [], was_forced 
-    
     else:
         slots_before, slots_after = [], []
         # Phase 1: Before
