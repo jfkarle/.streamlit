@@ -480,7 +480,8 @@ if app_mode == "Schedule New Boat":
                 st.session_state.current_job_request = job_request
                 st.session_state.search_requested_date = requested_date_input
 
-                slots, message, _, was_forced = ecm.find_available_job_slots(
+                slots, message, warning_msgs, was_forced = ecm.find_available_job_slots(
+                st.session_state.warning_msgs = warning_msgs  # ✅ New: Capture warnings
                     **job_request, force_preferred_truck=(not relax_truck_input), relax_ramp=relax_ramp_input
                 )
                 st.session_state.info_message, st.session_state.found_slots = message, slots
@@ -491,6 +492,11 @@ if app_mode == "Schedule New Boat":
         for warn in st.session_state.warning_msgs:
             st.warning(warn)
     
+    # ✅ STEP 5: Display any warning messages before showing slots
+    if st.session_state.get('warning_msgs'):
+        for warn in st.session_state.warning_msgs:
+            st.warning(warn)
+
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
         cols = st.columns(3)
