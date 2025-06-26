@@ -450,29 +450,26 @@ if app_mode == "Schedule New Boat":
 
             if st.sidebar.button("Find Best Slot", key="find_slots"):
                 job_request = {
-                    'customer_id': selected_customer_obj.customer_id, 'boat_id': selected_boat_obj.boat_id,
-                    'service_type': service_type_input, 'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
+                    'customer_id': selected_customer_obj.customer_id,
+                    'boat_id': selected_boat_obj.boat_id,
+                    'service_type': service_type_input,
+                    'requested_date_str': requested_date_input.strftime('%Y-%m-%d'),
                     'selected_ramp_id': selected_ramp_id_input,
                 }
                 st.session_state.current_job_request = job_request
                 st.session_state.search_requested_date = requested_date_input
-
-        slots, message, warning_msgs, was_forced = ecm.find_available_job_slots(
-            **job_request,
-            force_preferred_truck=(not relax_truck_input),
-            relax_ramp=relax_ramp_input
-        )
-
-        st.session_state.info_message = message
-        st.session_state.found_slots = slots
-        st.session_state.warning_msgs = warning_msgs  # ✅ Capturing warnings
-        st.session_state.selected_slot = None
-        st.session_state.was_forced_search = was_forced
-        st.rerun()
-                    **job_request, force_preferred_truck=(not relax_truck_input), relax_ramp=relax_ramp_input
+            
+                slots, message, warning_msgs, was_forced = ecm.find_available_job_slots(
+                    **job_request,
+                    force_preferred_truck=(not relax_truck_input),
+                    relax_ramp=relax_ramp_input
                 )
-                st.session_state.info_message, st.session_state.found_slots = message, slots
-                st.session_state.selected_slot, st.session_state.was_forced_search = None, was_forced
+            
+                st.session_state.info_message = message
+                st.session_state.found_slots = slots
+                st.session_state.warning_msgs = warning_msgs
+                st.session_state.selected_slot = None
+                st.session_state.was_forced_search = was_forced
                 st.rerun()
 
     if st.session_state.found_slots and not st.session_state.selected_slot:
