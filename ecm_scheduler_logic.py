@@ -226,7 +226,7 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
         
         # --- NEW ---
         # After loading all other data, scan for candidate days
-        load_candidate_days_from_file())
+        load_candidate_days_from_file()
         return True
     except FileNotFoundError:
         return False
