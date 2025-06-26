@@ -11,19 +11,17 @@ from datetime import timedelta, time
 
 
 CANDIDATE_CRANE_DAYS = {
-    'Scituate': [],
-    'Plymouth': [],
-    'Weymouth': [],
-    'Cohasset': []
+    'ScituateHarborJericho': [],
+    'PlymouthHarbor': [],
+    'WeymouthWessagusset': [],
+    'CohassetParkerAve': []
 }
-
 ACTIVE_CRANE_DAYS = {
-    'Scituate': [],
-    'Plymouth': [],
-    'Weymouth': [],
-    'Cohasset': []
+    'ScituateHarborJericho': [],
+    'PlymouthHarbor': [],
+    'WeymouthWessagusset': [],
+    'CohassetParkerAve': []
 }
-
 # --- NEW: Configuration for Crane Day Logic ---
 CRANE_DAY_LOGIC_ENABLED = True # Master toggle for the entire feature
 CANDIDATE_DAY_TIDE_WINDOW = (time(10, 30), time(14, 30)) # 10:30 AM to 2:30 PM
