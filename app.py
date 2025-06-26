@@ -11,6 +11,11 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 import calendar
 
+#This line MUST remain under the IMPORTS section up here
+st.set_page_config(layout="wide")
+
+
+
 # --- NEW CALENDAR DISPLAY FUNCTION ---
 def display_crane_day_calendar(crane_days_for_ramp):
     """Generates a visual monthly calendar highlighting crane days."""
@@ -68,7 +73,7 @@ def display_crane_day_calendar(crane_days_for_ramp):
                     unsafe_allow_html=True
                 )
                 
-st.set_page_config(layout="wide")
+
 
 # --- Helper Functions ---
 
