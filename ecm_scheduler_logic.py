@@ -108,48 +108,30 @@ def is_powerboat_blocked_for_crane_day(ramp_name, check_date, job_start_time):
 
     return window_start <= job_start_time <= window_end
 
-def scan_and_load_candidate_days():
+def load_candidate_days_from_file(filename="candidate_days.csv"):
     """
-    Pre-scans the entire season for each key ramp to find days
-    with ideal mid-day high tides. This is run once at startup.
+    Reads the pre-calculated candidate days from a local CSV file
+    at startup. This is much faster than scanning live.
     """
     global CANDIDATE_CRANE_DAYS
-    print("Starting pre-scan for Candidate Crane Days...")
-
-    # Define the key ramps for crane operations
-    crane_ramps = {
-        "ScituateHarborJericho": get_ramp_details("ScituateHarborJericho"),
-        "PlymouthHarbor": get_ramp_details("PlymouthHarbor"),
-        "WeymouthWessagusset": get_ramp_details("WeymouthWessagusset"),
-        "CohassetParkerAve": get_ramp_details("CohassetParkerAve"),
-    }
-
-    start_date = datetime.date.today()
-    # Scan for the next 6 months
-    end_date = start_date + datetime.timedelta(days=180) 
-    
-    for ramp_id, ramp_obj in crane_ramps.items():
-        if not ramp_obj: continue
-        
-        current_date = start_date
-        while current_date <= end_date:
-            tide_times = get_high_tide_times_for_ramp_and_date(ramp_obj, current_date)
-            for ht in tide_times:
-                # Check if the high tide is within our ideal window
-                if CANDIDATE_DAY_TIDE_WINDOW[0] <= ht <= CANDIDATE_DAY_TIDE_WINDOW[1]:
+    print("Loading Candidate Crane Days from local file...")
+    try:
+        with open(filename, mode='r') as infile:
+            reader = csv.DictReader(infile)
+            for row in reader:
+                ramp_id = row['ramp_id']
+                if ramp_id in CANDIDATE_CRANE_DAYS:
                     CANDIDATE_CRANE_DAYS[ramp_id].append({
-                        "date": current_date,
-                        "high_tide_time": ht
+                        "date": datetime.datetime.strptime(row['date'], "%Y-%m-%d").date(),
+                        "high_tide_time": datetime.datetime.strptime(row['high_tide_time'], "%H:%M:%S").time()
                     })
-                    # Found an ideal tide, no need to check other tides on this day
-                    break 
-            current_date += datetime.timedelta(days=1)
-            
-    print("Candidate Crane Day scan complete.")
-    # Example print to check results:
-    # for ramp, dates in CANDIDATE_CRANE_DAYS.items():
-    #     if dates:
-    #         print(f"- Found {len(dates)} candidate days for {ramp}")
+        print("Successfully loaded Candidate Crane Days.")
+    except FileNotFoundError:
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print("!!! CRITICAL ERROR: `candidate_days.csv` not found.  !!!")
+        print("!!! The app cannot run without this file. Please      !!!")
+        print("!!! run `one_time_scanner.py` and upload the CSV.     !!!")
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
 
 # --- Configuration & Data Models ---
@@ -244,7 +226,7 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
         
         # --- NEW ---
         # After loading all other data, scan for candidate days
-        scan_and_load_candidate_days()
+        load_candidate_days_from_file())
         return True
     except FileNotFoundError:
         return False
