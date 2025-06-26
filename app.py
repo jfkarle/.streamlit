@@ -153,28 +153,28 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
         boat_type = getattr(boat, 'boat_type', '') if boat else ''
         assigned_crane = getattr(job, 'assigned_crane_truck_id', '') or ''
-                if assigned_crane == "J17" and hasattr(job, 'j17_busy_end_datetime') and job.j17_busy_end_datetime:
-                    crane_start_time = start_time
-                    crane_end_time = job.j17_busy_end_datetime.time()
-                    y_crane_end = get_y_for_time(crane_end_time)
-        
-                    col_index_crane = column_map['J17']
-                    column_start_x_crane = margin + time_col_width + col_index_crane * col_width
-                    text_center_x_crane = column_start_x_crane + col_width / 2
-        
-                    # Crane customer name and destination
-                    customer = ecm.get_customer_details(job.customer_id)
-                    customer_name = customer.customer_name if customer else "Unknown"
-                    dest_address = getattr(job, 'dropoff_street_address', '')
-                    dest_abbr = _abbreviate_town(dest_address)
-        
-                    c.setFont("Helvetica-Bold", 8)
-                    c.drawCentredString(text_center_x_crane, y0 - 8, customer_name.split()[-1])
-                    c.setFont("Helvetica", 7)
-                    c.drawCentredString(text_center_x_crane, y0 - 18, dest_abbr)
-                    c.setLineWidth(2)
-                    c.line(text_center_x_crane, y0 - 24, text_center_x_crane, y_crane_end)
-                    c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
+            if assigned_crane == "J17" and hasattr(job, 'j17_busy_end_datetime') and job.j17_busy_end_datetime:
+                crane_start_time = start_time
+                crane_end_time = job.j17_busy_end_datetime.time()
+                y_crane_end = get_y_for_time(crane_end_time)
+    
+                col_index_crane = column_map['J17']
+                column_start_x_crane = margin + time_col_width + col_index_crane * col_width
+                text_center_x_crane = column_start_x_crane + col_width / 2
+    
+                # Crane customer name and destination
+                customer = ecm.get_customer_details(job.customer_id)
+                customer_name = customer.customer_name if customer else "Unknown"
+                dest_address = getattr(job, 'dropoff_street_address', '')
+                dest_abbr = _abbreviate_town(dest_address)
+    
+                c.setFont("Helvetica-Bold", 8)
+                c.drawCentredString(text_center_x_crane, y0 - 8, customer_name.split()[-1])
+                c.setFont("Helvetica", 7)
+                c.drawCentredString(text_center_x_crane, y0 - 18, dest_abbr)
+                c.setLineWidth(2)
+                c.line(text_center_x_crane, y0 - 24, text_center_x_crane, y_crane_end)
+                c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
         
         is_sailboat_job = boat and 'sailboat' in boat_type.lower() and 'j17' in assigned_crane.lower()
 
