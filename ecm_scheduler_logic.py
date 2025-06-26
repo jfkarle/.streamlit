@@ -325,13 +325,15 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     except ValueError:
         return [], "Error: Invalid date format.", [], False
 
-    customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
+    customer = get_customer_details(customer_id)
+    boat = get_boat_details(boat_id)
+    if not customer or not boat:
+        return [], "Error: Invalid customer or boat ID.", [], False
 
+    # Prevent double-scheduling
     for job in SCHEDULED_JOBS:
         if job.customer_id == customer_id and job.job_status == "Scheduled":
-    return all_slots[:6], expl, [], was_forced
-    if not customer or not boat:
-        return [], "Error: Invalid Cust/Boat ID.", [], False
+            return [], f"Error: Customer '{customer.customer_name}' is already scheduled.", [], False
 
     ramps_to_search = []
     if relax_ramp:
@@ -342,58 +344,145 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         ramp_obj_single = get_ramp_details(selected_ramp_id)
         if service_type in ["Launch", "Haul"]:
             if not ramp_obj_single:
-                return [], "Error: A ramp must be selected for this service type.", [], False
+                return [], "Error: Ramp must be selected for this service type.", [], False
             if boat.boat_type not in ramp_obj_single.allowed_boat_types:
-    return all_slots[:6], expl, [], was_forced
+                return [], f"Ramp '{ramp_obj_single.ramp_name}' does not allow {boat.boat_type}s.", [], False
             ramps_to_search.append(ramp_obj_single)
 
-    expl = "No suitable slots found."
     forced_date = None
+    was_forced = False
+    expl = "No suitable slots found."
+    all_slots = []
+    warning_msgs = []
+
+    # Crane grouping forced date detection
     ramp_obj = get_ramp_details(selected_ramp_id)
     if boat.boat_type.startswith("Sailboat") and ramp_obj and not ignore_forced_search:
         for job in SCHEDULED_JOBS:
-            if getattr(job, 'assigned_crane_truck_id', None) and (getattr(job, 'pickup_ramp_id', None) == selected_ramp_id or getattr(job, 'dropoff_ramp_id', None) == selected_ramp_id) and abs((requested_date_obj - job.scheduled_start_datetime.date()).days) <= 7:
-                forced_date = job.scheduled_start_datetime.date()
-                break
+            job_date = job.scheduled_start_datetime.date()
+            if getattr(job, 'assigned_crane_truck_id', None) and (job.pickup_ramp_id == selected_ramp_id or job.dropoff_ramp_id == selected_ramp_id):
+                if abs((requested_date_obj - job_date).days) <= 7:
+                    forced_date = job_date
+                    was_forced = True
+                    warning_msgs.append(f"Forced grouping with crane job on {forced_date.strftime('%A, %b %d')}")
+                    break
 
-    # ✅ At this point, normal slot search continues
-    # (Insert your normal slot search loops here...)
+    # Phase 0: Requested Date Search
+    slots_on_requested_date = []
+    for ramp in ramps_to_search:
+        ecm_hours = get_ecm_operating_hours(requested_date_obj)
+        if not ecm_hours:
+            continue
+        tide_windows = get_final_schedulable_ramp_times(ramp, boat, requested_date_obj)
+        for truck in ECM_TRUCKS.values():
+            for window in tide_windows:
+                p_start = window['start_time']
+                p_end = window['end_time']
+                p_time = p_start
+                while p_time < p_end:
+                    temp_dt = datetime.datetime.combine(requested_date_obj, p_time)
+                    if temp_dt.minute % 30 != 0:
+                        p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
+                    if p_time >= p_end:
+                        break
+                    slot = _check_and_create_slot_detail(
+                        requested_date_obj, p_time, truck, customer, boat,
+                        service_type, ramp, ecm_hours, get_job_duration_hours(boat, service_type),
+                        get_j17_duration(boat, service_type), window
+                    )
+                    if slot:
+                        slots_on_requested_date.append(slot)
+                        break
+                    p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
 
-    # ✅ Initialize safe return variables
-    potential_slots = []
-    was_forced = False
-    expl = "No suitable slots found."
+    all_slots += slots_on_requested_date
 
-    # Example: After your main slot-finding logic
-    if forced_date:
-        was_forced = True
-        # (Forced-date specific slot search logic...)
-        # (Populate potential_slots)
+    # Phase 1: Search Before Requested Date
+    slots_before = []
+    for offset_days in range(1, 8):
+        search_date = requested_date_obj - datetime.timedelta(days=offset_days)
+        for ramp in ramps_to_search:
+            ecm_hours = get_ecm_operating_hours(search_date)
+            if not ecm_hours:
+                continue
+            tide_windows = get_final_schedulable_ramp_times(ramp, boat, search_date)
+            for truck in ECM_TRUCKS.values():
+                for window in tide_windows:
+                    p_start = window['start_time']
+                    p_end = window['end_time']
+                    p_time = p_start
+                    while p_time < p_end:
+                        temp_dt = datetime.datetime.combine(search_date, p_time)
+                        if temp_dt.minute % 30 != 0:
+                            p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
+                        if p_time >= p_end:
+                            break
+                        slot = _check_and_create_slot_detail(
+                            search_date, p_time, truck, customer, boat,
+                            service_type, ramp, ecm_hours, get_job_duration_hours(boat, service_type),
+                            get_j17_duration(boat, service_type), window
+                        )
+                        if slot:
+                            slots_before.append(slot)
+                            break
+                        p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
 
-    # If no forced date, continue with normal logic:
-    # (Continue populating potential_slots...)
+    all_slots += slots_before
 
-    # ✅ Deduplicate and sort
+    # Phase 2: Search After Requested Date
+    slots_after = []
+    for offset_days in range(1, 8):
+        search_date = requested_date_obj + datetime.timedelta(days=offset_days)
+        for ramp in ramps_to_search:
+            ecm_hours = get_ecm_operating_hours(search_date)
+            if not ecm_hours:
+                continue
+            tide_windows = get_final_schedulable_ramp_times(ramp, boat, search_date)
+            for truck in ECM_TRUCKS.values():
+                for window in tide_windows:
+                    p_start = window['start_time']
+                    p_end = window['end_time']
+                    p_time = p_start
+                    while p_time < p_end:
+                        temp_dt = datetime.datetime.combine(search_date, p_time)
+                        if temp_dt.minute % 30 != 0:
+                            p_time = (temp_dt + datetime.timedelta(minutes=30 - (temp_dt.minute % 30))).time()
+                        if p_time >= p_end:
+                            break
+                        slot = _check_and_create_slot_detail(
+                            search_date, p_time, truck, customer, boat,
+                            service_type, ramp, ecm_hours, get_job_duration_hours(boat, service_type),
+                            get_j17_duration(boat, service_type), window
+                        )
+                        if slot:
+                            slots_after.append(slot)
+                            break
+                        p_time = (datetime.datetime.combine(datetime.date.min, p_time) + datetime.timedelta(minutes=30)).time()
+
+    all_slots += slots_after
+
+    # Deduplicate
     seen = set()
     unique_slots = []
-    for slot in potential_slots:
+    for slot in all_slots:
         key = (slot['date'], slot['time'], slot['truck_id'])
         if key not in seen:
             seen.add(key)
             unique_slots.append(slot)
-    potential_slots = unique_slots
-    potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
 
-    top_slots = potential_slots[:6] if potential_slots else []
+    # Final sort and trim
+    unique_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
+    top_slots = unique_slots[:6]
 
-    # ✅ Finalize explanation text
+    # Explanation
     if top_slots:
-        expl = f"Found {len(top_slots)} slot(s), starting {top_slots[0]['date'].strftime('%A, %b %d')}."
+        expl = f"Found {len(top_slots)} slots starting {top_slots[0]['date'].strftime('%A, %b %d')}."
+    else:
+        expl = "No suitable slots found."
 
-    # ✅ Return clean final tuple
-    return all_slots[:6], expl, [], was_forced
+    return top_slots, expl, warning_msgs, was_forced
 
-    return all_slots[:6], expl, [], was_forced
+
 def build_crane_day_slot_list(ramp_obj, boat, customer, requested_date_obj, service_type, trucks, duration, j17_duration):
     candidate_ramp_name = ramp_obj.town if ramp_obj else None
     slot_list = []
