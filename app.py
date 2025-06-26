@@ -445,9 +445,22 @@ if app_mode == "Schedule New Boat":
                 selected_ramp_id_input = st.sidebar.selectbox("Select Ramp:", ramp_options)
 
             st.sidebar.markdown("---")
+            st.sidebar.subheader("Search Options")
             relax_truck_input = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
             relax_ramp_input = st.sidebar.checkbox("Relax Ramp (Search other nearby ramps)")
-
+            
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("Advanced Settings")
+            
+            # --- NEW: Master feature toggle ---
+            # This creates the toggle and ensures the backend variable stays in sync with the UI
+            crane_logic_toggle = st.sidebar.toggle("Enable Crane Day Logic", value=ecm.CRANE_DAY_LOGIC_ENABLED, key="crane_logic_master_toggle")
+            ecm.CRANE_DAY_LOGIC_ENABLED = crane_logic_toggle 
+            
+            # --- NEW: Manager override checkbox ---
+            manager_override_input = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
+            
+            
             if st.sidebar.button("Find Best Slot", key="find_slots"):
                 job_request = {
                     'customer_id': selected_customer_obj.customer_id,
@@ -462,7 +475,8 @@ if app_mode == "Schedule New Boat":
                 slots, message, warning_msgs, was_forced = ecm.find_available_job_slots(
                     **job_request,
                     force_preferred_truck=(not relax_truck_input),
-                    relax_ramp=relax_ramp_input
+                    relax_ramp=relax_ramp_input,
+                    manager_override=manager_override_input
                 )
             
                 st.session_state.info_message = message
@@ -480,6 +494,11 @@ if app_mode == "Schedule New Boat":
                 with st.container(border=True):
                     if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
                         st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
+                        # --- NEW: Display warnings for alternate slots ---
+                        if slot.get('is_alternate_ramp'):
+                            st.warning(f"⚠️ Alternate Ramp Used")
+                        if slot.get('is_alternate_truck'):
+                            st.warning(f"⚠️ Alternate Truck Used")
 
                     date_str = slot['date'].strftime('%a, %b %d, %Y')
                     time_str = ecm.format_time_for_display(slot.get('time'))
