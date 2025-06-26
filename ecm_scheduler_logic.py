@@ -4,7 +4,7 @@
 import csv
 import datetime
 import requests
-from datetime import datetime, timedelta, time
+from datetime import timedelta, time
 
 
 # --- Utility Functions ---
@@ -599,7 +599,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             expl = "No suitable slots found."
         
         return top_slots, expl, [], was_forced
-
 
 
 def confirm_and_schedule_job(original_request, selected_slot):
