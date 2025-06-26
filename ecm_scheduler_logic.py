@@ -29,18 +29,23 @@ def format_time_for_display(time_obj):
     return time_obj.strftime('%I:%M %p').lstrip('0')
 
 def get_high_tide_times_for_ramp_and_date(ramp_obj, date_obj):
-    """Return a list of high tide times (as datetime.time) for a given ramp and date."""
-    ramp_tide_station_id = ramp_obj.noaa_station_id
-    if not ramp_tide_station_id:
+    """Fetch high tide times for a given ramp and date directly from NOAA API (live, on-the-fly)."""
+
+    if not ramp_obj or not ramp_obj.noaa_station_id:
+        print(f"[ERROR] Ramp '{ramp_obj.ramp_name if ramp_obj else 'Unknown'}' missing NOAA station ID.")
         return []
 
-    tide_times = []
-    for tide_entry in LOADED_TIDE_DATA:
-        if tide_entry.date == date_obj and tide_entry.tide_station_id == ramp_tide_station_id:
-            tide_times.append(tide_entry.high_tide_time1)
-            if tide_entry.high_tide_time2:
-                tide_times.append(tide_entry.high_tide_time2)
-    return tide_times
+    tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_obj)
+
+    high_tide_times = []
+    for tide_entry in tide_data:
+        if tide_entry.get('type') == 'H':
+            high_tide_times.append(tide_entry.get('time'))
+
+    if not high_tide_times:
+        print(f"[WARNING] No high tide times found from NOAA for {ramp_obj.ramp_name} on {date_obj}.")
+
+    return high_tide_times
 
 def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide":
