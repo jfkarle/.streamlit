@@ -465,6 +465,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     all_possible_days = set(active_crane_days.get(selected_ramp_id, [])) | {d['date'] for d in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, [])}
     sorted_days = sorted(list(all_possible_days), key=lambda d: abs(d - requested_date_obj))
 
+    # --- THIS IS THE CORRECTED PART ---
+    # Define the search window based on the requested date
+    search_start = requested_date_obj - timedelta(days=SEARCH_DAYS_PAST)
+    search_end = requested_date_obj + timedelta(days=MAX_SEARCH_DAYS_FUTURE)
+
+    # Filter the possible days by our search window and then sort them by proximity
+    searchable_days = [d for d in all_possible_days if search_start <= d <= search_end]
+    sorted_days = sorted(searchable_days, key=lambda d: abs(d - requested_date_obj))
+    # --- END CORRECTION ---
+    
     for day in sorted_days:
         if len(potential_slots) >= 3: break
         if not (search_start <= day <= search_end): continue # Respect the overall window
