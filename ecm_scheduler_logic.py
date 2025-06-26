@@ -459,7 +459,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         message_parts.append(f"Your requested date ({requested_date_obj.strftime('%b %d')}) is not a designated Crane Day.")
 
     # Tiers 1 & 2: Search preferred ramp
-    trucks_to_check = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, not relax_truck)
+    trucks_to_check = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
     
     # Combine and sort all possible days at the preferred ramp by proximity to request
     all_possible_days = set(active_crane_days.get(selected_ramp_id, [])) | {d['date'] for d in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, [])}
