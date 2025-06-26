@@ -9,7 +9,65 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
+import calendar
 
+# --- NEW CALENDAR DISPLAY FUNCTION ---
+def display_crane_day_calendar(crane_days_for_ramp):
+    """Generates a visual monthly calendar highlighting crane days."""
+    
+    # Get the set of dates for easy lookup
+    candidate_dates = {d['date'] for d in crane_days_for_ramp}
+    
+    today = datetime.date.today()
+    
+    # --- Month Selector ---
+    selected_month_str = st.selectbox(
+        "Select a month to view:",
+        [(today + datetime.timedelta(days=30*i)).strftime("%B %Y") for i in range(6)]
+    )
+    
+    if not selected_month_str:
+        return
+
+    selected_month = datetime.datetime.strptime(selected_month_str, "%B %Y")
+    
+    st.subheader(f"Calendar for {selected_month_str}")
+
+    # --- Calendar Header ---
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    cols = st.columns(7)
+    for col, day_name in zip(cols, days):
+        with col:
+            st.markdown(f"<p style='text-align: center; font-weight: bold;'>{day_name}</p>", unsafe_allow_html=True)
+
+    # --- Calendar Body ---
+    cal = calendar.Calendar()
+    month_days = cal.monthdatescalendar(selected_month.year, selected_month.month)
+
+    for week in month_days:
+        cols = st.columns(7)
+        for i, day in enumerate(week):
+            if day.month != selected_month.month:
+                cols[i].markdown("") # Empty cell for days not in the month
+            else:
+                day_str = str(day.day)
+                is_candidate = day in candidate_dates
+                
+                # Style the day's box
+                background_color = "#F0FFF0" if is_candidate else "#F0F2F6" # Light green for candidates
+                border_color = "#2E8B57" if is_candidate else "#E6E6E6" # Dark green border
+                font_weight = "bold" if is_candidate else "normal"
+                
+                # Render the box with the day number
+                cols[i].markdown(
+                    f"""
+                    <div style="padding:10px; border-radius:5px; border: 2px solid {border_color}; background-color:{background_color}; height: 60px;">
+                        <p style="text-align: right; font-weight: {font_weight}; color: black;">{day_str}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                
 st.set_page_config(layout="wide")
 
 # --- Helper Functions ---
@@ -583,6 +641,25 @@ elif app_mode == "Reporting":
     st.header("Reporting Dashboard")
     st.info("This section is for viewing and exporting scheduled jobs.")
     st.subheader("All Scheduled Jobs (Current Session)")
+    st.markdown("---")
+    st.subheader("Crane Day Candidate Calendar")
+    
+    # Create a list of the crane-specific ramps
+    crane_ramp_options = list(ecm.CANDIDATE_CRANE_DAYS.keys())
+    
+    selected_ramp_for_calendar = st.selectbox(
+        "Select a ramp to see its Candidate Crane Days:",
+        options=crane_ramp_options
+    )
+    
+    if selected_ramp_for_calendar:
+        # Get the list of candidate day objects for the selected ramp
+        candidate_days_for_selected_ramp = ecm.CANDIDATE_CRANE_DAYS[selected_ramp_for_calendar]
+        
+        # Call our new function to display the calendar
+        display_crane_day_calendar(candidate_days_for_selected_ramp)
+    
+    st.markdown("---")
 
     if ecm.SCHEDULED_JOBS:
         display_data = []
