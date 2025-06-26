@@ -336,7 +336,7 @@ st.title("Marine Transportation")
 
 # --- NAVIGATION SIDEBAR ---
 st.sidebar.title("Navigation")
-app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
+app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Cancel Job", "Settings"])
 
 # --- PAGE 1: SCHEDULER ---
 if app_mode == "Schedule New Boat":
@@ -618,49 +618,67 @@ elif app_mode == "Reporting":
                 )
 
 # --- PAGE 3: SETTINGS ---
-#elif app_mode == "Settings":
- #   st.header("Application Settings")
-  #  st.write("This section is under construction.")
 
+elif app_mode == "Cancel Job":
+    st.header("Cancel a Scheduled Job")
+
+    # --- Option 1: Search by Customer Name ---
+    st.subheader("Search by Customer Name")
+    name_input = st.text_input("Start typing customer name:")
+
+    matched_customers = [c for c in ecm.LOADED_CUSTOMERS.values() if name_input.lower() in c.customer_name.lower()]
+
+    selected_customer = None
+    if matched_customers:
+        customer_names = [c.customer_name for c in matched_customers]
+        chosen_name = st.selectbox("Select customer to cancel:", customer_names)
+        selected_customer = next(c for c in matched_customers if c.customer_name == chosen_name)
+
+    if selected_customer:
+        scheduled_job = next((j for j in ecm.SCHEDULED_JOBS if j.customer_id == selected_customer.customer_id), None)
+        if scheduled_job:
+            st.write(f"**Scheduled Job for {selected_customer.customer_name}:**")
+            st.write(f"- Date: {scheduled_job.scheduled_start_datetime.date()}")
+            st.write(f"- Time: {ecm.format_time_for_display(scheduled_job.scheduled_start_datetime.time())}")
+            st.write(f"- Truck: {scheduled_job.assigned_hauling_truck_id}")
+            ramp_obj = ecm.get_ramp_details(scheduled_job.pickup_ramp_id or scheduled_job.dropoff_ramp_id)
+            ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
+            st.write(f"- Ramp: {ramp_name}")
+
+            if st.button("Cancel This Job", key="cancel_by_name"):
+                success, audit = cancel_job_by_customer_name(selected_customer.customer_name)
+                if success:
+                    st.success(f"✅ Job canceled for {selected_customer.customer_name}")
+                else:
+                    st.error("Failed to cancel job.")
+        else:
+            st.warning("This customer has no scheduled job.")
+
+    st.markdown("---")
+    # --- Option 2: Select from Full Scheduled Jobs Report ---
+    st.subheader("Select Job from Full Schedule")
+    jobs_data = []
+    for job in ecm.SCHEDULED_JOBS:
+        customer = ecm.get_customer_details(job.customer_id)
+        jobs_data.append({
+            "Customer": customer.customer_name if customer else "Unknown",
+            "Date": job.scheduled_start_datetime.date(),
+            "Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()),
+            "Truck": job.assigned_hauling_truck_id,
+            "Ramp": ecm.get_ramp_details(job.pickup_ramp_id or job.dropoff_ramp_id).ramp_name if (job.pickup_ramp_id or job.dropoff_ramp_id) else "N/A"
+        })
+    if jobs_data:
+        df_jobs = pd.DataFrame(jobs_data)
+        selected_customer_to_cancel = st.selectbox("Select Customer:", df_jobs["Customer"].tolist())
+
+        if st.button("Cancel Selected Job", key="cancel_from_table"):
+            success, audit = cancel_job_by_customer_name(selected_customer_to_cancel)
+            if success:
+                st.success(f"✅ Job canceled for {selected_customer_to_cancel}")
+            else:
+                st.error("Failed to cancel job.")
+    else:
+        st.warning("No jobs scheduled.")
 elif app_mode == "Settings":
     st.header("Application Settings")
-
-    # --- Cancel Job Section ---
-    st.subheader("Cancel a Scheduled Job")
-    customer_name_to_cancel = st.text_input("Enter Customer Name to Cancel Job:")
-    if st.button("Cancel Job"):
-        success, audit = cancel_job_by_customer_name(customer_name_to_cancel)
-        if success:
-            st.success(f"✅ Job for '{customer_name_to_cancel}' canceled successfully.")
-        else:
-            st.error(f"❌ Could not find a scheduled job for '{customer_name_to_cancel}'.")
-
-    st.markdown("---")
-
-    # --- Audit Log Display ---
-    st.subheader("Canceled / Rescheduled Jobs Audit Log")
-    display_cancel_audit_log()
-
-    st.markdown("---")
-
-    # --- Reschedule Job Section ---
-    st.subheader("Reschedule a Canceled Job")
-    customer_name_to_reschedule = st.text_input("Enter Customer Name to Reschedule:")
-
-    new_date = st.date_input("Select New Date for Job Reschedule:", value=datetime.date.today())
-    new_time = st.time_input("Select New Time for Job Reschedule:", value=datetime.time(9, 0))
-    new_truck = st.selectbox("Select Truck for Reschedule:", list(ecm.ECM_TRUCKS.keys()))
-    new_ramp_id = st.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys()))
-
-    if st.button("Reschedule Job"):
-        new_slot = {
-            'date': new_date,
-            'time': new_time,
-            'truck_id': new_truck,
-            'ramp_id': new_ramp_id
-        }
-        success, audit = reschedule_customer(customer_name_to_reschedule, new_slot)
-        if success:
-            st.success(f"✅ Job for '{customer_name_to_reschedule}' rescheduled successfully.")
-        else:
-            st.error(f"❌ Failed to reschedule job: {audit}")
+    st.write("This section is under construction.")
