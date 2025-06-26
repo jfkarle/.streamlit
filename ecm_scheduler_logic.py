@@ -329,7 +329,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     for job in SCHEDULED_JOBS:
         if job.customer_id == customer_id and job.job_status == "Scheduled":
-            return [], f"Error: Customer '{get_customer_details(customer_id).customer_name}' is already scheduled.", [], False
+    return all_slots[:6], expl, [], was_forced
     if not customer or not boat:
         return [], "Error: Invalid Cust/Boat ID.", [], False
 
@@ -344,9 +344,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             if not ramp_obj_single:
                 return [], "Error: A ramp must be selected for this service type.", [], False
             if boat.boat_type not in ramp_obj_single.allowed_boat_types:
-                return [], f"Ramp '{ramp_obj_single.ramp_name}' doesn't allow {boat.boat_type}s.", [], False
+    return all_slots[:6], expl, [], was_forced
             ramps_to_search.append(ramp_obj_single)
 
+    expl = "No suitable slots found."
     forced_date = None
     ramp_obj = get_ramp_details(selected_ramp_id)
     if boat.boat_type.startswith("Sailboat") and ramp_obj and not ignore_forced_search:
