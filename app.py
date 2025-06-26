@@ -487,6 +487,10 @@ if app_mode == "Schedule New Boat":
                 st.session_state.selected_slot, st.session_state.was_forced_search = None, was_forced
                 st.rerun()
 
+    if st.session_state.get("warning_msgs"):
+        for warn in st.session_state.warning_msgs:
+            st.warning(warn)
+    
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
         cols = st.columns(3)
