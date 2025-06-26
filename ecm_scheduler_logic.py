@@ -391,7 +391,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         expl = f"Found {len(top_slots)} slot(s), starting {top_slots[0]['date'].strftime('%A, %b %d')}."
 
     # ✅ Return clean final tuple
-    return top_slots, expl, [], was_forced
+    return all_slots[:6], expl, [], was_forced
 
 def build_crane_day_slot_list(ramp_obj, boat, customer, requested_date_obj, service_type, trucks, duration, j17_duration):
     candidate_ramp_name = ramp_obj.town if ramp_obj else None
