@@ -7,7 +7,16 @@ import requests
 from datetime import timedelta, time
 
 
-# --- Utility Functions ---
+# --- Helper & Utility Functions ---
+
+def get_job_duration_hours(boat, service_type):
+    rules = BOOKING_RULES.get(boat.boat_type, {})
+    return rules.get('truck_mins', 90) / 60.0
+
+def get_j17_duration(boat, service_type):
+    """Returns the crane duration in hours based on boat type and service."""
+    rules = BOOKING_RULES.get(boat.boat_type, {})
+    return rules.get('crane_mins', 0) / 60.0
 
 
 CANDIDATE_CRANE_DAYS = {
