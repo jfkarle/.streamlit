@@ -473,11 +473,18 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     future_candidates = [cd for cd in candidate_days_at_ramp if search_start <= cd['date'] <= search_end]
     future_candidates.sort(key=lambda x: x['date'])
     
-    if not requested_date_is_candidate and not requested_date_is_active: # These variables are from a previous version, let's redefine them
-        requested_date_is_candidate = any(d['date'] == requested_date_obj for d in candidate_days_at_ramp)
-        requested_date_is_active = requested_date_obj in active_crane_days.get(selected_ramp_id, [])
-        if not requested_date_is_candidate and not requested_date_is_active:
-             message_parts.append(f"Your requested date ({requested_date_obj.strftime('%b %d')}) is not a designated Crane Day.")
+    # Check if the originally requested date was a designated Crane Day
+    message_parts = []
+    candidate_days_at_ramp = CANDIDATE_CRANE_DAYS.get(selected_ramp_id, [])
+    requested_date_is_candidate = any(d['date'] == requested_date_obj for d in candidate_days_at_ramp)
+    requested_date_is_active = requested_date_obj in active_crane_days.get(selected_ramp_id, [])
+    
+    if not requested_date_is_candidate and not requested_date_is_active:
+        message_parts.append(f"Your requested date ({requested_date_obj.strftime('%b %d')}) is not a designated Crane Day.")
+    
+    # Now, continue with the search for future candidates
+    future_candidates = [cd for cd in candidate_days_at_ramp if requested_date_obj <= cd['date'] <= search_end]
+    future_candidates.sort(key=lambda x: x['date'])
         
     for day_info in future_candidates:
         if len(potential_slots) >= 3: break
