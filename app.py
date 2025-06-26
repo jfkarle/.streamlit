@@ -531,6 +531,9 @@ if app_mode == "Schedule New Boat":
                 st.session_state.search_requested_date = requested_date_input
             
                 slots, message, warning_msgs, was_forced = ecm.find_available_job_slots(
+                    # --- NEW: Pass the number of suggestions from session state ---
+                    num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
+                    
                     **job_request,
                     force_preferred_truck=(not relax_truck_input),
                     relax_ramp=relax_ramp_input,
@@ -785,4 +788,21 @@ elif app_mode == "Cancel Job":
         st.warning("No jobs scheduled.")
 elif app_mode == "Settings":
     st.header("Application Settings")
-    st.write("This section is under construction.")
+    
+    st.subheader("Scheduling Defaults")
+    
+    # Initialize the session state key if it doesn't exist
+    if 'num_suggestions' not in st.session_state:
+        st.session_state.num_suggestions = 3
+
+    # Create the number input and link it to the session state
+    st.session_state.num_suggestions = st.number_input(
+        "Number of Suggested Dates to Return",
+        min_value=3,
+        max_value=6,
+        value=st.session_state.num_suggestions,
+        step=1,
+        help="Choose how many different date options to see when searching for a slot (default is 3)."
+    )
+    
+    st.success(f"Search results will now show {st.session_state.num_suggestions} suggestions.")
