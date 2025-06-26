@@ -4,9 +4,25 @@
 import csv
 import datetime
 import requests
-from datetime import timedelta
+from datetime import datetime, timedelta, time
+
 
 # --- Utility Functions ---
+
+
+CANDIDATE_CRANE_DAYS = {
+    'Scituate': [],
+    'Plymouth': [],
+    'Weymouth': [],
+    'Cohasset': []
+}
+
+ACTIVE_CRANE_DAYS = {
+    'Scituate': [],
+    'Plymouth': [],
+    'Weymouth': [],
+    'Cohasset': []
+}
 
 def fetch_noaa_tides(station_id, date_to_check):
     date_str = date_to_check.strftime("%Y%m%d")
@@ -62,7 +78,34 @@ def is_j17_at_ramp(check_date, ramp_id):
     if not ramp_id: return False
     return ramp_id in crane_daily_status.get(check_date.strftime('%Y-%m-%d'), {}).get('ramps_visited', set())
 
+def load_crane_day_candidates(tide_data):
+    for ramp_name in CANDIDATE_CRANE_DAYS.keys():
+        candidate_days = []
+        for date_obj, high_tide_time in tide_data.get(ramp_name, []):
+            if time(10,30) <= high_tide_time <= time(14,30):
+                candidate_days.append(date_obj)
+        CANDIDATE_CRANE_DAYS[ramp_name] = candidate_days
+        
+
+def is_powerboat_blocked_for_crane_day(ramp_name, check_date, job_start_time):
+    if ramp_name not in CANDIDATE_CRANE_DAYS:
+        return False
+    if check_date not in CANDIDATE_CRANE_DAYS[ramp_name]:
+        return False
+
+    # Get high tide time for that ramp/date
+    high_tide_time = ecm.get_high_tide_time_for_ramp_and_date(ramp_name, check_date)
+    if not high_tide_time:
+        return False
+
+    window_start = (datetime.combine(check_date, high_tide_time) - timedelta(hours=3)).time()
+    window_end = (datetime.combine(check_date, high_tide_time) + timedelta(hours=3)).time()
+
+    return window_start <= job_start_time <= window_end
+    
+
 # --- Configuration & Data Models ---
+
 TODAY_FOR_SIMULATION = datetime.date.today()
 JOB_ID_COUNTER = 3000
 SCHEDULED_JOBS = []
