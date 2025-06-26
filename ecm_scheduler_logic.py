@@ -356,55 +356,66 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 break
 
 def build_crane_day_slot_list(ramp_obj, boat, customer, requested_date_obj, service_type, trucks, duration, j17_duration):
-    candidate_ramp_name = ramp_obj.town
+    candidate_ramp_name = ramp_obj.town if ramp_obj else None
     slot_list = []
     relaxed = False
     warning_msgs = []
 
-    # Step 1: Check existing Active Crane Days first
-    search_dates = ACTIVE_CRANE_DAYS.get(candidate_ramp_name, [])
+    # ✅ Step 1: Search existing Active Crane Days for this ramp
+    search_dates = ACTIVE_CRANE_DAYS.get(candidate_ramp_name, []).copy()
 
-    # Step 2: If less than 3 slots, activate next future candidate day(s)
-    if len(search_dates) < 1:
-        future_candidates = [d for d in CANDIDATE_CRANE_DAYS[candidate_ramp_name] if d >= requested_date_obj]
-        if future_candidates:
-            next_crane_day = future_candidates[0]
-            ACTIVE_CRANE_DAYS[candidate_ramp_name].append(next_crane_day)
-            search_dates.append(next_crane_day)
-            warning_msgs.append(f"⚠️ No active crane days at {candidate_ramp_name}. Activated new Crane Day: {next_crane_day.strftime('%b %d')}.")
+    # ✅ Step 2: Activate and search additional future candidate days at this ramp until >=3 slots found
+    candidate_days_remaining = [d for d in CANDIDATE_CRANE_DAYS.get(candidate_ramp_name, []) if d not in search_dates and d >= requested_date_obj]
 
-    # Step 3: Keep activating until we have 3 slots
-    while len(slot_list) < 3 and len(search_dates) < len(CANDIDATE_CRANE_DAYS[candidate_ramp_name]):
-        future_candidates = [d for d in CANDIDATE_CRANE_DAYS[candidate_ramp_name] if d not in search_dates and d >= requested_date_obj]
-        if future_candidates:
-            next_crane_day = future_candidates[0]
-            ACTIVE_CRANE_DAYS[candidate_ramp_name].append(next_crane_day)
-            search_dates.append(next_crane_day)
-            warning_msgs.append(f"⚠️ Activated additional Crane Day: {next_crane_day.strftime('%b %d')} to meet minimum slot count.")
+    while len(slot_list) < 3 and candidate_days_remaining:
+        next_crane_day = candidate_days_remaining.pop(0)
+        ACTIVE_CRANE_DAYS[candidate_ramp_name].append(next_crane_day)
+        search_dates.append(next_crane_day)
+        warning_msgs.append(f"⚠️ Activated new Crane Day: {next_crane_day.strftime('%b %d')} at {candidate_ramp_name} to meet slot minimum.")
 
-        # Search for slots on current crane days
-        for date in search_dates:
-            day_slots = search_single_day_for_crane(date, ramp_obj, boat, customer, service_type, trucks, duration, j17_duration)
-            slot_list.extend(day_slots)
+        # Search for slots on this new day
+        day_slots = search_single_day_for_crane(
+            next_crane_day, ramp_obj, boat, customer,
+            service_type, trucks, duration, j17_duration
+        )
+        slot_list.extend(day_slots)
 
-            if len(slot_list) >= 3:
-                break
+    # ✅ Step 3: Keep adding more candidate days until 3 slots exist or all dates exhausted
+    # Already handled above inside the while loop
 
-    # Step 4: If still less than 3 → Relax ramp and truck
+    # ✅ Step 4: If still under 3 slots → Relax ramp and truck rules and search other ramps
     if len(slot_list) < 3:
         relaxed = True
-        warning_msgs.append("⚠️ Relaxed ramp and truck rules to meet 3-slot minimum.")
+        warning_msgs.append("⚠️ Relaxed ramp and truck rules to meet 3-slot minimum. Searching other ramps and all trucks...")
+
         for other_ramp_name in CANDIDATE_CRANE_DAYS.keys():
+            if other_ramp_name == candidate_ramp_name:
+                continue  # Already checked this ramp
+
+            other_ramp_obj = None
+            for ramp in ECM_RAMPS.values():
+                if ramp.town == other_ramp_name:
+                    other_ramp_obj = ramp
+                    break
+            if not other_ramp_obj:
+                continue
+
             for date in CANDIDATE_CRANE_DAYS[other_ramp_name]:
-                day_slots = search_single_day_for_crane(date, ECM_RAMPS[other_ramp_name], boat, customer, service_type, ECM_TRUCKS.values(), duration, j17_duration)
+                day_slots = search_single_day_for_crane(
+                    date, other_ramp_obj, boat, customer,
+                    service_type, ECM_TRUCKS.values(), duration, j17_duration
+                )
+                # ✅ Mark all relaxed slots for UI highlight
                 for slot in day_slots:
                     slot['relaxed'] = True
                 slot_list.extend(day_slots)
+
                 if len(slot_list) >= 3:
                     break
             if len(slot_list) >= 3:
                 break
 
+    # ✅ Always cap at 6 slots for display, even though minimum is 3
     return slot_list[:6], warning_msgs, relaxed
     
     rules = BOOKING_RULES.get(boat.boat_type, {})
