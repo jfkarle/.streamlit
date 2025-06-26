@@ -355,6 +355,41 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 forced_date = job.scheduled_start_datetime.date()
                 break
 
+    # ✅ At this point, normal slot search continues
+    # (Insert your normal slot search loops here...)
+
+    # ✅ Initialize safe return variables
+    potential_slots = []
+    was_forced = False
+    expl = "No suitable slots found."
+
+    # Example: After your main slot-finding logic
+    if forced_date:
+        was_forced = True
+        # (Forced-date specific slot search logic...)
+        # (Populate potential_slots)
+
+    # If no forced date, continue with normal logic:
+    # (Continue populating potential_slots...)
+
+    # ✅ Deduplicate and sort
+    seen = set()
+    unique_slots = []
+    for slot in potential_slots:
+        key = (slot['date'], slot['time'], slot['truck_id'])
+        if key not in seen:
+            seen.add(key)
+            unique_slots.append(slot)
+    potential_slots = unique_slots
+    potential_slots.sort(key=lambda s: (-s.get('priority_score', 0), s['date'], s['time']))
+
+    top_slots = potential_slots[:6] if potential_slots else []
+
+    # ✅ Finalize explanation text
+    if top_slots:
+        expl = f"Found {len(top_slots)} slot(s), starting {top_slots[0]['date'].strftime('%A, %b %d')}."
+
+    # ✅ Return clean final tuple
     return top_slots, expl, [], was_forced
 
 def build_crane_day_slot_list(ramp_obj, boat, customer, requested_date_obj, service_type, trucks, duration, j17_duration):
