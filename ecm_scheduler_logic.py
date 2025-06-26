@@ -354,6 +354,7 @@ def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date_obj, tr
     
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, relax_ramp=False, manager_override=False, **kwargs):
+    global CRANE_DAY_LOGIC_ENABLED
     # --- MASTER FEATURE FLAG ---
     if not CRANE_DAY_LOGIC_ENABLED:
         # Simplified legacy logic for when the feature is OFF
