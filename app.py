@@ -272,9 +272,10 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                 c.setLineWidth(2)
                 c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_crane_end)
                 c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
-            c.save()
-            buffer.seek(0)
-            return buffer
+        
+        c.save()
+        buffer.seek(0)
+        return buffer
 
 
 # --- Cancel, Rebook, and Audit ---
