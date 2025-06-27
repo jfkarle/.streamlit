@@ -3,7 +3,7 @@ import datetime
 import ecm_scheduler_logic as ecm
 import pandas as pd
 import csv
-from io import BytesIO
+from io import IO.BytesIO
 from PyPDF2 import PdfMerger
 from st_aggrid import AgGrid, GridOptionsBuilder
 from reportlab.pdfgen import canvas
