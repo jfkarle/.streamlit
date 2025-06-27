@@ -68,6 +68,25 @@ def get_high_tide_times_for_ramp_and_date(ramp_obj, date_obj):
 
     return high_tide_times
 
+## New code for highlighting PDF
+def get_all_tide_times_for_ramp_and_date(ramp_obj, date_obj):
+    """
+    Fetches all high and low tide times for a given ramp and date.
+    Returns a dictionary like {'H': [time1], 'L': [time2]}.
+    """
+    if not ramp_obj or not ramp_obj.noaa_station_id:
+        return {'H': [], 'L': []}
+
+    tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_obj)
+    
+    all_tides = {'H': [], 'L': []}
+    for tide_entry in tide_data:
+        tide_type = tide_entry.get('type')
+        if tide_type in ['H', 'L']:
+            all_tides[tide_type].append(tide_entry.get('time'))
+            
+    return all_tides
+
 def get_all_tide_times_for_ramp_and_date(ramp_obj, date):
     """
     Fetches all high and low tide times for a given ramp and date.
