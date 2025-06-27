@@ -182,14 +182,12 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     bottom_y = margin + 0.5 * inch
     content_height = top_y - bottom_y
 
-    # --- Get Tide Times from the first scheduled job for the day ---
+    # --- FIX 1: Get Tide Data for Footnote ---
     primary_high_tide = None
     if jobs_for_day:
         first_job = jobs_for_day[0]
-        # Use getattr to safely access tides; defaults to empty list
         high_tides = getattr(first_job, 'high_tides', [])
         if high_tides:
-            # Find the high tide closest to noon for the footnote
             noon = datetime.time(12, 0)
             primary_high_tide = min(high_tides, 
                                   key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - 
@@ -199,66 +197,87 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         total_minutes = (t.hour - start_hour) * 60 + t.minute
         return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
 
-    # Header and static elements
+    # Header
     c.setFont("Helvetica-Bold", 12)
     c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
+
+    # Column headers
+    c.setFont("Helvetica-Bold", 14)
     for i, name in enumerate(planner_columns):
-        c.setFont("Helvetica-Bold", 14)
-        c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
+        x_center = margin + time_col_width + i * col_width + col_width / 2
+        c.drawCentredString(x_center, top_y + 10, name)
 
-    # --- Time Labels & Grid ---
+    # --- YOUR ORIGINAL, DETAILED TIME LABELS AND GRID ---
     for hour in range(start_hour, end_hour + 1):
-        y = get_y_for_time(datetime.time(hour, 0))
-        # Draw the main hour lines
-        c.setLineWidth(1.0)
-        c.line(margin, y, width - margin, y)
-        
-        # Draw the quarter-hour lines
-        c.setLineWidth(0.25)
-        for minute in [15, 30, 45]:
-             y_quarter = get_y_for_time(datetime.time(hour, minute))
-             c.line(margin + time_col_width, y_quarter, width - margin, y_quarter)
-        
-        display_hour = hour if hour <= 12 else hour - 12
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(margin + 3, y - 12, str(display_hour))
+        for minute in [0, 15, 30, 45]:
+            current_time = datetime.time(hour, minute)
+            y = get_y_for_time(current_time)
+            label_y = get_y_for_time((datetime.datetime.combine(datetime.date.today(), current_time) + datetime.timedelta(minutes=7.5)).time())
+            
+            c.setLineWidth(1.0 if minute == 0 else 0.25)
+            c.line(margin, y, width - margin, y)
+            
+            if minute == 0:
+                display_hour = hour if hour <= 12 else hour - 12
+                c.setFont("Helvetica-Bold", 9)
+                c.drawString(margin + 3, label_y - 3, str(display_hour))
+                c.setFont("Helvetica", 7)
+                c.drawString(margin + 18, label_y - 3, "00")
+            else:
+                c.setFont("Helvetica", 6)
+                c.drawString(margin + 18, label_y - 2, f"{minute:02d}")
 
-    # --- FIX 2: Corrected Bottom Border ---
+    # Vertical lines
+    for i in range(len(planner_columns) + 1):
+        x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
+    c.line(margin, top_y, margin, bottom_y)
+    
+    # --- FIX 2: Correctly draw the bottom page border ---
     c.setLineWidth(1.0)
-    c.line(margin, bottom_y, width - margin, bottom_y) # This ensures the final line is drawn
+    c.line(margin, bottom_y, width - margin, bottom_y)
+
 
     # --- Job Entries ---
     for job in jobs_for_day:
-        start_time = getattr(job, 'scheduled_start_datetime').time()
-        y0 = get_y_for_time(start_time)
-        customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
-        boat = ecm.get_boat_details(getattr(job, 'boat_id', None))
+        start_time = getattr(job, 'scheduled_start_datetime').time(); end_time = getattr(job, 'scheduled_end_datetime').time()
+        y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
+        
+        # Adjust Y positions to make space for the new draft line
+        line1_y_text, line2_y_text, line3_y_text, line4_y_text = y0 - 8, y0 - 18, y0 - 28, y0 - 38
+        y_bar_start = y0 - 42
 
+        customer = ecm.get_customer_details(getattr(job, 'customer_id', None)); boat = ecm.get_boat_details(getattr(job, 'boat_id', None))
+        
         truck_id = getattr(job, 'assigned_hauling_truck_id', None)
         if truck_id in column_map:
-            col_index = column_map[truck_id]
-            text_center_x = margin + time_col_width + (col_index + 0.5) * col_width
+            col_index = column_map[truck_id]; text_center_x = margin + time_col_width + (col_index + 0.5) * col_width
             
-            # --- FIX 3: ADDED BOAT DRAFT ---
-            line1 = f"{customer.customer_name}"
-            line2 = f"{int(boat.boat_length)}' {boat.boat_type} (Draft: {boat.draft_ft}')"
-            line3 = f"{_abbreviate_town(getattr(job, 'pickup_street_address', ''))}-{_abbreviate_town(getattr(job, 'dropoff_street_address', ''))}"
+            # --- FIX 3: ADDED BOAT DRAFT and adjusted text lines ---
+            c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x, line1_y_text, customer.customer_name)
+            c.setFont("Helvetica", 7); c.drawCentredString(text_center_x, line2_y_text, f"{int(boat.boat_length)}' {boat.boat_type}")
+            c.drawCentredString(text_center_x, line3_y_text, f"(Draft: {boat.draft_ft}')")
+            c.drawCentredString(text_center_x, line4_y_text, f"{_abbreviate_town(getattr(job, 'pickup_street_address', ''))}-{_abbreviate_town(getattr(job, 'dropoff_street_address', ''))}")
             
-            c.setFont("Helvetica-Bold", 8)
-            c.drawCentredString(text_center_x, y0 - 10, line1)
-            c.setFont("Helvetica", 7)
-            c.drawCentredString(text_center_x, y0 - 20, line2)
-            c.drawCentredString(text_center_x, y0 - 30, line3)
-    
+            c.setLineWidth(2); c.line(text_center_x, y_bar_start, text_center_x, y_end); c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+        
+        if getattr(job, 'assigned_crane_truck_id') and 'J17' in column_map:
+            # This logic remains the same
+            crane_col_index = column_map['J17']; text_center_x_crane = margin + time_col_width + (crane_col_index + 0.5) * col_width
+            y_crane_end = get_y_for_time(getattr(job, 'j17_busy_end_datetime').time())
+            c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x_crane, line1_y_text, customer.customer_name.split()[-1])
+            c.setFont("Helvetica", 7); c.drawCentredString(text_center_x_crane, line2_y_text, _abbreviate_town(getattr(job, 'dropoff_street_address', '')))
+            if 'mt' in boat.boat_type.lower(): c.drawCentredString(text_center_x_crane, line3_y_text, "TRANSPORT")
+            c.setLineWidth(2); c.line(text_center_x_crane, y_bar_start, text_center_x_crane, y_crane_end); c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
+
     # --- FIX 1: ADDED TIDE FOOTNOTE ---
     if primary_high_tide:
         tide_time_str = ecm.format_time_for_display(primary_high_tide['time'])
-        tide_height_str = f"{primary_high_tide['height']}'"
-        footnote_text = f"High Tide: {tide_time_str} {tide_height_str}"
+        # Ensure height is a string before trying to use it
+        tide_height_str = str(primary_high_tide.get('height', ''))
+        footnote_text = f"High Tide: {tide_time_str} {tide_height_str}'"
         c.setFont("Helvetica", 8)
         c.drawRightString(width - margin, bottom_y - 12, footnote_text)
-
-
+        
     c.save()
     buffer.seek(0)
     return buffer
