@@ -208,6 +208,9 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
     c.line(margin, top_y, margin, bottom_y)
+    # --- FIX: ADD THIS LINE HERE ---
+    c.line(margin, bottom_y, width - margin, bottom_y)
+    # --- END FIX ---
 
     # --- Time Labels & Grid with Highlighting ---
     for hour in range(start_hour, end_hour + 1):
