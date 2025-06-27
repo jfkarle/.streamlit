@@ -135,6 +135,7 @@ def _abbreviate_town(address):
             return abbr
     return address.title().split(',')[0]
 
+# from app.txt
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
@@ -147,10 +148,14 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         ramp_id = getattr(first_job, 'pickup_ramp_id', None) or getattr(first_job, 'dropoff_ramp_id', None)
         if ramp_id:
             ramp_obj = ecm.get_ramp_details(ramp_id)
-            all_tide_times = ecm.get_all_tide_times_for_ramp_and_date(ramp_obj, report_date)
+            [span_0](start_span)if ramp_obj: # <--- This is the crucial check to add or ensure is present[span_0](end_span)
+                all_tide_times = ecm.get_all_tide_times_for_ramp_and_date(ramp_obj, report_date)
 
     high_tide_hours = {t.hour for t in all_tide_times['high']}
     low_tide_hours = {t.hour for t in all_tide_times['low']}
+    
+    # ... (rest of your PDF generation code)
+
     
     # --- PDF Header ---
     c.setFont("Helvetica-Bold", 16)
