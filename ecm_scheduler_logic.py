@@ -49,36 +49,18 @@ def format_time_for_display(time_obj):
     # A more portable way is to use lstrip
     return time_obj.strftime('%I:%M %p').lstrip('0')
 
-def get_high_tide_times_for_ramp_and_date(ramp_obj, date_obj):
-    """Fetch high tide times for a given ramp and date directly from NOAA API (live, on-the-fly)."""
-
-    if not ramp_obj or not ramp_obj.noaa_station_id:
-        print(f"[ERROR] Ramp '{ramp_obj.ramp_name if ramp_obj else 'Unknown'}' missing NOAA station ID.")
-        return []
-
-    tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_obj)
-
-    high_tide_times = []
-    for tide_entry in tide_data:
-        if tide_entry.get('type') == 'H':
-            high_tide_times.append(tide_entry.get('time'))
-
-    if not high_tide_times:
-        print(f"[WARNING] No high tide times found from NOAA for {ramp_obj.ramp_name} on {date_obj}.")
-
-    return high_tide_times
-
-## New code for highlighting PDF
 def get_all_tide_times_for_ramp_and_date(ramp_obj, date_obj):
     """
-    Fetches all high and low tide times for a given ramp and date.
-    Returns a dictionary like {'H': [time1], 'L': [time2]}.
+    Fetches all high and low tide times for a given ramp and date
+    using the NOAA API and returns a dictionary.
     """
     if not ramp_obj or not ramp_obj.noaa_station_id:
+        print(f"[ERROR] Ramp '{ramp_obj.ramp_name if ramp_obj else 'Unknown'}' missing NOAA station ID.")
         return {'H': [], 'L': []}
 
+    # This uses the same reliable fetch_noaa_tides function as before
     tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_obj)
-    
+
     all_tides = {'H': [], 'L': []}
     for tide_entry in tide_data:
         tide_type = tide_entry.get('type')
@@ -86,40 +68,6 @@ def get_all_tide_times_for_ramp_and_date(ramp_obj, date_obj):
             all_tides[tide_type].append(tide_entry.get('time'))
             
     return all_tides
-
-def get_all_tide_times_for_ramp_and_date(ramp_obj, date):
-    """
-    Fetches all high and low tide times for a given ramp and date.
-    Returns a dictionary with 'high' and 'low' tide times.
-    """
-    if not ramp_obj or not ramp_obj.tide_station_id:
-        return {'high': [], 'low': []}
-    
-    try:
-        tide_station = noaa_coops.Station(ramp_obj.tide_station_id)
-        start_date = datetime.datetime.combine(date, datetime.time(0, 0))
-        end_date = datetime.datetime.combine(date, datetime.time(23, 59))
-        
-        tide_predictions = tide_station.get_data(
-            begin_date=start_date.strftime("%Y%m%d %H:%M"),
-            end_date=end_date.strftime("%Y%m%d %H:%M"),
-            product='predictions',
-            datum='MLLW',
-            time_zone='lst_ldt'
-        )
-        
-        all_tides = {'high': [], 'low': []}
-        for t in tide_predictions:
-            tide_time = datetime.datetime.fromisoformat(t['t']).time()
-            if t['type'] == 'H':
-                all_tides['high'].append(tide_time)
-            elif t['type'] == 'L':
-                all_tides['low'].append(tide_time)
-        return all_tides
-    except Exception as e:
-        print(f"Error fetching all tide data: {e}")
-        return {'high': [], 'low': []}
-
 
 def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide":
@@ -622,6 +570,12 @@ def confirm_and_schedule_job(original_request, selected_slot):
     if original_request['service_type'] in ["Launch", "Haul"] and not ramp:
         return None, "Error: A ramp must be selected for this service type."
 
+    # --- NEW: Fetch all tide data at the moment of booking ---
+    tide_data = get_all_tide_times_for_ramp_and_date(ramp, selected_slot['date'])
+    high_tides = tide_data.get('H', [])
+    low_tides = tide_data.get('L', [])
+    # --- END NEW ---
+
     # 3. Calculate job details
     job_id = globals()['JOB_ID_COUNTER'] + 1
     globals()['JOB_ID_COUNTER'] += 1
@@ -649,35 +603,33 @@ def confirm_and_schedule_job(original_request, selected_slot):
         pickup_rid = ramp.ramp_id
         dropoff_addr = "HOME"
     
-    # --- THIS IS THE CORRECTED PART ---
-    # 4. Create the new Job object by passing arguments explicitly
+    # 4. Create the new Job object, now including the tide data
     new_job = Job(
         job_id=job_id,
         customer_id=customer.customer_id,
         boat_id=boat.boat_id,
         service_type=service_type,
-        requested_date=datetime.datetime.strptime(original_request['requested_date_str'], '%Y-%m-%d').date(),
         scheduled_start_datetime=start_dt,
-        calculated_job_duration_hours=hauler_duration_hours,
         scheduled_end_datetime=hauler_end_dt,
         assigned_hauling_truck_id=selected_slot['truck_id'],
         assigned_crane_truck_id="J17" if selected_slot.get('j17_needed') else None,
         j17_busy_end_datetime=j17_end_dt,
         pickup_ramp_id=pickup_rid,
-        pickup_street_address=pickup_addr,
         dropoff_ramp_id=dropoff_rid,
-        dropoff_street_address=dropoff_addr,
+        # --- NEW: Add tide data to the saved job record ---
+        high_tides=high_tides,
+        low_tides=low_tides,
+        # --- Note: Other attributes from previous versions are consolidated by **kwargs in Job class ---
         job_status="Scheduled",
         notes=f"Booked via type: {selected_slot.get('type', 'N/A')}.",
-        # These are placeholders for attributes your Job class expects
-        pickup_loc_coords=None,
-        dropoff_loc_coords=None
+        pickup_street_address=pickup_addr,
+        dropoff_street_address=dropoff_addr,
     )
 
     # 5. Add the job to the schedule
     SCHEDULED_JOBS.append(new_job)
 
-    # 6. Update crane status
+    # 6. Update crane status if needed
     if new_job.assigned_crane_truck_id:
         date_str = new_job.scheduled_start_datetime.strftime('%Y-%m-%d')
         if date_str not in crane_daily_status:
