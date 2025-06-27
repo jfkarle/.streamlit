@@ -61,14 +61,16 @@ def get_all_tide_times_for_ramp_and_date(ramp_obj, date_obj):
         print(f"[ERROR] Ramp '{ramp_obj.ramp_name if ramp_obj else 'Unknown'}' missing NOAA station ID.")
         return {'H': [], 'L': []}
 
-    # This uses the same reliable fetch_noaa_tides function as before
     tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_obj)
 
     all_tides = {'H': [], 'L': []}
     for tide_entry in tide_data:
         tide_type = tide_entry.get('type')
         if tide_type in ['H', 'L']:
-            all_tides[tide_type].append(tide_entry.get('time'))
+            # --- THE FIX ---
+            # This now appends the entire tide record (with time and height),
+            # not just the time object.
+            all_tides[tide_type].append(tide_entry)
             
     return all_tides
 
