@@ -19,63 +19,70 @@ st.set_page_config(layout="wide")
 
 # --- NEW CALENDAR DISPLAY FUNCTION ---
 def display_crane_day_calendar(crane_days_for_ramp):
-    """Generates a visual monthly calendar highlighting crane days."""
-    
-    # Get the set of dates for easy lookup
+    """
+    Generates a more visually defined and compact monthly calendar,
+    highlighting crane days and the current date.
+    """
     candidate_dates = {d['date'] for d in crane_days_for_ramp}
-    
     today = datetime.date.today()
-    
-    # --- Month Selector ---
-    selected_month_str = st.selectbox(
-        "Select a month to view:",
-        [(today + datetime.timedelta(days=30*i)).strftime("%B %Y") for i in range(6)]
-    )
-    
-    if not selected_month_str:
-        return
 
-    selected_month = datetime.datetime.strptime(selected_month_str, "%B %Y")
-    
-    st.subheader(f"Calendar for {selected_month_str}")
+    # Use columns to create a centered, narrower layout for the calendar
+    _ , cal_col, _ = st.columns([1, 2, 1])
 
-    # --- Calendar Header ---
-    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    cols = st.columns(7)
-    for col, day_name in zip(cols, days):
-        with col:
-            st.markdown(f"<p style='text-align: center; font-weight: bold;'>{day_name}</p>", unsafe_allow_html=True)
+    with cal_col:
+        with st.container(border=True): # Add a border around the entire component
+            # --- Month Selector ---
+            selected_month_str = st.selectbox(
+                "Select a month to view:",
+                [(today + datetime.timedelta(days=30*i)).strftime("%B %Y") for i in range(6)]
+            )
+            if not selected_month_str:
+                return
 
-    # --- Calendar Body ---
-    cal = calendar.Calendar()
-    month_days = cal.monthdatescalendar(selected_month.year, selected_month.month)
+            selected_month = datetime.datetime.strptime(selected_month_str, "%B %Y")
+            st.subheader(f"Calendar for {selected_month_str}")
 
-    for week in month_days:
-        cols = st.columns(7)
-        for i, day in enumerate(week):
-            if day.month != selected_month.month:
-                cols[i].markdown("") # Empty cell for days not in the month
-            else:
-                day_str = str(day.day)
-                is_candidate = day in candidate_dates
-                
-                # Style the day's box
-                background_color = "#F0FFF0" if is_candidate else "#F0F2F6" # Light green for candidates
-                border_color = "#2E8B57" if is_candidate else "#E6E6E6" # Dark green border
-                font_weight = "bold" if is_candidate else "normal"
-                
-                # Render the box with the day number
-                cols[i].markdown(
-                    f"""
-                    <div style="padding:10px; border-radius:5px; border: 2px solid {border_color}; background-color:{background_color}; height: 60px;">
-                        <p style="text-align: right; font-weight: {font_weight}; color: black;">{day_str}</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-                
+            # --- Calendar Header (Days of the Week) ---
+            days_of_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            header_cols = st.columns(7)
+            for col, day_name in zip(header_cols, days_of_week):
+                with col:
+                    st.markdown(f"<p style='text-align: center; font-weight: bold;'>{day_name}</p>", unsafe_allow_html=True)
+            st.markdown("---", help=None) # A thin separator line
 
+            # --- Calendar Body (Dates) ---
+            cal = calendar.Calendar()
+            month_days = cal.monthdatescalendar(selected_month.year, selected_month.month)
 
+            for week in month_days:
+                cols = st.columns(7)
+                for i, day in enumerate(week):
+                    # Style days that are not in the current month differently
+                    if day.month != selected_month.month:
+                        cols[i].markdown(
+                            f"""
+                            <div style="padding:10px; border-radius:5px; background-color:#F0F2F6; height: 60px;">
+                                <p style="text-align: right; color: #D3D3D3;">{day.day}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        day_str = str(day.day)
+                        is_candidate = day in candidate_dates
+                        is_today = day == today
+
+                        # Define styles based on the day's properties
+                        bg_color = "#E8F5E9" if is_candidate else "#FFFFFF" # Light green for candidates
+                        # Blue border for today, green for other candidates, light grey for regular days
+                        border_color = "#1E88E5" if is_today else ("#4CAF50" if is_candidate else "#E0E0E0")
+                        font_weight = "bold" if is_candidate or is_today else "normal"
+
+                        # Render the styled day cell
+                        cols[i].markdown(
+                            f"""
+                            <div style="padding:10px; border-radius:5px; border: 2px solid {border_color}; background-color:{bg_color}; height: 60px;">
+                                <p style="text-align: right; font-weight: {font_weight}; color: black;">{day_str}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
 # --- Helper Functions ---
 
 def format_tides_for_display(slot, ecm_hours):
