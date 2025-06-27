@@ -367,85 +367,100 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not ramp_obj and service_type in ["Launch", "Haul"]:
         return [], "A ramp must be selected for this service.", [], False
 
-    # --- MAIN SEARCH LOOP ---
-    found_slots = []
-    checked_days = set()
-    message = ""
-    
-    current_date = requested_date_obj
-    search_end_date = current_date + timedelta(days=MAX_SEARCH_DAYS_FUTURE)
+    # Return legacy results if the feature is toggled off
+    if not CRANE_DAY_LOGIC_ENABLED:
+        # Simplified legacy logic. A full implementation would go here if needed.
+        return [], "Crane Day Logic is disabled. Legacy search not implemented in this version.", [], False
 
-    while len(found_slots) < num_suggestions_to_find and current_date <= search_end_date:
+    is_crane_job = boat.boat_type.startswith("Sailboat") and service_type in ["Launch", "Haul"]
+    if not is_crane_job:
+        # A full powerboat implementation would go here.
+        return [], "Scheduling for powerboats is not yet fully implemented with the new rules.", [], False
+
+    # --- TIERED SEARCH HELPER FUNCTION ---
+    def _find_first_slot_on_day(check_date, ramp_obj, truck_list):
+        ecm_hours = get_ecm_operating_hours(check_date)
+        if not ecm_hours: return None
         
-        current_date_str = current_date.strftime('%Y-%m-%d')
-        if current_date_str in checked_days:
-            current_date += timedelta(days=1)
-            continue
-        
-        checked_days.add(current_date_str)
-        ecm_hours = get_ecm_operating_hours(current_date)
-        if not ecm_hours:
-            current_date += timedelta(days=1)
-            continue
-
-        windows = get_final_schedulable_ramp_times(ramp_obj, boat, current_date)
-        if not windows:
-            current_date += timedelta(days=1)
-            continue
-
-        trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
-        if not trucks:
-             current_date += timedelta(days=1)
-             continue
-             
+        windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date)
         rules = BOOKING_RULES.get(boat.boat_type, {})
-        duration_hours = rules.get('truck_mins', 90) / 60.0
-        j17_duration = rules.get('crane_mins', 0) / 60.0
-
-        # --- Find the SINGLE EARLIEST slot for the current day ---
-        earliest_slot_on_day = None
+        duration_hours = rules.get('truck_mins', 180) / 60.0
+        j17_duration = rules.get('crane_mins', 60) / 60.0
+        
         for w in windows:
             p_time = w['start_time']
             while p_time < w['end_time']:
-                
-                # --- ECM BOAT PRIORITY LOGIC ---
+                # ECM Boat Priority Logic
                 is_first_slot = (p_time == ecm_hours['open'])
-                end_of_slot_dt = datetime.datetime.combine(current_date, p_time) + timedelta(hours=duration_hours)
+                end_of_slot_dt = datetime.datetime.combine(check_date, p_time) + timedelta(hours=duration_hours)
                 is_last_slot = (end_of_slot_dt.time() >= ecm_hours['close'])
+                is_ecm_launch = (service_type == "Launch" and customer.is_ecm_customer)
+                is_ecm_haul = (service_type == "Haul" and customer.is_ecm_customer)
 
-                is_ecm_launch_request = (service_type == "Launch" and customer.is_ecm_customer)
-                is_ecm_haul_request = (service_type == "Haul" and customer.is_ecm_customer)
-
-                if is_first_slot and not is_ecm_launch_request:
-                    p_time = (datetime.datetime.combine(current_date, p_time) + timedelta(minutes=30)).time()
+                if (is_first_slot and not is_ecm_launch) or (is_last_slot and not is_ecm_haul):
+                    p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
                     continue
-                if is_last_slot and not is_ecm_haul_request:
-                    p_time = (datetime.datetime.combine(current_date, p_time) + timedelta(minutes=30)).time()
-                    continue
-                # --- END ECM LOGIC ---
 
-                # We check the first suitable truck
-                slot = _check_and_create_slot_detail(current_date, p_time, trucks[0], customer, boat, service_type, ramp_obj, ecm_hours, duration_hours, j17_duration, w)
+                slot = _check_and_create_slot_detail(check_date, p_time, truck_list[0], customer, boat, service_type, ramp_obj, ecm_hours, duration_hours, j17_duration, w)
                 if slot:
-                    earliest_slot_on_day = slot
-                    break # Found first available slot, stop searching this window
-                
-                p_time = (datetime.datetime.combine(current_date, p_time) + timedelta(minutes=30)).time()
-            
-            if earliest_slot_on_day:
-                break # Found first available slot, stop searching other windows today
-        
-        if earliest_slot_on_day:
-            found_slots.append(earliest_slot_on_day)
+                    return slot # Return the very first valid slot found
+                p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
+        return None
 
-        current_date += timedelta(days=1)
+    # --- Main Search Execution ---
+    message = ""
+    found_slots = []
+    
+    trucks_to_check = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
+    if not trucks_to_check:
+        return [], "No suitable trucks for this boat length.", [], False
+
+    # --- TIER 1: Search ACTIVE Crane Days First ---
+    print("Tier 1: Searching for ACTIVE Crane Days...")
+    active_crane_days = {ramp: [] for ramp in CANDIDATE_CRANE_DAYS.keys()}
+    for job in SCHEDULED_JOBS:
+        if getattr(job, 'assigned_crane_truck_id'):
+            job_date = job.scheduled_start_datetime.date()
+            ramp_id = getattr(job, 'pickup_ramp_id') or getattr(job, 'dropoff_ramp_id')
+            if ramp_id in active_crane_days and job_date not in active_crane_days[ramp_id]:
+                active_crane_days[ramp_id].append(job_date)
+
+    active_days_at_ramp = sorted(active_crane_days.get(selected_ramp_id, []), key=lambda d: abs(d - requested_date_obj))
+    
+    for day in active_days_at_ramp:
+        if len(found_slots) >= num_suggestions_to_find: break
+        slot = _find_first_slot_on_day(day, ramp_obj, trucks_to_check)
+        if slot:
+            found_slots.append(slot)
+    
+    if found_slots:
+        message = f"To group with another job, we found slots on {found_slots[0]['date'].strftime('%b %d')}, a day the crane is already scheduled at your ramp."
+        return found_slots, message, [], False
+
+    # --- TIER 2: If no active slots, search CANDIDATE Crane Days ---
+    print("Tier 1 failed. Proceeding to Tier 2: Searching CANDIDATE Crane Days...")
+    
+    candidate_days_at_ramp = CANDIDATE_CRANE_DAYS.get(selected_ramp_id, [])
+    future_candidates = [cd for cd in candidate_days_at_ramp if cd['date'] >= requested_date_obj]
+    future_candidates.sort(key=lambda x: x['date'])
+    
+    # Build explanatory message
+    requested_date_is_candidate = any(d['date'] == requested_date_obj for d in candidate_days_at_ramp)
+    if not requested_date_is_candidate:
+        message = f"Your requested date ({requested_date_obj.strftime('%b %d')}) is not a designated Crane Day. "
+    
+    for day_info in future_candidates:
+        if len(found_slots) >= num_suggestions_to_find: break
+        slot = _find_first_slot_on_day(day_info['date'], ramp_obj, trucks_to_check)
+        if slot:
+            found_slots.append(slot)
 
     if not found_slots:
-        message = f"No suitable slots found for {customer.customer_name} within the next 120 days."
-    else:
-        message = f"Found {len(found_slots)} available date(s) for {customer.customer_name}."
+        return [], "No suitable Candidate Crane Day slots could be found. Please try relaxing search options or call the office.", [], False
 
+    message += f"Found the next available Crane Day(s) with ideal tides."
     return found_slots, message, [], False
+
 
     def _search_day_for_slots(check_date, ramp_obj, truck_list):
         slots_on_day = []
