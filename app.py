@@ -262,7 +262,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         if truck_id in column_map:
             col_index = column_map[truck_id]; text_center_x = margin + time_col_width + (col_index + 0.5) * col_width
             ####### Set FONT SIZES for Customer details in PDF page output
-            c.setFont("Helvetica-Bold", 12); c.drawCentredString(text_center_x, line1_y_text, customer.customer_name)
+            c.setFont("Helvetica-Bold", 10); c.drawCentredString(text_center_x, line1_y_text, customer.customer_name)
             c.setFont("Helvetica", 10); c.drawCentredString(text_center_x, line2_y_text, f"{int(boat.boat_length)}' {boat.boat_type}")
             c.drawCentredString(text_center_x, line3_y_text, f"{_abbreviate_town(getattr(job, 'pickup_street_address', ''))}-{_abbreviate_town(getattr(job, 'dropoff_street_address', ''))}")
             c.setLineWidth(2); c.line(text_center_x, y_bar_start, text_center_x, y_end); c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
