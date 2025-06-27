@@ -238,12 +238,12 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.setFillColor(colors.black)
             if minute == 0:
                 display_hour = hour if hour <= 12 else hour - 12
-                c.setFont("Helvetica-Bold", 9)
+                c.setFont("Helvetica-Bold", 12)
                 c.drawString(margin + 3, label_y - 3, str(display_hour))
-                c.setFont("Helvetica", 7)
+                c.setFont("Helvetica", 8)
                 c.drawString(time_label_x, time_label_y, "00")
             else:
-                c.setFont("Helvetica", 6)
+                c.setFont("Helvetica", 7)
                 c.drawString(time_label_x, time_label_y, f"{minute:02d}")
 
     # Vertical grid lines
