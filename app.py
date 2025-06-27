@@ -124,17 +124,28 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
 # --- PDF Page Generation Tool ---
 
 def _abbreviate_town(address):
+    """
+    Takes a full address string or a special keyword ('HOME') and returns
+    a standardized three-letter abbreviation for the town.
+    """
     if not address:
         return ""
-    address = address.lower()
-    for town, abbr in {
-        "scituate": "Sci", "green harbor": "Grn", "marshfield": "Mfield", "cohasset": "Coh",
-        "weymouth": "Wey", "plymouth": "Ply", "sandwich": "Sand", "duxbury": "Dux",
-        "humarock": "Huma", "pembroke": "Pembroke", "ecm": "Pembroke"
-    }.items():
-        if town in address:
-            return abbr
-    return address.title().split(',')[0]
+
+    # The abbreviation mapping dictionary
+    abbr_map = {
+        "pembroke": "Pem",
+        "scituate": "Sci",
+        "green harbor": "GrH",
+        "marshfield": "Mar",
+        "cohasset": "Coh",
+        "weymouth": "Wey",
+        "plymouth": "Ply",
+        "sandwich": "San",
+        "duxbury": "Dux",
+        "humarock": "Hum",
+        "hingham": "Hin",
+        "hull": "Hul"
+    }
 
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
