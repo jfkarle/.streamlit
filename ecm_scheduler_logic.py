@@ -68,6 +68,40 @@ def get_high_tide_times_for_ramp_and_date(ramp_obj, date_obj):
 
     return high_tide_times
 
+def get_all_tide_times_for_ramp_and_date(ramp_obj, date):
+    """
+    Fetches all high and low tide times for a given ramp and date.
+    Returns a dictionary with 'high' and 'low' tide times.
+    """
+    if not ramp_obj or not ramp_obj.tide_station_id:
+        return {'high': [], 'low': []}
+    
+    try:
+        tide_station = noaa_coops.Station(ramp_obj.tide_station_id)
+        start_date = datetime.datetime.combine(date, datetime.time(0, 0))
+        end_date = datetime.datetime.combine(date, datetime.time(23, 59))
+        
+        tide_predictions = tide_station.get_data(
+            begin_date=start_date.strftime("%Y%m%d %H:%M"),
+            end_date=end_date.strftime("%Y%m%d %H:%M"),
+            product='predictions',
+            datum='MLLW',
+            time_zone='lst_ldt'
+        )
+        
+        all_tides = {'high': [], 'low': []}
+        for t in tide_predictions:
+            tide_time = datetime.datetime.fromisoformat(t['t']).time()
+            if t['type'] == 'H':
+                all_tides['high'].append(tide_time)
+            elif t['type'] == 'L':
+                all_tides['low'].append(tide_time)
+        return all_tides
+    except Exception as e:
+        print(f"Error fetching all tide data: {e}")
+        return {'high': [], 'low': []}
+
+
 def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide":
         return "Any Tide"
