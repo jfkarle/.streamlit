@@ -3,7 +3,7 @@ import datetime
 import ecm_scheduler_logic as ecm
 import pandas as pd
 import csv
-from io import IO.BytesIO
+from io import BytesIO
 from PyPDF2 import PdfMerger
 from st_aggrid import AgGrid, GridOptionsBuilder
 from reportlab.pdfgen import canvas
@@ -136,7 +136,7 @@ def _abbreviate_town(address):
     return address.title().split(',')[0]
 
 def generate_daily_planner_pdf(report_date, jobs_for_day):
-    buffer = io.BytesIO()
+    buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
