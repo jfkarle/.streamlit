@@ -355,7 +355,6 @@ def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date_obj, tr
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, relax_ramp=False, manager_override=False, num_suggestions_to_find=3, **kwargs):
     global CRANE_DAY_LOGIC_ENABLED
-    # This function is now the final, complete version incorporating all business rules.
     try:
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError:
@@ -363,10 +362,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
     if not customer or not boat: return [], "Invalid Customer/Boat ID.", [], False
+    
+    ramp_obj = get_ramp_details(selected_ramp_id)
+    if not ramp_obj and service_type in ["Launch", "Haul"]:
+        return [], "A ramp must be selected for this service.", [], False
 
     # --- MAIN SEARCH LOOP ---
-    # This new structure focuses on finding distinct DAYS, not just slots.
-    
     found_slots = []
     checked_days = set()
     message = ""
@@ -374,19 +375,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     current_date = requested_date_obj
     search_end_date = current_date + timedelta(days=MAX_SEARCH_DAYS_FUTURE)
 
-    while len(found_slots) < num_suggestions_to_find and current_date < search_end_date:
-        if current_date in checked_days:
+    while len(found_slots) < num_suggestions_to_find and current_date <= search_end_date:
+        
+        current_date_str = current_date.strftime('%Y-%m-%d')
+        if current_date_str in checked_days:
             current_date += timedelta(days=1)
             continue
         
-        checked_days.add(current_date)
+        checked_days.add(current_date_str)
         ecm_hours = get_ecm_operating_hours(current_date)
         if not ecm_hours:
-            current_date += timedelta(days=1)
-            continue
-
-        ramp_obj = get_ramp_details(selected_ramp_id)
-        if not ramp_obj:
             current_date += timedelta(days=1)
             continue
 
@@ -396,6 +394,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             continue
 
         trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
+        if not trucks:
+             current_date += timedelta(days=1)
+             continue
+             
         rules = BOOKING_RULES.get(boat.boat_type, {})
         duration_hours = rules.get('truck_mins', 90) / 60.0
         j17_duration = rules.get('crane_mins', 0) / 60.0
@@ -406,35 +408,32 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             p_time = w['start_time']
             while p_time < w['end_time']:
                 
-                # --- NEW: ECM BOAT PRIORITY LOGIC ---
+                # --- ECM BOAT PRIORITY LOGIC ---
                 is_first_slot = (p_time == ecm_hours['open'])
-                
                 end_of_slot_dt = datetime.datetime.combine(current_date, p_time) + timedelta(hours=duration_hours)
-                is_last_slot = (end_of_slot_dt.time() == ecm_hours['close'])
+                is_last_slot = (end_of_slot_dt.time() >= ecm_hours['close'])
 
-                is_ecm_launch = (service_type == "Launch" and customer.is_ecm_customer)
-                is_ecm_haul = (service_type == "Haul" and customer.is_ecm_customer)
+                is_ecm_launch_request = (service_type == "Launch" and customer.is_ecm_customer)
+                is_ecm_haul_request = (service_type == "Haul" and customer.is_ecm_customer)
 
-                # Rule 1: First slot is reserved for ECM Launches
-                if is_first_slot and not is_ecm_launch:
+                if is_first_slot and not is_ecm_launch_request:
                     p_time = (datetime.datetime.combine(current_date, p_time) + timedelta(minutes=30)).time()
                     continue
-
-                # Rule 2: Last slot is reserved for ECM Hauls
-                if is_last_slot and not is_ecm_haul:
+                if is_last_slot and not is_ecm_haul_request:
                     p_time = (datetime.datetime.combine(current_date, p_time) + timedelta(minutes=30)).time()
                     continue
                 # --- END ECM LOGIC ---
 
+                # We check the first suitable truck
                 slot = _check_and_create_slot_detail(current_date, p_time, trucks[0], customer, boat, service_type, ramp_obj, ecm_hours, duration_hours, j17_duration, w)
                 if slot:
                     earliest_slot_on_day = slot
-                    break # Found the first slot, stop searching this window
+                    break # Found first available slot, stop searching this window
                 
                 p_time = (datetime.datetime.combine(current_date, p_time) + timedelta(minutes=30)).time()
             
             if earliest_slot_on_day:
-                break # Found the first slot, stop searching other windows on this day
+                break # Found first available slot, stop searching other windows today
         
         if earliest_slot_on_day:
             found_slots.append(earliest_slot_on_day)
@@ -447,6 +446,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         message = f"Found {len(found_slots)} available date(s) for {customer.customer_name}."
 
     return found_slots, message, [], False
+
     def _search_day_for_slots(check_date, ramp_obj, truck_list):
         slots_on_day = []
         ecm_hours = get_ecm_operating_hours(check_date)
