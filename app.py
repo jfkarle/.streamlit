@@ -136,146 +136,118 @@ def _abbreviate_town(address):
     return address.title().split(',')[0]
 
 def generate_daily_planner_pdf(report_date, jobs_for_day):
-    row_height = 30  # points per row
-    buffer = BytesIO()
+    buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
-    planner_columns = ["S20/33", "S21/77", "S23/55", "J17"]
-    column_map = {name: i for i, name in enumerate(planner_columns)}
-    margin = 0.5 * inch
-    time_col_width = 0.75 * inch
-    content_width = width - 2 * margin - time_col_width
-    col_width = content_width / len(planner_columns)
-    start_hour, end_hour = 7, 18
-    top_y = height - margin - 0.5 * inch
-    bottom_y = margin + 0.5 * inch
-    content_height = top_y - bottom_y
 
-    def get_y_for_time(t):
-        total_minutes = (t.hour - start_hour) * 60 + t.minute
-        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
+    # --- Get All Tide Times for the Day ---
+    all_tide_times = {'high': [], 'low': []}
+    if jobs_for_day:
+        first_job = jobs_for_day[0]
+        ramp_id = getattr(first_job, 'pickup_ramp_id', None) or getattr(first_job, 'dropoff_ramp_id', None)
+        if ramp_id:
+            ramp_obj = ecm.get_ramp_details(ramp_id)
+            all_tide_times = ecm.get_all_tide_times_for_ramp_and_date(ramp_obj, report_date)
 
-    # Header
-    day_of_year = report_date.timetuple().tm_yday
-    days_in_year = 366 if (report_date.year % 4 == 0 and report_date.year % 100 != 0) or (report_date.year % 400 == 0) else 365
-    c.setFont("Helvetica", 9)
-    c.drawRightString(width - margin, height - 0.4 * inch, f"{day_of_year}/{days_in_year - day_of_year}")
-    c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
+    high_tide_hours = {t.hour for t in all_tide_times['high']}
+    low_tide_hours = {t.hour for t in all_tide_times['low']}
+    
+    # --- PDF Header ---
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(30, height - 50, f"ECM Daily Planner: {report_date.strftime('%A, %B %d, %Y')}")
+    
+    # --- Time Column on the left ---
+    c.setFont("Helvetica", 10)
+    start_hour, end_hour = 7, 18  # 7 AM to 6 PM
+    y_start, y_end = height - 100, 100
+    hour_height = (y_start - y_end) / (end_hour - start_hour)
 
-    # Column headers
-    c.setFont("Helvetica-Bold", 14)
-    for i, name in enumerate(planner_columns):
-        x_center = margin + time_col_width + i * col_width + col_width / 2
-        c.drawCentredString(x_center, top_y + 10, name)
-
-    # Horizontal lines and time labels
     for hour in range(start_hour, end_hour + 1):
-        for minute in [0, 15, 30, 45]:
-            current_time = datetime.time(hour, minute)
-            y = get_y_for_time(current_time)
-            next_y = get_y_for_time((datetime.datetime.combine(datetime.date.today(), current_time) + datetime.timedelta(minutes=15)).time())
-            label_y = (y + next_y) / 2
-            c.setLineWidth(1.0 if minute == 0 else 0.25)
-            c.line(margin, y, width - margin, y)
-            if minute == 0:
-                display_hour = hour if hour <= 12 else hour - 12
-                c.setFont("Helvetica-Bold", 9)
-                c.drawString(margin + 3, label_y - 3, str(display_hour))
-                c.setFont("Helvetica", 7)
-                c.drawString(margin + 18, label_y - 3, "00")
-            else:
-                c.setFont("Helvetica", 6)
-                c.drawString(margin + 18, label_y - 2, f"{minute}")
+        y = y_start - ((hour - start_hour) * hour_height)
+        c.line(50, y, width - 50, y)
+        time_str = f"{hour % 12 if hour % 12 != 0 else 12} {'AM' if hour < 12 else 'PM'}"
+        
+        # --- NEW: Highlighting Logic ---
+        is_high_tide_hour = hour in high_tide_hours
+        is_low_tide_hour = hour in low_tide_hours
 
-    # Vertical lines
-    for i in range(len(planner_columns) + 1):
-        x = margin + time_col_width + i * col_width
-        c.setLineWidth(0.5)
-        c.line(x, top_y, x, bottom_y)
-    c.line(margin, top_y, margin, bottom_y)
+        if is_high_tide_hour:
+            c.setFillColorRGB(1, 1, 0) # Yellow
+            c.rect(28, y - 5, 20, 10, fill=1, stroke=0)
+            c.setFillColorRGB(0, 0, 0) # Back to Black
+        elif is_low_tide_hour:
+            c.setFillColorRGB(1, 0, 0) # Red
+            c.rect(28, y - 5, 20, 10, fill=1, stroke=0)
+            c.setFillColorRGB(0, 0, 0) # Back to Black
+        # --- END Highlighting Logic ---
+        
+        c.drawString(30, y - 3, time_str)
 
-    # Job entries
+    # --- Column Headers ---
+    column_headers = ecm.TRUCKS + ["J17"]
+    num_columns = len(column_headers)
+    column_width = (width - 150) / num_columns
+    x_start = 75
+    
+    c.setFont("Helvetica-Bold", 10)
+    for i, header in enumerate(column_headers):
+        c.drawString(x_start + i * column_width + 10, y_start + 10, header)
+    
+    # --- Job Entries ---
+    def get_y_for_time(t):
+        total_minutes_from_start = (t.hour - start_hour) * 60 + t.minute
+        return y_start - (total_minutes_from_start / ((end_hour - start_hour) * 60)) * (y_start - y_end)
+
+    column_map = {header: i for i, header in enumerate(column_headers)}
+    
     for job in jobs_for_day:
-        start_time = getattr(job, 'scheduled_start_datetime').time()
-        end_time = getattr(job, 'scheduled_end_datetime').time()
+        start_time = job.scheduled_start_datetime.time()
+        end_time = job.scheduled_end_datetime.time()
+        
+        y_start_job = get_y_for_time(start_time)
+        y_end_job = get_y_for_time(end_time)
+        
+        # Draw Truck Entry
+        if job.assigned_truck_id in column_map:
+            col_index = column_map[job.assigned_truck_id]
+            x_job_start = x_start + col_index * column_width
+            
+            c.setFillColorRGB(0.8, 0.9, 1) # Light blue
+            c.rect(x_job_start, y_end_job, column_width - 5, y_start_job - y_end_job, fill=1)
+            
+            c.setFillColorRGB(0, 0, 0)
+            c.setFont("Helvetica", 8)
+            text_x = x_job_start + 5
+            c.drawString(text_x, y_start_job - 12, f"{job.customer_name}")
+            c.drawString(text_x, y_start_job - 24, f"{job.service_type} - {job.boat_type}")
+            ramp_name = ecm.get_ramp_details(getattr(job, 'pickup_ramp_id') or getattr(job, 'dropoff_ramp_id')).ramp_name
+            c.drawString(text_x, y_start_job - 36, f"@{ramp_name}")
 
-        y0 = get_y_for_time(start_time)
-        y_end = get_y_for_time(end_time)
-
-        line1_y_text = y0 - 8
-        line2_y_text = line1_y_text - 10
-        line3_y_text = line2_y_text - 10
-        y_bar_start = line3_y_text - 4
-
-        customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
-        customer_full_name = customer.customer_name if customer and hasattr(customer, 'customer_name') else "Unknown Customer"
-        customer_last_name = customer_full_name.split()[-1] if customer_full_name != "Unknown Customer" else "Unknown"
-
-        boat_id = getattr(job, 'boat_id', None)
-        boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
-        boat_type = getattr(boat, 'boat_type', '') if boat else ''
-        assigned_crane = getattr(job, 'assigned_crane_truck_id', '') or ''
-        is_sailboat_job = boat and 'sailboat' in boat_type.lower() and 'j17' in assigned_crane.lower()
-
-        origin_address = getattr(job, 'pickup_street_address', '') or ''
-        dest_address = getattr(job, 'dropoff_street_address', '') or ''
-        if customer and hasattr(customer, 'street_address'):
-            if origin_address.upper() == 'HOME':
-                origin_address = customer.street_address
-            if dest_address.upper() == 'HOME':
-                dest_address = customer.street_address
-        origin_abbr = _abbreviate_town(origin_address)
-        dest_abbr = _abbreviate_town(dest_address)
-
-        truck_id = getattr(job, 'assigned_hauling_truck_id', None)
-        if truck_id in column_map:
-            col_index = column_map[truck_id]
-            column_start_x = margin + time_col_width + col_index * col_width
-            text_center_x = column_start_x + col_width / 2
-
-            c.setFont("Helvetica-Bold", 8)
-            c.drawCentredString(text_center_x, line1_y_text, customer_full_name)
-            boat_length = getattr(boat, 'boat_length', None)
-            boat_desc = f"{int(boat_length)}' {boat_type}".strip() if boat_length and isinstance(boat_length, (int, float)) and boat_length > 0 else boat_type or "Unknown Boat"
-            c.setFont("Helvetica", 7)
-            c.drawCentredString(text_center_x, line2_y_text, boat_desc)
-            c.drawCentredString(text_center_x, line3_y_text, f"{origin_abbr}-{dest_abbr}")
-            c.setLineWidth(2)
-            c.line(text_center_x, y_bar_start, text_center_x, y_end)
-            c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
-
+        # Draw Crane Entry
+        is_sailboat_job = job.boat_type.startswith("Sailboat")
         if is_sailboat_job and 'J17' in column_map:
-            col_index_crane = column_map['J17']
-            column_start_x_crane = margin + time_col_width + col_index_crane * col_width
-            text_center_x_crane = column_start_x_crane + col_width / 2
-        
-            # Set fonts and write LASTNAME
-            c.setFont("Helvetica-Bold", 8)
-            c.drawCentredString(text_center_x_crane, line1_y_text, customer_last_name)
-        
-            # Write DEST TOWN
-            c.setFont("Helvetica", 7)
-            c.drawCentredString(text_center_x_crane, line2_y_text, dest_abbr)
-        
-            # If Sailboat MT, write TRANSPORT
-            if 'mt' in boat_type.lower():
-                c.drawCentredString(text_center_x_crane, line3_y_text, "TRANSPORT")
-                y_bar_start_crane = line3_y_text - 5
-            else:
-                y_bar_start_crane = line2_y_text - 15
-        
-            # ✅ Use the real J17 busy end time
-            if hasattr(job, 'j17_busy_end_datetime') and job.j17_busy_end_datetime:
-                crane_end_time = job.j17_busy_end_datetime.time()
-                y_crane_end = get_y_for_time(crane_end_time)
-                c.setLineWidth(2)
-                c.line(text_center_x_crane, y_bar_start_crane, text_center_x_crane, y_crane_end)
-                c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
-        
+            crane_col_index = column_map['J17']
+            x_crane_start = x_start + crane_col_index * column_width
+            
+            # The crane block starts earlier, based on its own duration
+            crane_rules = ecm.BOOKING_RULES.get(job.boat_type, {})
+            crane_duration_mins = crane_rules.get('crane_mins', 60)
+            crane_start_dt = job.scheduled_start_datetime - timedelta(minutes=crane_duration_mins / 2)
+            y_crane_start = get_y_for_time(crane_start_dt.time())
+
+            c.setFillColorRGB(1, 0.8, 0.8) # Light red
+            c.rect(x_crane_start, y_end_job, column_width - 5, y_crane_start - y_end_job, fill=1)
+            
+            c.setFillColorRGB(0, 0, 0)
+            c.setFont("Helvetica", 8)
+            text_x_crane = x_crane_start + 5
+            c.drawString(text_x_crane, y_start_job - 12, f"{job.customer_name}")
+            c.drawString(text_x_crane, y_start_job - 24, "Crane Support")
+
     c.save()
     buffer.seek(0)
     return buffer
+
 
 
 # --- Cancel, Rebook, and Audit ---
