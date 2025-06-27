@@ -182,32 +182,37 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     bottom_y = margin + 0.5 * inch
     content_height = top_y - bottom_y
 
-    # --- Get Tide Data from the first scheduled job for the day ---
+    # --- Step 1: Get Tide Data from the first scheduled job ---
     high_tides, low_tides = [], []
+    primary_high_tide = None
     if jobs_for_day:
         first_job = jobs_for_day[0]
         high_tides = getattr(first_job, 'high_tides', [])
         low_tides = getattr(first_job, 'low_tides', [])
+        if high_tides:
+            noon = datetime.time(12, 0)
+            primary_high_tide = min(high_tides, 
+                                  key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - 
+                                                    datetime.datetime.combine(datetime.date.min, noon)))
 
     def get_y_for_time(t):
         total_minutes = (t.hour - start_hour) * 60 + t.minute
         return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
 
-    # --- Header & Column Drawing ---
+    # --- Header & Column Drawing (Your Original Formatting) ---
     c.setFont("Helvetica-Bold", 12)
     c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
     for i, name in enumerate(planner_columns):
         c.setFont("Helvetica-Bold", 14)
         c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
-    
-    # --- Time Labels & Grid with CORRECT Highlighting ---
+
+    # --- Time Labels & Grid with Correct Highlighting ---
     for hour in range(start_hour, end_hour + 1):
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
             y = get_y_for_time(current_time)
             label_y = get_y_for_time((datetime.datetime.combine(datetime.date.today(), current_time) + datetime.timedelta(minutes=7.5)).time())
             
-            # Draw grid line
             c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
 
@@ -218,19 +223,13 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                         return True
                 return False
 
-            is_high_tide = is_tide_time(high_tides)
-            is_low_tide = is_tide_time(low_tides)
-            
-            # Set highlight color ONLY for the text
+            # Set text color based on tide
             text_color = colors.black
-            if is_high_tide:
-                text_color = colors.orange # Using orange for visibility on white
-            elif is_low_tide:
-                text_color = colors.red
-            
+            if is_tide_time(high_tides): text_color = colors.darkorange
+            elif is_tide_time(low_tides): text_color = colors.red
             c.setFillColor(text_color)
             
-            # Draw the time labels
+            # Draw time labels
             if minute == 0:
                 display_hour = hour if hour <= 12 else hour - 12
                 c.setFont("Helvetica-Bold", 9)
@@ -241,29 +240,30 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                 c.setFont("Helvetica", 6)
                 c.drawString(margin + 18, label_y - 2, f"{minute:02d}")
             
-            # IMPORTANT: Reset color to black after drawing
-            c.setFillColor(colors.black)
+            c.setFillColor(colors.black) # Reset color for all other drawing
 
     # --- Vertical and Side Borders ---
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
     c.line(margin, top_y, margin, bottom_y)
-    
-    # --- Job Entries --- (Your formatting is preserved)
+
+    # --- Job Entries ---
     for job in jobs_for_day:
-        # ... (This entire section is the same as your correct version)
         start_time = getattr(job, 'scheduled_start_datetime').time(); end_time = getattr(job, 'scheduled_end_datetime').time()
         y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
         line1_y, line2_y, line3_y, line4_y = y0 - 8, y0 - 18, y0 - 28, y0 - 38; y_bar_start = y0 - 42
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None)); boat = ecm.get_boat_details(getattr(job, 'boat_id', None))
+        
         truck_id = getattr(job, 'assigned_hauling_truck_id', None)
         if truck_id in column_map:
             col_index = column_map[truck_id]; text_center_x = margin + time_col_width + (col_index + 0.5) * col_width
+            # FIX #3: Add Draft Info
             c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x, line1_y, customer.customer_name)
             c.setFont("Helvetica", 7); c.drawCentredString(text_center_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
             c.drawCentredString(text_center_x, line3_y, f"(Draft: {boat.draft_ft}')")
             c.drawCentredString(text_center_x, line4_y, f"{_abbreviate_town(getattr(job, 'pickup_street_address', ''))}-{_abbreviate_town(getattr(job, 'dropoff_street_address', ''))}")
             c.setLineWidth(2); c.line(text_center_x, y_bar_start, text_center_x, y_end); c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+        
         if getattr(job, 'assigned_crane_truck_id') and 'J17' in column_map:
             crane_col_index = column_map['J17']; text_center_x_crane = margin + time_col_width + (crane_col_index + 0.5) * col_width
             y_crane_end = get_y_for_time(getattr(job, 'j17_busy_end_datetime').time())
@@ -272,10 +272,16 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             if 'mt' in boat.boat_type.lower(): c.drawCentredString(text_center_x_crane, line3_y, "TRANSPORT")
             c.setLineWidth(2); c.line(text_center_x_crane, y_bar_start, text_center_x_crane, y_crane_end); c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
 
-    # --- FIX #2: Draw the Bottom Border LAST ---
-    # This line was missing from the previous attempt's loop
+    # --- FIX #2: Draw the Bottom Border LAST to ensure it is visible ---
     c.setLineWidth(1.0)
     c.line(margin, bottom_y, width - margin, bottom_y)
+        
+    # --- FIX #1: Draw Tide Footnote ---
+    if primary_high_tide:
+        tide_time_str = ecm.format_time_for_display(primary_high_tide['time'])
+        tide_height_str = str(primary_high_tide.get('height', ''))
+        footnote_text = f"High Tide: {tide_time_str} {tide_height_str}'"
+        c.setFont("Helvetica", 8); c.drawRightString(width - margin, bottom_y - 12, footnote_text)
         
     c.save()
     buffer.seek(0)
