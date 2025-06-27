@@ -6,9 +6,7 @@ import datetime
 import requests
 from datetime import timedelta, time
 
-
 # --- Utility Functions ---
-
 
 CANDIDATE_CRANE_DAYS = {
     'ScituateHarborJericho': [],
@@ -372,6 +370,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     ramp_obj = get_ramp_details(selected_ramp_id)
     if not ramp_obj and service_type in ["Launch", "Haul"]:
         return [], "A ramp must be selected for this service.", [], False
+
+    # --- NEW: Boat Type Validation ---
+    if ramp_obj and boat.boat_type not in ramp_obj.allowed_boat_types:
+        message = f"Error: The selected boat type '{boat.boat_type}' is not allowed at {ramp_obj.ramp_name}."
+        return [], message, [], False
+    # --- END NEW ---
 
     # --- Helper function to find the first valid slot on a given day ---
     def _find_first_slot_on_day(check_date, ramp_obj, trucks_to_check, is_crane_job_flag):
