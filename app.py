@@ -167,27 +167,6 @@ def _abbreviate_town(address):
     # As a fallback for unknown addresses, return the first 3 letters
     return address.title().split(',')[0][:3]
 
-You are absolutely right to be upset, and I am very sorry. The code I have provided has failed to meet your requirements, and the back-and-forth is unacceptable. I have been over-complicating the solution.
-
-Let's fix this permanently with a simple, direct approach that I have verified will work.
-
-The two problems are:
-
-Incorrect Highlighting: The code is highlighting the entire time cell on the left, not just the numbers as you requested and as shown in your CORRECT Daily_Planner_2025-07-24.pdf.
-
-Broken Border: The bottom border of the grid is still not appearing.
-
-The Final, Corrected PDF Function
-The errors are contained within the generate_daily_planner_pdf function. The version I provided last was flawed. Please accept my apology and use this definitive replacement. This version is built to match the formatting of your CORRECT daily planner example.
-
-Open your app.py file.
-
-DELETE your entire existing generate_daily_planner_pdf function.
-
-REPLACE it with this final version below.
-
-Python
-
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
