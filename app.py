@@ -169,121 +169,97 @@ def _abbreviate_town(address):
     return address.title().split(',')[0][:3]
 
 def generate_daily_planner_pdf(report_date, jobs_for_day):
-    # --- Part 1: Gather Data ---
-    # (This part is the same as before)
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    planner_columns = ["S20/33", "S21/77", "S23/55", "J17"]
+    column_map = {name: i for i, name in enumerate(planner_columns)}
+    margin = 0.5 * inch
+    time_col_width = 0.75 * inch
+    content_width = width - 2 * margin - time_col_width
+    col_width = content_width / len(planner_columns)
+    start_hour, end_hour = 7, 18
+    top_y = height - margin - 0.5 * inch
+    bottom_y = margin + 0.5 * inch
+    content_height = top_y - bottom_y
+
+    def get_y_for_time(t):
+        total_minutes = (t.hour - start_hour) * 60 + t.minute
+        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
+
+    # --- Header & Column Drawing ---
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
+    for i, name in enumerate(planner_columns):
+        c.setFont("Helvetica-Bold", 14)
+        c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
+
+    # --- Time Grid (Restored to your original, working version) ---
+    for hour in range(start_hour, end_hour + 1):
+        for minute in [0, 15, 30, 45]:
+            current_time = datetime.time(hour, minute)
+            y = get_y_for_time(current_time)
+            label_y = get_y_for_time((datetime.datetime.combine(datetime.date.today(), current_time) + datetime.timedelta(minutes=7.5)).time())
+            c.setLineWidth(1.0 if minute == 0 else 0.25)
+            c.line(margin, y, width - margin, y)
+            if minute == 0:
+                display_hour = hour if hour <= 12 else hour - 12
+                c.setFont("Helvetica-Bold", 9)
+                c.drawString(margin + 3, label_y - 3, str(display_hour))
+                c.setFont("Helvetica", 7)
+                c.drawString(margin + 18, label_y - 3, "00")
+            else:
+                c.setFont("Helvetica", 6)
+                c.drawString(margin + 18, label_y - 2, f"{minute:02d}")
+    
+    # --- Vertical Grid Lines ---
+    for i in range(len(planner_columns) + 1):
+        x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
+    c.line(margin, top_y, margin, bottom_y)
+
+    # --- Job Entries (With Draft Added) ---
+    for job in jobs_for_day:
+        start_time = getattr(job, 'scheduled_start_datetime').time(); end_time = getattr(job, 'scheduled_end_datetime').time()
+        y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
+        line1_y, line2_y, line3_y, line4_y = y0 - 8, y0 - 18, y0 - 28, y0 - 38; y_bar_start = y0 - 42
+        customer = ecm.get_customer_details(getattr(job, 'customer_id', None)); boat = ecm.get_boat_details(getattr(job, 'boat_id', None))
+        
+        truck_id = getattr(job, 'assigned_hauling_truck_id', None)
+        if truck_id in column_map:
+            col_index = column_map[truck_id]; text_center_x = margin + time_col_width + (col_index + 0.5) * col_width
+            c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x, line1_y, customer.customer_name)
+            c.setFont("Helvetica", 7); c.drawCentredString(text_center_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
+            c.drawCentredString(text_center_x, line3_y, f"(Draft: {boat.draft_ft}')")
+            c.drawCentredString(text_center_x, line4_y, f"{_abbreviate_town(getattr(job, 'pickup_street_address', ''))}-{_abbreviate_town(getattr(job, 'dropoff_street_address', ''))}")
+            c.setLineWidth(2); c.line(text_center_x, y_bar_start, text_center_x, y_end); c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+        
+        if getattr(job, 'assigned_crane_truck_id') and 'J17' in column_map:
+            crane_col_index = column_map['J17']; text_center_x_crane = margin + time_col_width + (crane_col_index + 0.5) * col_width
+            y_crane_end = get_y_for_time(getattr(job, 'j17_busy_end_datetime').time())
+            c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x_crane, line1_y, customer.customer_name.split()[-1])
+            c.setFont("Helvetica", 7); c.drawCentredString(text_center_x_crane, line2_y, _abbreviate_town(getattr(job, 'dropoff_street_address', '')))
+            if 'mt' in boat.boat_type.lower(): c.drawCentredString(text_center_x_crane, line3_y, "TRANSPORT")
+            c.setLineWidth(2); c.line(text_center_x_crane, y_bar_start, text_center_x_crane, y_crane_end); c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
+
+    # --- Tide Footnote & Final Border Fix ---
+    # Get high tide for footnote
     primary_high_tide = None
     if jobs_for_day:
         first_job = jobs_for_day[0]
-        high_tides = getattr(first_job, 'high_tides', [])
-        if high_tides:
-            noon = datetime.time(12, 0)
-            primary_high_tide = min(high_tides, key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - datetime.datetime.combine(datetime.date.min, noon)))
-
-    # --- Part 2: Build the Planner as an HTML String ---
+        ramp_id = getattr(first_job, 'pickup_ramp_id', None) or getattr(first_job, 'dropoff_ramp_id', None)
+        if ramp_id:
+            tides = ecm.fetch_noaa_tides(ecm.get_ramp_details(ramp_id).noaa_station_id, report_date)
+            high_tides = [t for t in tides if t['type'] == 'H']
+            if high_tides:
+                primary_high_tide = min(high_tides, key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - datetime.datetime.combine(datetime.date.min, datetime.time(12,0))))
     
-    html = f"""
-    <html>
-    <head>
-        <style>
-            @page {{ size: letter; margin: 0.5in; }}
-            body {{ font-family: Helvetica; }}
-            table {{ border-collapse: collapse; width: 100%; }}
-            th, td {{ border: 1px solid #ccc; text-align: center; padding: 4px; font-size: 8pt; }}
-            th {{ background-color: #eee; font-size: 10pt; }}
-            .job-entry {{ background-color: #e6f7ff; padding: 2px; border-radius: 3px; }}
-            .crane-entry {{ background-color: #ffebf0; }}
-            .footnote {{ text-align: right; font-size: 8pt; position: fixed; bottom: 0; right: 0; }}
-        </style>
-    </head>
-    <body>
-        <h2 style="text-align:center;">Daily Planner: {report_date.strftime('%A, %B %d, %Y')}</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>S20/33</th>
-                    <th>S21/77</th>
-                    <th>S23/55</th>
-                    <th>J17</th>
-                </tr>
-            </thead>
-            <tbody>
-    """
-    
-    # --- Create the timeline rows ---
-    for hour in range(7, 19): # 7 AM to 6 PM
-        for minute in [0, 15, 30, 45]:
-            current_time = datetime.time(hour, minute)
-            time_str = f"{hour % 12 or 12}:{minute:02d} {'AM' if hour < 12 else 'PM'}"
-            
-            # Find jobs starting in this 15-minute slot
-            jobs_in_slot = {job.assigned_hauling_truck_id: job for job in jobs_for_day if job.scheduled_start_datetime.time() == current_time}
-            crane_in_slot = {job.assigned_crane_truck_id: job for job in jobs_for_day if job.scheduled_start_datetime.time() == current_time and getattr(job, 'assigned_crane_truck_id')}
-
-            html += "<tr>"
-            html += f"<td>{time_str}</td>" # Time cell
-            
-            # Populate Truck and Crane columns
-            for truck_id in ["S20/33", "S21/77", "S23/55"]:
-                if truck_id in jobs_in_slot:
-                    job = jobs_in_slot[truck_id]
-                    customer = ecm.get_customer_details(job.customer_id)
-                    boat = ecm.get_boat_details(job.boat_id)
-                    html += f"""
-                        <td>
-                            <div class="job-entry">
-                                <b>{customer.customer_name}</b><br/>
-                                {int(boat.boat_length)}' {boat.boat_type} (Draft: {boat.draft_ft}')<br/>
-                                {_abbreviate_town(getattr(job, 'pickup_street_address', ''))}-{_abbreviate_town(getattr(job, 'dropoff_street_address', ''))}
-                            </div>
-                        </td>
-                    """
-                else:
-                    html += "<td></td>" # Empty cell
-            
-            # Crane Column
-            if "J17" in crane_in_slot:
-                job = crane_in_slot["J17"]
-                customer = ecm.get_customer_details(job.customer_id)
-                html += f"""
-                    <td>
-                        <div class="crane-entry">
-                            <b>{customer.customer_name.split()[-1]}</b><br/>
-                            {_abbreviate_town(getattr(job, 'dropoff_street_address', ''))}
-                        </div>
-                    </td>
-                """
-            else:
-                html += "<td></td>" # Empty crane cell
-
-            html += "</tr>"
-
-    html += """
-            </tbody>
-        </table>
-    """
-    
-    # Add footnote
     if primary_high_tide:
         tide_time_str = ecm.format_time_for_display(primary_high_tide['time'])
         tide_height_str = str(primary_high_tide.get('height', ''))
-        html += f"<div class='footnote'>High Tide: {tide_time_str} {tide_height_str}'</div>"
-
-    html += """
-    </body>
-    </html>
-    """
-
-    # --- Part 3: Convert HTML to PDF ---
-    buffer = BytesIO()
-    pisa_status = pisa.CreatePDF(
-            src=BytesIO(html.encode("UTF-8")), # source HTML
-            dest=buffer)                     # file-like object
-
-    if pisa_status.err:
-        st.error("Failed to generate PDF.")
-        return None
-    
+        footnote_text = f"High Tide: {tide_time_str} {tide_height_str}'"
+        c.setFont("Helvetica", 8); c.drawRightString(width - margin, bottom_y - 12, footnote_text)
+        
+    c.save()
     buffer.seek(0)
     return buffer
 
