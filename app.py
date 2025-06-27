@@ -147,6 +147,19 @@ def _abbreviate_town(address):
         "hull": "Hul"
     }
 
+    # Check for the special 'HOME' case first
+    if 'HOME' in address.upper():
+        return "Pem"
+
+    # For all other addresses, find the matching town
+    address_lower = address.lower()
+    for town, abbr in abbr_map.items():
+        if town in address_lower:
+            return abbr
+            
+    # As a fallback for unknown addresses, return the first 3 letters
+    return address.title().split(',')[0][:3]
+
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
