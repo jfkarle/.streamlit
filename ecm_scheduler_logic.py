@@ -36,7 +36,12 @@ def fetch_noaa_tides(station_id, date_to_check):
     try:
         resp = requests.get(base, params=params, timeout=10)
         resp.raise_for_status()
-        return [{'type': i["type"].upper(), 'time': datetime.datetime.strptime(i["t"], "%Y-%m-%d %H:%M").time()} for i in resp.json().get("predictions", [])]
+        # --- MODIFIED LINE ---
+        # Now returns a dictionary including the tide height ('v')
+        return [{'type': i["type"].upper(), 
+                 'time': datetime.datetime.strptime(i["t"], "%Y-%m-%d %H:%M").time(),
+                 'height': i["v"]} 
+                for i in resp.json().get("predictions", [])]
     except Exception as e:
         print(f"ERROR fetching tides for station {station_id}: {e}")
         return []
