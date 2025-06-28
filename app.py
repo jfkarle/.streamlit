@@ -607,10 +607,6 @@ if app_mode == "Schedule New Boat":
                             <h6 style='color:black;margin:0;font-weight:bold;'>🏗️ {crane_label}</h6>
                         </div>""", unsafe_allow_html=True)
 
-                # --- THIS IS THE SECTION THAT NEEDS REPLACEMENT ---
-                # Your current code in app (1).py starts creating 'details_html' variable here,
-                # but then the old individual st.markdown calls are still present below it.
-
                 details_html = f"""
                 <p style="margin-bottom: 0.25em;"><b>Date:</b> {date_str}</p>
                 """
@@ -633,17 +629,9 @@ if app_mode == "Schedule New Boat":
                 details_html += f"""
                 <p style="margin-bottom: 0.25em;"><b>Ramp:</b> {ramp_name}</p>
                 """
-                # This is the crucial line that was missing the parameter or was not the final print:
-                # st.markdown(details_html, unsafe_allow_html=True) <--- This needs to be the one that displays everything.
-
-                # ORIGINAL LINES THAT NEED TO BE REMOVED/REPLACED by the single markdown(details_html):
-                # st.markdown(f"**Date:** {date_str}")
-                # if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
-                # if tide_display_str: st.markdown(tide_display_str)
-                # st.markdown(f"**Time:** {time_str}")
-                # st.markdown(f"**Truck:** {truck_id}")
-                # if slot.get('j17_needed'): st.markdown(f"**Crane:** J17")
-                # st.markdown(f"**Ramp:** {ramp_name}")
+                # --- THIS IS THE SINGLE, CORRECT MARKDOWN CALL FOR ALL DETAILS ---
+                st.markdown(details_html, unsafe_allow_html=True)
+                # --- END OF REPLACEMENT ---
                 # --- END OF SECTION THAT NEEDS REPLACEMENT ---
 
                 # Close the custom div and add the button
