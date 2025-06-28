@@ -606,7 +606,39 @@ if app_mode == "Schedule New Boat":
                         <div style='background-color:{label_bg_color};border-left:6px solid {label_border_color};padding:5px;border-radius:3px;margin-bottom:8px;'>
                             <h6 style='color:black;margin:0;font-weight:bold;'>🏗️ {crane_label}</h6>
                         </div>""", unsafe_allow_html=True)
+## DOOBIE START
+                # Starting from line 585 (or wherever your '--- Content inside the styled container ---' begins)
 
+                # --- Content inside the styled container ---
+                
+                # Existing Requested Date star LABEL
+                if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
+                    st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>""", unsafe_allow_html=True)
+                    
+                # Crane Day Labeling
+                crane_label = ""
+                label_bg_color = ""
+                label_border_color = ""
+                if slot.get('is_active_crane_day'):
+                    crane_label = f"ACTIVE CRANE DAY: {ecm.get_ramp_details(slot['ramp_id']).ramp_name if slot['ramp_id'] else 'N/A'}"
+                    label_bg_color = "#ADD8E6"
+                    label_border_color = "#4682B4"
+                elif slot.get('is_candidate_crane_day'):
+                    crane_label = "CRANE DAY (Candidate)"
+                    label_bg_color = "#DDA0DD"
+                    label_border_color = "#9932CC"
+                
+                if crane_label:
+                    st.markdown(f"""
+                        <div style='background-color:{label_bg_color};border-left:6px solid {label_border_color};padding:5px;border-radius:3px;margin-bottom:8px;'>
+                            <h6 style='color:black;margin:0;font-weight:bold;'>🏗️ {crane_label}</h6>
+                        </div>""", unsafe_allow_html=True)
+                
+                # --- REVISED and CONSOLIDATED SECTION FOR ALL DETAILS ---
+                # This block constructs the HTML for all the slot details (Date, Tide, Time, Truck, Crane, Ramp)
+                # and then uses a SINGLE st.markdown call with unsafe_allow_html=True to display it.
+                # All your prior individual st.markdown calls for these details must be GONE.
+                
                 details_html = f"""
                 <p style="margin-bottom: 0.25em;"><b>Date:</b> {date_str}</p>
                 """
@@ -629,13 +661,18 @@ if app_mode == "Schedule New Boat":
                 details_html += f"""
                 <p style="margin-bottom: 0.25em;"><b>Ramp:</b> {ramp_name}</p>
                 """
-                # --- THIS IS THE SINGLE, CORRECT MARKDOWN CALL FOR ALL DETAILS ---
+                # --- THIS IS THE ONLY st.markdown(details_html, ...) CALL IN THIS SECTION ---
                 st.markdown(details_html, unsafe_allow_html=True)
-                # --- END OF REPLACEMENT ---
-                # --- END OF SECTION THAT NEEDS REPLACEMENT ---
-
+                # --- END OF REVISED AND CONSOLIDATED SECTION ---
+                
                 # Close the custom div and add the button
-                st.markdown("</div>", unsafe_allow_html=True) # Close the custom div created above
+                st.markdown("</div>", unsafe_allow_html=True) # This closes the container div for the card
+                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+
+
+##DOOBIE
+
+                
                 st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
         st.markdown("---") # Separator below the columns
 
