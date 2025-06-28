@@ -221,7 +221,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     for job in jobs_for_day:
         start_time = getattr(job, 'scheduled_start_datetime').time(); end_time = getattr(job, 'scheduled_end_datetime').time()
         y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
-        line1_y, line2_y, line3_y, line4_y = y0 - 8, y0 - 18, y0 - 28, y0 - 38; y_bar_start = y0 - 42
+        line1_y, line2_y, line3_y, line4_y = y0 - 12, y0 - 22, y0 - 32, y0 - 42; y_bar_start = y0 - 46
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None)); boat = ecm.get_boat_details(getattr(job, 'boat_id', None))
         
         truck_id = getattr(job, 'assigned_hauling_truck_id', None)
@@ -231,7 +231,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.setFont("Helvetica", 7); c.drawCentredString(text_center_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
             c.drawCentredString(text_center_x, line3_y, f"(Draft: {boat.draft_ft}')")
             c.drawCentredString(text_center_x, line4_y, f"{_abbreviate_town(getattr(job, 'pickup_street_address', ''))}-{_abbreviate_town(getattr(job, 'dropoff_street_address', ''))}")
-            c.setLineWidth(2); c.line(text_center_x, y_bar_start, text_center_x, y_end); c.line(text_center_x - 3, y_end, text_center_x + 3, y_end)
+            c.setLineWidth(2); c.line(text_center_x, y_bar_start, text_center_x, y_end); c.line(text_center_x - 6, y_end, text_center_x + 6, y_end)
         
         if getattr(job, 'assigned_crane_truck_id') and 'J17' in column_map:
             crane_col_index = column_map['J17']; text_center_x_crane = margin + time_col_width + (crane_col_index + 0.5) * col_width
