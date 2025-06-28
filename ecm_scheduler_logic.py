@@ -549,13 +549,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     print(f"DEBUG: dates_to_search_prioritized: {dates_to_search_prioritized}") # <--- ADD THIS PRINT
 
-    # --- Iterate through the prioritized list to find slots ---
-    for day in dates_to_search_prioritized:
-        if len(found_slots) >= num_suggestions_to_find and not ((day < requested_date_obj or day > requested_date_obj) and day in active_crane_dates_in_window):
-            # If we have enough suggestions AND this isn't a high-priority earlier active crane day, break.
-            # This allows earlier active crane days to always be checked even if num_suggestions is met.
-            break 
-    
         if day not in found_dates:
             slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job, customer, boat)
             if slot:
