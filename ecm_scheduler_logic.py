@@ -38,22 +38,44 @@ def _get_crane_job_count_for_day(check_date, ramp_id):
             if job_ramp_id == ramp_id:
                 count += 1
     return count
-def fetch_noaa_tides(station_id, date_to_check):
-    date_str = date_to_check.strftime("%Y%m%d")
+def fetch_noaa_tides_for_range(station_id, start_date, end_date):
+    """Fetches all tide predictions for a given station over a date range in a single API call."""
+    start_str = start_date.strftime("%Y%m%d")
+    end_str = end_date.strftime("%Y%m%d")
+    
     base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-    params = {"product":"predictions", "application":"ecm-boat-scheduler", "begin_date":date_str, "end_date":date_str, "datum":"MLLW", "station":station_id, "time_zone":"lst_ldt", "units":"english", "interval":"hilo", "format":"json"}
+    params = {
+        "product": "predictions", "application": "ecm-boat-scheduler",
+        "begin_date": start_str, "end_date": end_str, "datum": "MLLW",
+        "station": station_id, "time_zone": "lst_ldt", "units": "english",
+        "interval": "hilo", "format": "json"
+    }
+    
     try:
-        resp = requests.get(base, params=params, timeout=10)
+        resp = requests.get(base, params=params, timeout=15) # Increased timeout for larger request
         resp.raise_for_status()
-        # --- MODIFIED LINE ---
-        # Now returns a dictionary including the tide height ('v')
-        return [{'type': i["type"].upper(), 
-                 'time': datetime.datetime.strptime(i["t"], "%Y-%m-%d %H:%M").time(),
-                 'height': i["v"]} 
-                for i in resp.json().get("predictions", [])]
+        
+        # Process the full range of predictions
+        predictions = resp.json().get("predictions", [])
+        
+        # Group the results by date for easy lookup later
+        grouped_tides = {}
+        for tide in predictions:
+            tide_dt = datetime.datetime.strptime(tide["t"], "%Y-%m-%d %H:%M")
+            date_key = tide_dt.date()
+            if date_key not in grouped_tides:
+                grouped_tides[date_key] = []
+            
+            grouped_tides[date_key].append({
+                'type': tide["type"].upper(),
+                'time': tide_dt.time(),
+                'height': tide["v"]
+            })
+        return grouped_tides
+        
     except Exception as e:
-        print(f"ERROR fetching tides for station {station_id}: {e}")
-        return []
+        print(f"ERROR fetching tides for station {station_id} from {start_str} to {end_str}: {e}")
+        return {}
 
 def format_time_for_display(time_obj):
     """Formats a time object for display, e.g., 8:00 AM."""
@@ -286,17 +308,18 @@ def calculate_ramp_windows(ramp, boat, tide_data, date):
              'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()} 
             for t in tide_data if t['type']=='H']
 
-def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
+def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tides_in_range):
     ecm_hours = get_ecm_operating_hours(date_to_check)
     if not ecm_hours:
         return []
 
     ecm_open = datetime.datetime.combine(date_to_check, ecm_hours['open'])
     ecm_close = datetime.datetime.combine(date_to_check, ecm_hours['close'])
-    tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_to_check)
     
-    # --- THIS IS THE CORRECTED CALL ---
-    tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data, date_to_check)
+    # Get tide data for the specific day from the pre-fetched dictionary
+    tide_data_for_day = all_tides_in_range.get(date_to_check, [])
+    
+    tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
     
     final_windows = []
     for t_win in tidal_windows:
@@ -309,7 +332,7 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check):
             final_windows.append({
                 'start_time': overlap_start.time(),
                 'end_time': overlap_end.time(),
-                'high_tide_times': [t['time'] for t in tide_data if t['type'] == 'H'],
+                'high_tide_times': [t['time'] for t in tide_data_for_day if t['type'] == 'H'],
                 'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
             })
             
@@ -408,66 +431,65 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         message = f"Error: The selected boat type '{boat.boat_type}' is not allowed at {ramp_obj.ramp_name}."
         return [], message, [], False
 
-    def _find_first_slot_on_day(check_date, ramp_obj, trucks_to_check, is_crane_job_flag, customer, boat): # ADD customer, boat
-        ecm_hours = get_ecm_operating_hours(check_date)
-        if not ecm_hours: return None
+    def _find_first_slot_on_day(check_date, ramp_obj, trucks_to_check, is_crane_job_flag, customer, boat, all_tides_in_range): # ADDED all_tides_in_range
+    ecm_hours = get_ecm_operating_hours(check_date)
+    if not ecm_hours: return None
+
+    # Pass the pre-fetched tide data down
+    windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides_in_range)
     
-        windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date)
-        rules = BOOKING_RULES.get(boat.boat_type, {})
-        duration_hours = rules.get('truck_mins', 90) / 60.0
-        j17_duration = rules.get('crane_mins', 0) / 60.0
+    rules = BOOKING_RULES.get(boat.boat_type, {})
+    duration_hours = rules.get('truck_mins', 90) / 60.0
+    j17_duration = rules.get('crane_mins', 0) / 60.0
 
-        if check_date == datetime.date(2025, 10, 7):
-            print(f"DEBUG: Checking Oct 7th for customer {customer.customer_name}")
-            print(f"DEBUG: ECM Hours for Oct 7th: {ecm_hours}")
-            print(f"DEBUG: Tidal windows for Oct 7th: {windows}")
-            print(f"DEBUG: Truck to check: {trucks_to_check[0].truck_id}")
-            print(f"DEBUG: Required duration (hours): {duration_hours}")
-            print(f"DEBUG: J17 duration (hours): {j17_duration}")
+    if check_date == datetime.date(2025, 10, 7):
+        print(f"DEBUG: Checking Oct 7th for customer {customer.customer_name}")
+        print(f"DEBUG: ECM Hours for Oct 7th: {ecm_hours}")
+        print(f"DEBUG: Tidal windows for Oct 7th: {windows}")
+        print(f"DEBUG: Truck to check: {trucks_to_check[0].truck_id}")
+        print(f"DEBUG: Required duration (hours): {duration_hours}")
+        print(f"DEBUG: J17 duration (hours): {j17_duration}")
 
-        
-        
-        ecm_hours = get_ecm_operating_hours(check_date)
-        if not ecm_hours: return None
-        
-        windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date)
-        rules = BOOKING_RULES.get(boat.boat_type, {})
-        duration_hours = rules.get('truck_mins', 90) / 60.0
-        j17_duration = rules.get('crane_mins', 0) / 60.0
+    ecm_hours = get_ecm_operating_hours(check_date)
+    if not ecm_hours: return None
+    
+    rules = BOOKING_RULES.get(boat.boat_type, {})
+    duration_hours = rules.get('truck_mins', 90) / 60.0
+    j17_duration = rules.get('crane_mins', 0) / 60.0
 
-        blocked_window = None
-        if not is_crane_job_flag and not manager_override:
-            candidate_days_at_ramp = CANDIDATE_CRANE_DAYS.get(ramp_obj.ramp_id, [])
-            for day_info in candidate_days_at_ramp:
-                if day_info['date'] == check_date:
-                    ht = day_info['high_tide_time']
-                    start_blocked = (datetime.datetime.combine(check_date, ht) - timedelta(hours=3)).time()
-                    end_blocked = (datetime.datetime.combine(check_date, ht) + timedelta(hours=3)).time()
-                    blocked_window = (start_blocked, end_blocked)
-                    break
-        
-        for w in windows:
-            p_time = w['start_time']
-            while p_time < w['end_time']:
-                if blocked_window and (blocked_window[0] <= p_time < blocked_window[1]):
-                    p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
-                    continue
-                
-                is_first_slot = (p_time == ecm_hours['open'])
-                end_of_slot_dt = datetime.datetime.combine(check_date, p_time) + timedelta(hours=duration_hours)
-                is_last_slot = (end_of_slot_dt.time() >= ecm_hours['close'])
-                is_ecm_launch = (service_type == "Launch" and customer.is_ecm_customer)
-                is_ecm_haul = (service_type == "Haul" and customer.is_ecm_customer)
+    blocked_window = None
+    if not is_crane_job_flag and not manager_override:
+        candidate_days_at_ramp = CANDIDATE_CRANE_DAYS.get(ramp_obj.ramp_id, [])
+        for day_info in candidate_days_at_ramp:
+            if day_info['date'] == check_date:
+                ht = day_info['high_tide_time']
+                start_blocked = (datetime.datetime.combine(check_date, ht) - timedelta(hours=3)).time()
+                end_blocked = (datetime.datetime.combine(check_date, ht) + timedelta(hours=3)).time()
+                blocked_window = (start_blocked, end_blocked)
+                break
+    
+    for w in windows:
+        p_time = w['start_time']
+        while p_time < w['end_time']:
+            if blocked_window and (blocked_window[0] <= p_time < blocked_window[1]):
+                p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
+                continue
+            
+            is_first_slot = (p_time == ecm_hours['open'])
+            end_of_slot_dt = datetime.datetime.combine(check_date, p_time) + timedelta(hours=duration_hours)
+            is_last_slot = (end_of_slot_dt.time() >= ecm_hours['close'])
+            is_ecm_launch = (service_type == "Launch" and customer.is_ecm_customer)
+            is_ecm_haul = (service_type == "Haul" and customer.is_ecm_customer)
 
-                if (is_first_slot and not is_ecm_launch) or (is_last_slot and not is_ecm_haul):
-                    p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
-                    continue
+            if (is_first_slot and not is_ecm_launch) or (is_last_slot and not is_ecm_haul):
+                p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
+                continue
 
-                slot = _check_and_create_slot_detail(check_date, p_time, trucks_to_check[0], customer, boat, service_type, ramp_obj, ecm_hours, duration_hours, j17_duration, w, is_active_crane_day=False, is_candidate_crane_day=False)
-                if slot:
-                    return slot 
-                p_time = (datetime.datetime.combine(datetime.date.min, p_time) + timedelta(minutes=30)).time()
-        return None
+            slot = _check_and_create_slot_detail(check_date, p_time, trucks_to_check[0], customer, boat, service_type, ramp_obj, ecm_hours, duration_hours, j17_duration, w, is_active_crane_day=False, is_candidate_crane_day=False)
+            if slot:
+                return slot 
+            p_time = (datetime.datetime.combine(datetime.date.min, p_time) + timedelta(minutes=30)).time()
+    return None
 
 
     found_slots = []
@@ -477,10 +499,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
     if not trucks:
         return [], "No suitable trucks for this boat length.", [], False
-
-    # --- NEW: Collect all potential search dates within the window first ---
+    # --- NEW: Fetch all tide data for the entire search window at once ---
     search_start_date = requested_date_obj - timedelta(days=crane_look_back_days)
     search_end_date = requested_date_obj + timedelta(days=crane_look_forward_days)
+    all_tides_in_range = {}
+    if ramp_obj:
+        all_tides_in_range = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, search_start_date, search_end_date)
+    # --- END OF NEW BLOCK TO ADD ---
     
     potential_search_dates = []
     current_iter_date = search_start_date
@@ -548,7 +573,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     print(f"DEBUG: dates_to_search_prioritized: {dates_to_search_prioritized}") # <--- ADD THIS PRINT
     for day in dates_to_search_prioritized:
         if day not in found_dates:
-            slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job, customer, boat)
+            slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job, customer, boat, all_tides_in_range)
             if slot:
                 _is_active = day in active_crane_dates_in_window
                 _is_candidate = any(cd['date'] == day for cd in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, []))
