@@ -562,6 +562,25 @@ if app_mode == "Schedule New Boat":
             with cols[i % 3]:
                 # Determine if this is the first (best) slot for visual highlighting
                 is_first_slot_displayed = (i == 0)
+                date_str = slot['date'].strftime('%a, %b %d, %Y')
+                time_str = ecm.format_time_for_display(slot.get('time'))
+                truck_id = slot.get('truck_id', 'N/A')
+                ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
+                ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
+                tide_display_str = format_tides_for_display(slot, ecm_hours)
+                # --- END MOVE ---
+
+                # Base container style (and all subsequent HTML/markdown for the card)
+                container_style = "padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px;"
+                
+                # Apply special styling for the first slot
+                if is_first_slot_displayed:
+                    container_style = "padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;"
+                
+                st.markdown(f"""
+                    <div style="{container_style}">
+                    """, unsafe_allow_html=True) 
 
                 # Base container style
                 container_style = "padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px;"
