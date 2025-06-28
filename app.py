@@ -737,7 +737,7 @@ elif app_mode == "Reporting":
                 "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
                 "Service": job.service_type, "Customer": customer.customer_name if customer else "N/A",
                 "Truck": truck_info, "Crane": crane_info if crane_info != "N/A" else "",
-                "Ramp": ramp.ramp_name if ramp else "N/A"
+                "Ramp": ramp.ramp_name if ramp else "N/A",
                 "High Tide": high_tide_display,
                 })
         st.dataframe(pd.DataFrame(display_data))
