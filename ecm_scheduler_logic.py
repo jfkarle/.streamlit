@@ -725,13 +725,15 @@ def confirm_and_schedule_job(original_request, selected_slot):
     # 7. Return success message
     return new_job.job_id, f"SUCCESS: Job {new_job.job_id} for {customer.customer_name} scheduled."
 
-def generate_random_jobs(num_to_generate):
+def generate_random_jobs(num_to_generate, start_date, end_date, service_type_filter):
     """
-    Finds and schedules a specified number of random, valid jobs.
-    This function re-uses the existing scheduling logic to ensure data validity.
+    Finds and schedules a specified number of random, valid jobs within a given
+    date range and for a specific service type.
     """
     if not LOADED_CUSTOMERS or not LOADED_BOATS or not ECM_RAMPS:
         return "Error: Cannot generate jobs, master data not loaded."
+    if start_date > end_date:
+        return "Error: Start date cannot be after end date."
 
     print(f"--- Starting Bulk Job Generation for {num_to_generate} jobs ---")
     success_count = 0
@@ -739,51 +741,55 @@ def generate_random_jobs(num_to_generate):
 
     customer_ids = list(LOADED_CUSTOMERS.keys())
     ramp_ids = list(ECM_RAMPS.keys())
+    date_range_days = (end_date - start_date).days
 
     for i in range(num_to_generate):
-        # 1. Select random components for the job
+        # 1. Determine the Service Type for this job
+        service_type = ""
+        if service_type_filter.lower() == 'all':
+            service_type = random.choice(["Launch", "Haul", "Transport"])
+        else:
+            service_type = service_type_filter
+
+        # 2. Select random components for the job
         random_customer_id = random.choice(customer_ids)
         customer = get_customer_details(random_customer_id)
-        
-        # Find the corresponding boat for the selected customer
         boat = next((b for b in LOADED_BOATS.values() if b.customer_id == random_customer_id), None)
         if not boat:
             print(f"Attempt {i+1}: Failed - No boat found for customer {customer.customer_name}")
             fail_count += 1
             continue
+            
+        # Transports don't have a ramp, Launches/Hauls do
+        random_ramp_id = None
+        if service_type in ["Launch", "Haul"]:
+            random_ramp_id = random.choice(ramp_ids)
 
-        random_ramp_id = random.choice(ramp_ids)
-        service_type = random.choice(["Launch", "Haul"])
+        # Pick a random date within the user-defined window
+        random_offset = random.randint(0, date_range_days)
+        random_date = start_date + timedelta(days=random_offset)
         
-        # Look for a slot within the next 90 days
-        random_date = TODAY_FOR_SIMULATION + timedelta(days=random.randint(1, 90))
-        
-        print(f"Attempt {i+1}: Trying to schedule {customer.customer_name} ({boat.boat_type}) at {random_ramp_id} around {random_date.strftime('%Y-%m-%d')}")
+        print(f"Attempt {i+1}: Trying {service_type} for {customer.customer_name} at {random_ramp_id or 'N/A'} around {random_date.strftime('%Y-%m-%d')}")
 
-        # 2. Use existing logic to find a valid slot
+        # 3. Use existing logic to find a valid slot
         slots, _, _, _ = find_available_job_slots(
             customer_id=random_customer_id,
             boat_id=boat.boat_id,
             service_type=service_type,
             requested_date_str=random_date.strftime('%Y-%m-%d'),
             selected_ramp_id=random_ramp_id,
-            force_preferred_truck=False, # Relax truck choice for higher success rate
+            force_preferred_truck=False,
             relax_ramp=False,
-            manager_override=True, # Override crane day blocks for higher success rate
-            crane_look_forward_days=90 # Ensure search window is wide
+            manager_override=True,
+            crane_look_forward_days=90
         )
 
         if slots:
-            # 3. If a slot is found, randomly pick one and book it
+            # 4. If a slot is found, book it
             selected_slot = random.choice(slots)
-            
-            job_request = {
-                'customer_id': random_customer_id,
-                'boat_id': boat.boat_id,
-                'service_type': service_type,
-            }
-            
+            job_request = {'customer_id': random_customer_id, 'boat_id': boat.boat_id, 'service_type': service_type}
             new_job_id, _ = confirm_and_schedule_job(job_request, selected_slot)
+
             if new_job_id:
                 print(f"--> SUCCESS: Scheduled Job ID {new_job_id} on {selected_slot['date'].strftime('%Y-%m-%d')}")
                 success_count += 1
@@ -795,5 +801,7 @@ def generate_random_jobs(num_to_generate):
             fail_count += 1
 
     summary_message = f"Bulk generation complete. Successfully created {success_count} jobs. Failed to find slots for {fail_count} attempts."
+    print(f"--- {summary_message} ---")
+    return summary_message
     print(f"--- {summary_message} ---")
     return summary_message
