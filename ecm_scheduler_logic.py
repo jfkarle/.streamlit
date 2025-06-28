@@ -27,6 +27,17 @@ MAX_SEARCH_DAYS_FUTURE = 120 # Search up to 120 days in the future
 SEARCH_DAYS_PAST = 7         # Search up to 7 days in the past
 CRANE_DAY_REVERSION_WINDOW_DAYS = 7 # Days before an empty Crane Day opens up
 
+def _get_crane_job_count_for_day(check_date, ramp_id):
+    """Counts active crane jobs for a given ramp on a specific date."""
+    count = 0
+    for job in SCHEDULED_JOBS:
+        if (job.job_status == "Scheduled" and 
+            getattr(job, 'assigned_crane_truck_id', None) == "J17" and
+            job.scheduled_start_datetime.date() == check_date):
+            job_ramp_id = getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None)
+            if job_ramp_id == ramp_id:
+                count += 1
+    return count
 def fetch_noaa_tides(station_id, date_to_check):
     date_str = date_to_check.strftime("%Y%m%d")
     base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
@@ -139,7 +150,18 @@ def load_candidate_days_from_file(filename="candidate_days.csv"):
         print("!!! run `one_time_scanner.py` and upload the CSV.     !!!")
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
-
+def _get_crane_job_count_for_day(check_date, ramp_id):
+    """Counts active crane jobs for a given ramp on a specific date."""
+    count = 0
+    for job in SCHEDULED_JOBS:
+        if (job.job_status == "Scheduled" and 
+            getattr(job, 'assigned_crane_truck_id', None) == "J17" and
+            job.scheduled_start_datetime.date() == check_date):
+            job_ramp_id = getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None)
+            if job_ramp_id == ramp_id:
+                count += 1
+    return count
+    
 # --- Configuration & Data Models ---
 
 TODAY_FOR_SIMULATION = datetime.date.today()
@@ -527,7 +549,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     print(f"DEBUG: dates_to_search_prioritized: {dates_to_search_prioritized}") # <--- ADD THIS PRINT
 
-
     # --- Iterate through the prioritized list to find slots ---
     for day in dates_to_search_prioritized:
         if len(found_slots) >= num_suggestions_to_find and not ((day < requested_date_obj or day > requested_date_obj) and day in active_crane_dates_in_window):
@@ -544,6 +565,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 slot['is_active_crane_day'] = _is_active
                 slot['is_candidate_crane_day'] = _is_candidate
 
+                # --- NEW: Add existing crane job count to the slot ---
+                slot['existing_crane_jobs_count'] = _get_crane_job_count_for_day(day, selected_ramp_id)
+                # --- END NEW ---
+
                 if day < requested_date_obj and _is_active: # Prioritize earlier active crane days
                     slot['priority_score'] = 1000 
                 
@@ -551,7 +576,21 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 found_dates.add(day)
     
     # Final sort by priority_score (desc) and then by date (asc)
-    found_slots.sort(key=lambda s: (s.get('priority_score', 0), s['date']), reverse=True)
+    # New sorting:
+    # 1. existing_crane_jobs_count (descending - fill up days)
+    # 2. is_active_crane_day (True comes before False - prefer active days)
+    # 3. is_candidate_crane_day (True comes before False - prefer candidate days if not active)
+    # 4. priority_score (descending - for special overrides like earlier active days)
+    # 5. Proximity to requested_date (ascending - closest dates after all other factors)
+    # 6. Slot time (ascending - earlier in the day)
+    found_slots.sort(key=lambda s: (
+        s.get('existing_crane_jobs_count', 0), # Primary: More existing jobs first (desc)
+        s.get('is_active_crane_day', False),   # Secondary: Active days over others (desc)
+        s.get('is_candidate_crane_day', False), # Tertiary: Candidate days over regular (desc)
+        s.get('priority_score', 0),            # Quaternary: Explicit high priority (desc)
+        abs(s['date'] - requested_date_obj),   # Quinary: Closeness to requested date (asc)
+        s['time']                              # Senary: Earliest time (asc)
+    ), reverse=True) # Overall reverse=True because highest job count, True flags, highest score are "best"
 
     if not found_slots:
         message = "No suitable slots could be found within the search window."
