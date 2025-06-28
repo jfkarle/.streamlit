@@ -562,6 +562,8 @@ if app_mode == "Schedule New Boat":
             with cols[i % 3]:
                 # Determine if this is the first (best) slot for visual highlighting
                 is_first_slot_displayed = (i == 0)
+
+                # Define all necessary variables FIRST
                 date_str = slot['date'].strftime('%a, %b %d, %Y')
                 time_str = ecm.format_time_for_display(slot.get('time'))
                 truck_id = slot.get('truck_id', 'N/A')
@@ -569,61 +571,43 @@ if app_mode == "Schedule New Boat":
                 ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
                 ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
                 tide_display_str = format_tides_for_display(slot, ecm_hours)
-                # --- END MOVE ---
-
-                # Base container style (and all subsequent HTML/markdown for the card)
-                container_style = "padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px;"
                 
-                # Apply special styling for the first slot
+                # Determine the container style based on whether it's the first slot
+                container_style = "padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px;"
                 if is_first_slot_displayed:
                     container_style = "padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;"
                 
+                # Open the custom div for the container to apply the style
                 st.markdown(f"""
                     <div style="{container_style}">
                     """, unsafe_allow_html=True) 
-
-                # Base container style
-                container_style = "padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px;"
-                
-                # Apply special styling for the first slot
-                if is_first_slot_displayed:
-                    container_style = "padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;"
-                
-                # Use a custom div for the container to apply the style
-                st.markdown(f"""
-                    <div style="{container_style}">
-                    """, unsafe_allow_html=True) # Open the custom div
 
                 # --- Content inside the styled container ---
 
                 # Existing Requested Date star LABEL
                 if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
                     st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>""", unsafe_allow_html=True)
-                    # Reduced padding/margin for this label too for compactness
                 
                 # Crane Day Labeling
                 crane_label = ""
                 label_bg_color = ""
                 label_border_color = ""
-                # Prioritize ACTIVE over Candidate for display
                 if slot.get('is_active_crane_day'):
                     crane_label = f"ACTIVE CRANE DAY: {ecm.get_ramp_details(slot['ramp_id']).ramp_name if slot['ramp_id'] else 'N/A'}"
-                    label_bg_color = "#ADD8E6" # Light Blue
-                    label_border_color = "#4682B4" # Steel Blue
+                    label_bg_color = "#ADD8E6"
+                    label_border_color = "#4682B4"
                 elif slot.get('is_candidate_crane_day'):
                     crane_label = "CRANE DAY (Candidate)"
-                    label_bg_color = "#DDA0DD" # Plum/Light Purple
-                    label_border_color = "#9932CC" # Dark Orchid
-
+                    label_bg_color = "#DDA0DD"
+                    label_border_color = "#9932CC"
 
                 if crane_label:
                     st.markdown(f"""
                         <div style='background-color:{label_bg_color};border-left:6px solid {label_border_color};padding:5px;border-radius:3px;margin-bottom:8px;'>
                             <h6 style='color:black;margin:0;font-weight:bold;'>🏗️ {crane_label}</h6>
                         </div>""", unsafe_allow_html=True)
-                # --- END NEW CRANE DAY LABELING ---
 
-                # --- REVISED for tighter spacing of details (combine into one markdown block) ---
+                # REVISED for tighter spacing of details (combine into one markdown block)
                 details_html = f"""
                 <p style="margin-bottom: 0.25em;"><b>Date:</b> {date_str}</p>
                 """
@@ -647,9 +631,8 @@ if app_mode == "Schedule New Boat":
                 <p style="margin-bottom: 0.25em;"><b>Ramp:</b> {ramp_name}</p>
                 """
                 st.markdown(details_html, unsafe_allow_html=True)
-                # --- END REVISED for tighter spacing ---
 
-                # --- Close the custom div and add the button ---
+                # Close the custom div and add the button
                 st.markdown("</div>", unsafe_allow_html=True) # Close the custom div created above
                 st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
         st.markdown("---") # Separator below the columns
