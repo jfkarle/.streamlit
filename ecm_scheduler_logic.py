@@ -366,8 +366,8 @@ def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date_obj, tr
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, 
                              force_preferred_truck=True, relax_ramp=False, manager_override=False, 
                              num_suggestions_to_find=3, 
-                             crane_look_back_days=7, # NEW: default matching current hardcoded value
-                             crane_look_forward_days=60, # NEW: default matching a reasonable forward search
+                             crane_look_back_days=7, 
+                             crane_look_forward_days=60, 
                              **kwargs):
     global CRANE_DAY_LOGIC_ENABLED
     try:
@@ -382,13 +382,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not ramp_obj and service_type in ["Launch", "Haul"]:
         return [], "A ramp must be selected for this service.", [], False
 
-    # --- NEW: Boat Type Validation ---
     if ramp_obj and boat.boat_type not in ramp_obj.allowed_boat_types:
         message = f"Error: The selected boat type '{boat.boat_type}' is not allowed at {ramp_obj.ramp_name}."
         return [], message, [], False
-    # --- END NEW ---
 
-    # Helper function to find the first valid slot on a given day (remains unchanged)
     def _find_first_slot_on_day(check_date, ramp_obj, trucks_to_check, is_crane_job_flag):
         ecm_hours = get_ecm_operating_hours(check_date)
         if not ecm_hours: return None
@@ -398,7 +395,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         duration_hours = rules.get('truck_mins', 90) / 60.0
         j17_duration = rules.get('crane_mins', 0) / 60.0
 
-        # --- Crane Day Block Logic (for Powerboats only) ---
         blocked_window = None
         if not is_crane_job_flag and not manager_override:
             candidate_days_at_ramp = CANDIDATE_CRANE_DAYS.get(ramp_obj.ramp_id, [])
@@ -413,12 +409,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         for w in windows:
             p_time = w['start_time']
             while p_time < w['end_time']:
-                # Skip if powerboat is in a blocked crane day window
                 if blocked_window and (blocked_window[0] <= p_time < blocked_window[1]):
                     p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
                     continue
                 
-                # ECM Boat Priority Logic
                 is_first_slot = (p_time == ecm_hours['open'])
                 end_of_slot_dt = datetime.datetime.combine(check_date, p_time) + timedelta(hours=duration_hours)
                 is_last_slot = (end_of_slot_dt.time() >= ecm_hours['close'])
@@ -431,14 +425,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
                 slot = _check_and_create_slot_detail(check_date, p_time, trucks_to_check[0], customer, boat, service_type, ramp_obj, ecm_hours, duration_hours, j17_duration, w, is_active_crane_day=False, is_candidate_crane_day=False)
                 if slot:
-                    return slot # Return the very first valid slot found
-                p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
+                    return slot 
+                p_time = (datetime.datetime.combine(datetime.date.min, p_time) + timedelta(minutes=30)).time()
         return None
 
 
-    # --- Main Search Execution ---
     found_slots = []
-    # Using a set to keep track of dates for which a slot has already been added
     found_dates = set() 
     message = ""
     is_crane_job = boat.boat_type.startswith("Sailboat") and service_type in ["Launch", "Haul"]
@@ -446,93 +438,88 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not trucks:
         return [], "No suitable trucks for this boat length.", [], False
 
-    if is_crane_job and CRANE_DAY_LOGIC_ENABLED:
-        all_relevant_crane_search_dates = set()
+    # --- NEW: Collect all potential search dates within the window first ---
+    search_start_date = requested_date_obj - timedelta(days=crane_look_back_days)
+    search_end_date = requested_date_obj + timedelta(days=crane_look_forward_days)
     
-        # Gather ACTIVE Crane Days within the window
-        active_crane_days = {} # Changed to a dict to store date objects more directly
-        for job in SCHEDULED_JOBS:
-            if getattr(job, 'assigned_crane_truck_id'):
-                job_date = job.scheduled_start_datetime.date()
-                ramp_id = getattr(job, 'pickup_ramp_id') or getattr(job, 'dropoff_ramp_id')
-                if ramp_id == selected_ramp_id: # Only consider active days at the selected ramp
-                    # Only add if within the search window
-                    if (requested_date_obj - timedelta(days=crane_look_back_days) <= job_date <= 
-                        requested_date_obj + timedelta(days=crane_look_forward_days)):
-                        all_relevant_crane_search_dates.add(job_date)
-    
-        # Gather CANDIDATE Crane Days within the window
-        candidate_days_at_ramp = CANDIDATE_CRANE_DAYS.get(selected_ramp_id, [])
-        for day_info in candidate_days_at_ramp:
-            candidate_date = day_info['date']
-            if (requested_date_obj - timedelta(days=crane_look_back_days) <= candidate_date <= 
-                requested_date_obj + timedelta(days=crane_look_forward_days)):
-                all_relevant_crane_search_dates.add(candidate_date)
-    
-        # Sort all relevant dates by proximity to requested_date_obj
-        # Prioritize active days for sorting if you want them always first,
-        # otherwise sort purely by date proximity. For now, we'll sort by proximity.
-        sorted_search_dates = sorted(list(all_relevant_crane_search_dates), 
-                                     key=lambda d: abs(d - requested_date_obj))
-    
-        # Search through sorted dates to find available slots
-        found_slots = []
-        found_dates = set() # To ensure unique dates as suggested previously
-    
-        for day in sorted_search_dates:
-            if len(found_slots) >= num_suggestions_to_find:
-                break # Stop if we have enough suggestions
-    
-            if day not in found_dates:
-                slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job)
-                if slot:
-                    # Determine if this 'day' was originally an active or candidate day
-                    _is_active = day in {j.scheduled_start_datetime.date() for j in SCHEDULED_JOBS if getattr(j, 'assigned_crane_truck_id') and (getattr(j, 'pickup_ramp_id') == selected_ramp_id or getattr(j, 'dropoff_ramp_id') == selected_ramp_id)}
-                    _is_candidate = any(cd['date'] == day for cd in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, []))
+    potential_search_dates = []
+    current_iter_date = search_start_date
+    while current_iter_date <= search_end_date:
+        potential_search_dates.append(current_iter_date)
+        current_iter_date += timedelta(days=1)
 
-                    slot['is_active_crane_day'] = _is_active # Set the flag here
-                    slot['is_candidate_crane_day'] = _is_candidate # Set the flag here
+    # Separate out active crane days and sort them by how far before the requested date they are
+    active_crane_dates_in_window = sorted([
+        job.scheduled_start_datetime.date() 
+        for job in SCHEDULED_JOBS 
+        if getattr(job, 'assigned_crane_truck_id') and 
+           (getattr(job, 'pickup_ramp_id') == selected_ramp_id or getattr(job, 'dropoff_ramp_id') == selected_ramp_id) and
+           (search_start_date <= job.scheduled_start_datetime.date() <= search_end_date)
+    ], key=lambda d: requested_date_obj - d if d < requested_date_obj else timedelta.max) # Sort earlier dates first
 
-                    if day < requested_date_obj and _is_active: # Prioritize earlier active crane days
-                         slot['priority_score'] = 1000 
+    # Create a list of dates to search, prioritizing earlier active crane days
+    dates_to_search_prioritized = []
 
-                    found_slots.append(slot)
-                    found_dates.add(day)
+    # 1. Add earlier active crane days (sorted by proximity to requested_date, or simply ascending if you prefer)
+    for day in active_crane_dates_in_window:
+        if day < requested_date_obj and day not in dates_to_search_prioritized:
+            dates_to_search_prioritized.append(day)
     
-        # Sort the final found_slots by priority_score (desc) and then by date (asc)
-        found_slots.sort(key=lambda s: (s.get('priority_score', 0), s['date']), reverse=True)
-        # Note: If priority_score is not used, simply sort by date
+    # 2. Add the requested date if it's within the window and not already covered by an earlier active day
+    if search_start_date <= requested_date_obj <= search_end_date and requested_date_obj not in dates_to_search_prioritized:
+        dates_to_search_prioritized.append(requested_date_obj)
+
+    # 3. Add other dates (including future active/candidate and powerboat search)
+    # Sort remaining potential dates by proximity to requested_date, ensuring requested_date itself is checked early
+    remaining_dates = sorted([d for d in potential_search_dates if d not in dates_to_search_prioritized],
+                             key=lambda d: abs(d - requested_date_obj))
+
+    dates_to_search_prioritized.extend(remaining_dates)
+
+
+    # --- Iterate through the prioritized list to find slots ---
+    for day in dates_to_search_prioritized:
+        if len(found_slots) >= num_suggestions_to_find and not (day < requested_date_obj and day in active_crane_dates_in_window):
+            # If we have enough suggestions AND this isn't a high-priority earlier active crane day, break.
+            # This allows earlier active crane days to always be checked even if num_suggestions is met.
+            break 
     
-        message = f"Found {len(found_slots)} available Crane Day(s) with ideal tides."
+        if day not in found_dates:
+            slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job)
+            if slot:
+                _is_active = day in active_crane_dates_in_window
+                _is_candidate = any(cd['date'] == day for cd in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, []))
+
+                slot['is_active_crane_day'] = _is_active
+                slot['is_candidate_crane_day'] = _is_candidate
+
+                if day < requested_date_obj and _is_active: # Prioritize earlier active crane days
+                    slot['priority_score'] = 1000 
+                
+                found_slots.append(slot)
+                found_dates.add(day)
     
-    else:
-        # --- STANDARD LOGIC FOR POWERBOATS (or if Crane Logic is OFF) ---
-        # This part also needs to respect a search window.
-        # For simplicity, if crane logic is off, we still search only forward from requested_date_obj
-        # unless you also want configurable look-back for powerboats.
-        # For now, let's keep it mostly similar but ensure uniqueness.
-    
-        current_date = requested_date_obj - timedelta(days=crane_look_back_days) # Start from look-back date
-        search_end_date = requested_date_obj + timedelta(days=crane_look_forward_days) # Extend search to look-forward date
-    
-        found_slots = [] # Reset for this branch
-        found_dates = set() # To ensure unique dates for powerboats too
-    
-        while len(found_slots) < num_suggestions_to_find and current_date <= search_end_date:
-            if current_date not in found_dates:
-                slot = _find_first_slot_on_day(current_date, ramp_obj, trucks, is_crane_job)
-                if slot:
-                    # Powerboats don't get the 'active/candidate' labels based on the same logic.
-                    # They might need J17, but it's not about grouping a 'crane day'.
-                    slot['is_active_crane_day'] = False
-                    slot['is_candidate_crane_day'] = False
-                    found_slots.append(slot)
-                    found_dates.add(current_date)
-            current_date += timedelta(days=1)
-        message = f"Found {len(found_slots)} available date(s) for {customer.customer_name}."
+    # Final sort by priority_score (desc) and then by date (asc)
+    found_slots.sort(key=lambda s: (s.get('priority_score', 0), s['date']), reverse=True)
+
     if not found_slots:
-        return [], "No suitable slots could be found within the search window.", [], False
+        message = "No suitable slots could be found within the search window."
+        return [], message, [], False
+
+    # Check if requested date was actually suggested
+    requested_date_in_suggestions = any(slot['date'] == requested_date_obj for slot in found_slots)
     
+    # Custom message logic for crane jobs
+    if is_crane_job and not requested_date_in_suggestions and found_slots and found_slots[0]['date'] < requested_date_obj and found_slots[0]['is_active_crane_day']:
+        days_prior = (requested_date_obj - found_slots[0]['date']).days
+        message = (f"Your requested date of {requested_date_obj.strftime('%B %d')} was not offered. "
+                   f"An earlier, active crane day on {found_slots[0]['date'].strftime('%B %d')} ({days_prior} days prior) "
+                   f"was found at the ramp to optimize crane scheduling.")
+    elif found_slots:
+        message = f"Found {len(found_slots)} available Crane Day(s) with ideal tides." # Revert to generic for other cases
+    else:
+        message = "No suitable slots could be found within the search window." # Fallback
+
     return found_slots, message, [], False
 
 
