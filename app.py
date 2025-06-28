@@ -850,12 +850,9 @@ elif app_mode == "Cancel Job":
         st.warning("No jobs scheduled.")
 elif app_mode == "Settings":
     st.header("Application Settings")
-
     st.subheader("Scheduling Defaults")
-
     if 'num_suggestions' not in st.session_state: # This already exists, just for context
         st.session_state.num_suggestions = 3
-
     st.session_state.num_suggestions = st.number_input(
         "Number of Suggested Dates to Return",
         min_value=1, # Changed min_value to 1 as per unique slot requirement
@@ -890,21 +887,21 @@ elif app_mode == "Settings":
 
     st.success(f"Search results will now show {st.session_state.num_suggestions} suggestions.")
 
-st.markdown("---")
-    st.subheader("QA & Data Generation Tools")
-
-    num_jobs_to_gen = st.number_input(
-        "Number of random jobs to generate:",
-        min_value=1,
-        max_value=100,
-        value=25,
-        step=1,
-        help="This will create random, valid scheduled jobs to populate the calendar for testing."
-    )
-
-    if st.button("Generate Random Jobs", key="qa_generate_jobs"):
-        with st.spinner(f"Generating {num_jobs_to_gen} random jobs... This may take a few moments."):
-            summary_message = ecm.generate_random_jobs(num_jobs_to_gen)
-        
-        st.success(summary_message)
-        st.info("Navigate to the 'Reporting' page to see the newly generated jobs on the schedule.")
+    st.markdown("---")
+        st.subheader("QA & Data Generation Tools")
+    
+        num_jobs_to_gen = st.number_input(
+            "Number of random jobs to generate:",
+            min_value=1,
+            max_value=100,
+            value=25,
+            step=1,
+            help="This will create random, valid scheduled jobs to populate the calendar for testing."
+        )
+    
+        if st.button("Generate Random Jobs", key="qa_generate_jobs"):
+            with st.spinner(f"Generating {num_jobs_to_gen} random jobs... This may take a few moments."):
+                summary_message = ecm.generate_random_jobs(num_jobs_to_gen)
+            
+            st.success(summary_message)
+            st.info("Navigate to the 'Reporting' page to see the newly generated jobs on the schedule.")
