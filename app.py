@@ -581,12 +581,14 @@ if app_mode == "Schedule New Boat":
                     # --- NEW: Crane Day Labeling ---
                     crane_label = ""
                     label_color = ""
-                    if slot.get('is_active_crane_day'):
+                    # Prioritize ACTIVE over Candidate for display
+                    if slot.get('is_active_crane_day'): # Check this first
                         crane_label = f"ACTIVE CRANE DAY: {ecm.get_ramp_details(slot['ramp_id']).ramp_name if slot['ramp_id'] else 'N/A'}"
                         label_color = "#ADD8E6" # Light Blue
-                    elif slot.get('is_candidate_crane_day'):
+                    elif slot.get('is_candidate_crane_day'): # Only check if not active
                         crane_label = "CRANE DAY (Candidate)"
                         label_color = "#DDA0DD" # Plum/Light Purple
+
 
                     if crane_label:
                         st.markdown(f"""
