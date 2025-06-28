@@ -319,7 +319,7 @@ def check_truck_availability(truck_id, start_dt, end_dt):
 
     return True
 
-def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ramp, ecm_hours, duration, j17_duration, window_details):
+def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ramp, ecm_hours, duration, j17_duration, window_details, is_active_crane_day=False, is_candidate_crane_day=False):
     start_dt = datetime.datetime.combine(s_date, p_time); hauler_end_dt = start_dt + datetime.timedelta(hours=duration)
     if hauler_end_dt.time() > ecm_hours['close'] and not (hauler_end_dt.time() == ecm_hours['close'] and hauler_end_dt.date() == s_date): return None
     if not check_truck_availability(truck.truck_id, start_dt, hauler_end_dt): return None
