@@ -542,6 +542,33 @@ if app_mode == "Schedule New Boat":
 
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
+
+        # --- NEW LOGIC FOR EXPLANATORY MESSAGE ---
+        requested_date = st.session_state.get('search_requested_date')
+        if requested_date and st.session_state.found_slots:
+            # Check if the requested date is among the suggested slots
+            is_requested_date_suggested = any(slot['date'] == requested_date for slot in st.session_state.found_slots)
+            
+            # If the requested date is NOT suggested AND an earlier slot (due to high priority) was found
+            # and the current search was for a crane job (Sailboat)
+            # You might need to pass an additional flag from ecm.find_available_job_slots
+            # to indicate if an earlier crane day was prioritized.
+            # For simplicity for now, let's assume if the first slot is earlier and highly prioritized,
+            # it's because an existing crane day was found.
+            
+            first_suggested_slot_date = st.session_state.found_slots[0]['date']
+
+            # Check if it was a crane job search (Sailboat)
+            customer = ecm.get_customer_details(st.session_state.current_job_request['customer_id'])
+            boat = ecm.get_boat_details(st.session_state.current_job_request['boat_id'])
+            is_crane_job = boat.boat_type.startswith("Sailboat") and st.session_state.current_job_request['service_type'] in ["Launch", "Haul"]
+
+
+            if not is_requested_date_suggested and first_suggested_slot_date < requested_date and is_crane_job:
+                days_prior = (requested_date - first_suggested_slot_date).days
+                st.info(f"ℹ️ Your requested date of {requested_date.strftime('%B %d')} was not offered. An earlier, active crane day on {first_suggested_slot_date.strftime('%B %d')} ({days_prior} days prior) was found at the ramp to optimize crane scheduling.")
+        # --- END NEW LOGIC ---
+       
         cols = st.columns(3)
         for i, slot in enumerate(st.session_state.found_slots):
             with cols[i % 3]:
