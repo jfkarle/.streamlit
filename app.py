@@ -248,7 +248,10 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         first_job = jobs_for_day[0]
         ramp_id = getattr(first_job, 'pickup_ramp_id', None) or getattr(first_job, 'dropoff_ramp_id', None)
         if ramp_id:
-            tides = ecm.fetch_noaa_tides(ecm.get_ramp_details(ramp_id).noaa_station_id, report_date)
+            # Call the new range-based function for a single day
+            tides_in_range = ecm.fetch_noaa_tides_for_range(ecm.get_ramp_details(ramp_id).noaa_station_id, report_date, report_date)
+            # Get the specific data for the report date
+            tides = tides_in_range.get(report_date, [])
             high_tides = [t for t in tides if t['type'] == 'H']
             if high_tides:
                 primary_high_tide = min(high_tides, key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - datetime.datetime.combine(datetime.date.min, datetime.time(12,0))))
