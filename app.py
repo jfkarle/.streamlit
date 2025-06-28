@@ -365,7 +365,10 @@ def initialize_session_state():
     defaults = {
         'data_loaded': False, 'info_message': "", 'current_job_request': None,
         'found_slots': [], 'selected_slot': None, 'search_requested_date': None,
-        'was_forced_search': False
+        'was_forced_search': False,
+        'num_suggestions': 3, # Keep this existing setting
+        'crane_look_back_days': 7,  # NEW DEFAULT
+        'crane_look_forward_days': 60 # NEW DEFAULT (changed from 120, to give more control)
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -376,7 +379,6 @@ def initialize_session_state():
             st.session_state.data_loaded = True
         else:
             st.error("Failed to load customer and boat data.")
-
 
 # --- Main App Execution ---
 
@@ -522,9 +524,9 @@ if app_mode == "Schedule New Boat":
                 st.session_state.search_requested_date = requested_date_input
             
                 slots, message, warning_msgs, was_forced = ecm.find_available_job_slots(
-                    # --- NEW: Pass the number of suggestions from session state ---
                     num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
-                    
+                    crane_look_back_days=st.session_state.crane_look_back_days, # NEW
+                    crane_look_forward_days=st.session_state.crane_look_forward_days, # NEW
                     **job_request,
                     force_preferred_truck=(not relax_truck_input),
                     relax_ramp=relax_ramp_input,
@@ -779,21 +781,42 @@ elif app_mode == "Cancel Job":
         st.warning("No jobs scheduled.")
 elif app_mode == "Settings":
     st.header("Application Settings")
-    
+
     st.subheader("Scheduling Defaults")
-    
-    # Initialize the session state key if it doesn't exist
-    if 'num_suggestions' not in st.session_state:
+
+    if 'num_suggestions' not in st.session_state: # This already exists, just for context
         st.session_state.num_suggestions = 3
 
-    # Create the number input and link it to the session state
     st.session_state.num_suggestions = st.number_input(
         "Number of Suggested Dates to Return",
-        min_value=3,
+        min_value=1, # Changed min_value to 1 as per unique slot requirement
         max_value=6,
         value=st.session_state.num_suggestions,
         step=1,
         help="Choose how many different date options to see when searching for a slot (default is 3)."
     )
-    
+
+    st.markdown("---") # Separator for clarity
+    st.subheader("Crane Scheduling Search Windows")
+
+    st.session_state.crane_look_back_days = st.number_input(
+        "Crane Look-Back Days (before requested date)",
+        min_value=0,
+        max_value=30, # Max of 30 days back seems reasonable
+        value=st.session_state.crane_look_back_days,
+        step=1,
+        help="Number of days to search backwards from the requested date for existing crane activity to group jobs."
+    )
+
+    st.session_state.crane_look_forward_days = st.number_input(
+        "Crane Look-Forward Days (after requested date)",
+        min_value=7, # Min of 7 days forward
+        max_value=180, # Up to 6 months forward
+        value=st.session_state.crane_look_forward_days,
+        step=1,
+        help="Number of days to search forwards from the requested date for existing or candidate crane days."
+    )
+
+    st.success(f"Crane search will look {st.session_state.crane_look_back_days} days back and {st.session_state.crane_look_forward_days} days forward.")
+
     st.success(f"Search results will now show {st.session_state.num_suggestions} suggestions.")
