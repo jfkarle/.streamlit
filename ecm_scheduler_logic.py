@@ -548,24 +548,24 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     dates_to_search_prioritized.extend(remaining_dates_sorted_by_proximity)
 
     print(f"DEBUG: dates_to_search_prioritized: {dates_to_search_prioritized}") # <--- ADD THIS PRINT
-        if day not in found_dates:
+    if day not in found_dates:
         slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job, customer, boat)
-            if slot:
-                _is_active = day in active_crane_dates_in_window
-                _is_candidate = any(cd['date'] == day for cd in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, []))
+        if slot:
+            _is_active = day in active_crane_dates_in_window
+            _is_candidate = any(cd['date'] == day for cd in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, []))
 
-                slot['is_active_crane_day'] = _is_active
-                slot['is_candidate_crane_day'] = _is_candidate
+            slot['is_active_crane_day'] = _is_active
+            slot['is_candidate_crane_day'] = _is_candidate
 
-                # --- NEW: Add existing crane job count to the slot ---
-                slot['existing_crane_jobs_count'] = _get_crane_job_count_for_day(day, selected_ramp_id)
-                # --- END NEW ---
+            # --- NEW: Add existing crane job count to the slot ---
+            slot['existing_crane_jobs_count'] = _get_crane_job_count_for_day(day, selected_ramp_id)
+            # --- END NEW ---
 
-                if day < requested_date_obj and _is_active: # Prioritize earlier active crane days
-                    slot['priority_score'] = 1000 
-                
-                found_slots.append(slot)
-                found_dates.add(day)
+            if day < requested_date_obj and _is_active: # Prioritize earlier active crane days
+                slot['priority_score'] = 1000 
+            
+            found_slots.append(slot)
+            found_dates.add(day)
     
     # Final sort by priority_score (desc) and then by date (asc)
     # New sorting:
