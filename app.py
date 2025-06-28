@@ -573,20 +573,19 @@ if app_mode == "Schedule New Boat":
                 tide_display_str = format_tides_for_display(slot, ecm_hours)
                 
                 # Determine the container style based on whether it's the first slot
-                container_style = "padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px;"
-                if is_first_slot_displayed:
-                    container_style = "padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;"
+                container_div_style = "padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px;"
                 
-                # Open the custom div for the container to apply the style (ONLY ONCE)
-                st.markdown(f"""
-                    <div style="{container_style}">
-                    """, unsafe_allow_html=True) 
-
-                # --- Content inside the styled container ---
+                if is_first_slot_displayed:
+                    container_div_style = "padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;"
+                
+                # --- Build the ENTIRE card content as one HTML string, including the outer div ---
+                card_html_output = f"""
+                <div style="{container_div_style}">
+                """
 
                 # Existing Requested Date star LABEL
                 if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
-                    st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>""", unsafe_allow_html=True)
+                    card_html_output += """<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>"""
                 
                 # Crane Day Labeling
                 crane_label = ""
@@ -602,46 +601,43 @@ if app_mode == "Schedule New Boat":
                     label_border_color = "#9932CC"
 
                 if crane_label:
-                    st.markdown(f"""
+                    card_html_output += f"""
                         <div style='background-color:{label_bg_color};border-left:6px solid {label_border_color};padding:5px;border-radius:3px;margin-bottom:8px;'>
                             <h6 style='color:black;margin:0;font-weight:bold;'>🏗️ {crane_label}</h6>
-                        </div>""", unsafe_allow_html=True)
+                        </div>"""
 
-                # --- THIS IS THE SINGLE, CONSOLIDATED BLOCK FOR ALL DETAILS ---
-                details_html = f"""
+                # REVISED for tighter spacing of details (combine into one markdown block)
+                card_html_output += f"""
                 <p style="margin-bottom: 0.25em;"><b>Date:</b> {date_str}</p>
                 """
                 if slot.get('tide_rule_concise'):
-                    details_html += f"""
+                    card_html_output += f"""
                     <p style="margin-bottom: 0.25em;"><b>Tide Rule:</b> {slot['tide_rule_concise']}</p>
                     """
                 if tide_display_str:
-                    details_html += f"""
+                    card_html_output += f"""
                     <p style="margin-bottom: 0.25em;">{tide_display_str}</p>
                     """
-                details_html += f"""
+                card_html_output += f"""
                 <p style="margin-bottom: 0.25em;"><b>Time:</b> {time_str}</p>
                 <p style="margin-bottom: 0.25em;"><b>Truck:</b> {truck_id}</p>
                 """
                 if slot.get('j17_needed'):
-                    details_html += f"""
+                    card_html_output += f"""
                     <p style="margin-bottom: 0.25em;"><b>Crane:</b> J17</p>
                     """
-                details_html += f"""
+                card_html_output += f"""
                 <p style="margin-bottom: 0.25em;"><b>Ramp:</b> {ramp_name}</p>
                 """
-                st.markdown(details_html, unsafe_allow_html=True)
-                # --- END OF SINGLE, CONSOLIDATED BLOCK ---
-
-                # Close the custom div and add the button (ONLY ONCE)
-                st.markdown("</div>", unsafe_allow_html=True) # This closes the container div for the card
-                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
-
-
-##DOOBIE
-
                 
-                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+                # Close the outer div
+                card_html_output += "</div>"
+
+                # Render the entire card using st.html()
+                st.html(card_html_output)
+
+                # The standard Streamlit button (keep it separate for reliability)
+                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
         st.markdown("---") # Separator below the columns
 
     elif st.session_state.selected_slot:
