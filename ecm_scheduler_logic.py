@@ -396,7 +396,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         j17_duration = rules.get('crane_mins', 0) / 60.0
 
         if check_date == datetime.date(2025, 10, 7):
-            print(f"DEBUG: Checking Oct 7th for customer {cust.customer_name}")
+            print(f"DEBUG: Checking Oct 7th for customer {customer.customer_name}")
             print(f"DEBUG: ECM Hours for Oct 7th: {ecm_hours}")
             print(f"DEBUG: Tidal windows for Oct 7th: {windows}")
             print(f"DEBUG: Truck to check: {trucks_to_check[0].truck_id}")
