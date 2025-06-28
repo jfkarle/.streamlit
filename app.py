@@ -368,7 +368,8 @@ def initialize_session_state():
         'was_forced_search': False,
         'num_suggestions': 3, # Keep this existing setting
         'crane_look_back_days': 7,  # NEW DEFAULT
-        'crane_look_forward_days': 60 # NEW DEFAULT (changed from 120, to give more control)
+        'crane_look_forward_days': 60, # NEW DEFAULT (changed from 120, to give more control)
+        'slot_page_index': 0
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -522,6 +523,7 @@ if app_mode == "Schedule New Boat":
                 }
                 st.session_state.current_job_request = job_request
                 st.session_state.search_requested_date = requested_date_input
+                st.session_state.slot_page_index = 0 # <--- ADD THIS LINE
             
                 slots, message, warning_msgs, was_forced = ecm.find_available_job_slots(
                     num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
@@ -543,37 +545,47 @@ if app_mode == "Schedule New Boat":
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
 
-        # --- NEW LOGIC FOR EXPLANATORY MESSAGE ---
-        requested_date = st.session_state.get('search_requested_date')
-        if requested_date and st.session_state.found_slots:
-            is_requested_date_suggested = any(slot['date'] == requested_date for slot in st.session_state.found_slots)
-            first_suggested_slot_date = st.session_state.found_slots[0]['date']
-            customer = ecm.get_customer_details(st.session_state.current_job_request['customer_id'])
-            boat = ecm.get_boat_details(st.session_state.current_job_request['boat_id'])
-            is_crane_job = boat.boat_type.startswith("Sailboat") and st.session_state.current_job_request['service_type'] in ["Launch", "Haul"]
+        # --- START: Navigation Logic ---
+        total_slots = len(st.session_state.found_slots)
+        page_index = st.session_state.slot_page_index
+        slots_per_page = 3
 
-            if not is_requested_date_suggested and first_suggested_slot_date < requested_date and is_crane_job:
-                days_prior = (requested_date - first_suggested_slot_date).days
-                st.info(f"ℹ️ Your requested date of {requested_date.strftime('%B %d')} was not offered. An earlier, active crane day on {first_suggested_slot_date.strftime('%B %d')} ({days_prior} days prior) was found at the ramp to optimize crane scheduling.")
-        # --- END NEW LOGIC ---
-       
+        def go_to_prev_page():
+            st.session_state.slot_page_index -= slots_per_page
+        def go_to_next_page():
+            st.session_state.slot_page_index += slots_per_page
+
+        # Display navigation buttons and page info
+        nav_cols = st.columns([1, 1, 5, 1, 1])
+        with nav_cols[0]:
+            st.button("⬅️ Prev", on_click=go_to_prev_page, disabled=(page_index == 0), use_container_width=True)
+        with nav_cols[1]:
+            st.button("Next ➡️", on_click=go_to_next_page, disabled=(page_index + slots_per_page >= total_slots), use_container_width=True)
+        
+        # This part displays "Showing 1-3 of 20" for example
+        if total_slots > 0:
+            with nav_cols[3]:
+                st.write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_")
+
+        st.markdown("---")
+        # --- END: Navigation Logic ---
+
+        # Get the slice of slots to display for the current page
+        slots_to_display = st.session_state.found_slots[page_index : page_index + slots_per_page]
+
         cols = st.columns(3)
-        for i, slot in enumerate(st.session_state.found_slots):
+        for i, slot in enumerate(slots_to_display):
             with cols[i % 3]:
-                # Determine if this is the first (best) slot for visual highlighting
-                # This is the first slot being *displayed on the page*, not necessarily the first overall
-                # We check the page_index, which we will add in the next task. For now, this works.
+                # --- THIS IS THE CARD-BUILDING CODE FROM TASK 1 ---
+                # It is intentionally included here again.
                 is_first_slot_displayed = (i == 0 and st.session_state.get('slot_page_index', 0) == 0)
 
-                # --- Define card style, adding position:relative to allow the icon to be placed ---
                 container_div_style = "position:relative; padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px; height: 260px;"
                 if is_first_slot_displayed:
                     container_div_style = "position:relative; padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px; height: 260px;"
 
-                # Start building the card
                 card_html_output = f'<div style="{container_div_style}">'
 
-                # --- NEW: Sailboat Icon Logic ---
                 crane_day_tooltip = ""
                 if slot.get('is_active_crane_day'):
                     crane_day_tooltip = "Active Crane Day: A crane is already scheduled here this day."
@@ -581,19 +593,15 @@ if app_mode == "Schedule New Boat":
                     crane_day_tooltip = "Candidate Crane Day: Ideal tides for crane operations."
 
                 if crane_day_tooltip:
-                    # The title attribute creates the text you see when you hover over the icon.
                     card_html_output += f"""
                         <span title="{crane_day_tooltip}" style="position:absolute; top:8px; right:10px; font-size: 24px; cursor: help;">
                             ⛵
                         </span>
                     """
-                # --- End of Icon Logic ---
 
-                # Existing "Requested Date" star label
                 if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
                     card_html_output += "<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>"
 
-                # Card details
                 date_str = slot['date'].strftime('%a, %b %d, %Y')
                 time_str = ecm.format_time_for_display(slot.get('time'))
                 truck_id = slot.get('truck_id', 'N/A')
@@ -609,15 +617,11 @@ if app_mode == "Schedule New Boat":
                     <p style="margin-bottom: 0.25em;"><b>Truck:</b> {truck_id}</p>
                     <p style="margin-bottom: 0.25em;"><b>Ramp:</b> {ramp_name}</p>
                 """
-
-                # Close the main div
                 card_html_output += "</div>"
-
                 st.html(card_html_output)
 
-                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
-                
-        st.markdown("---") # Separator below the columns
+                # The key must be unique for each slot on each page
+                st.button("Select this slot", key=f"select_slot_{page_index + i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
 
     elif st.session_state.selected_slot:
         slot = st.session_state.selected_slot
@@ -628,7 +632,7 @@ if app_mode == "Schedule New Boat":
             new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
             if new_job_id:
                 st.session_state.confirmation_message = message
-                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search']:
+                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'was_forced_search', 'slot_page_index']:
                     st.session_state.pop(key, None)
                 st.rerun()
             else:
