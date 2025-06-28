@@ -474,6 +474,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
            (getattr(job, 'pickup_ramp_id') == selected_ramp_id or getattr(job, 'dropoff_ramp_id') == selected_ramp_id) and
            (search_start_date <= job.scheduled_start_datetime.date() <= search_end_date)
     ], key=lambda d: requested_date_obj - d if d < requested_date_obj else timedelta.max) # Sort earlier dates first
+    print(f"DEBUG: active_crane_dates_in_window: {active_crane_dates_in_window}")
 
     # Create a list of dates to search, prioritizing earlier active crane days
     dates_to_search_prioritized = []
