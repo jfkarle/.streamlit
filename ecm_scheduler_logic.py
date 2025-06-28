@@ -414,7 +414,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              force_preferred_truck=True, relax_ramp=False, manager_override=False, 
                              num_suggestions_to_find=3, 
                              crane_look_back_days=7, 
-                             crane_look_forward_days=60, 
+                             crane_look_forward_days=60,
+                             hard_search_start_date=None, # <--- ADDED
+                             hard_search_end_date=None,   # <--- ADDED
                              **kwargs):
     global CRANE_DAY_LOGIC_ENABLED
     try:
@@ -571,6 +573,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         d for d in all_dates_in_window if d not in dates_to_search_prioritized
     ], key=lambda d: abs(d - requested_date_obj)) # Sort remaining by proximity
     dates_to_search_prioritized.extend(remaining_dates_sorted_by_proximity)
+
+    # --- NEW: Enforce hard search boundaries if they were provided ---
+    if hard_search_start_date and hard_search_end_date:
+        dates_to_search_prioritized = [
+            d for d in dates_to_search_prioritized if hard_search_start_date <= d <= hard_search_end_date
+        ]
+    # --- END OF NEW BLOCK ---
+    
     print(f"DEBUG: dates_to_search_prioritized: {dates_to_search_prioritized}") # <--- ADD THIS PRINT
     for day in dates_to_search_prioritized:
         if day not in found_dates:
