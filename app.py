@@ -573,13 +573,27 @@ if app_mode == "Schedule New Boat":
         for i, slot in enumerate(st.session_state.found_slots):
             with cols[i % 3]:
                 with st.container(border=True):
+                    # Existing Requested Date star
                     if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
                         st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
-                        # --- NEW: Display warnings for alternate slots ---
-                        if slot.get('is_alternate_ramp'):
-                            st.warning(f"⚠️ Alternate Ramp Used")
-                        if slot.get('is_alternate_truck'):
-                            st.warning(f"⚠️ Alternate Truck Used")
+                        # ... (existing warnings)
+
+                    # --- NEW: Crane Day Labeling ---
+                    crane_label = ""
+                    label_color = ""
+                    if slot.get('is_active_crane_day'):
+                        crane_label = f"ACTIVE CRANE DAY: {ecm.get_ramp_details(slot['ramp_id']).ramp_name if slot['ramp_id'] else 'N/A'}"
+                        label_color = "#ADD8E6" # Light Blue
+                    elif slot.get('is_candidate_crane_day'):
+                        crane_label = "CRANE DAY (Candidate)"
+                        label_color = "#DDA0DD" # Plum/Light Purple
+
+                    if crane_label:
+                        st.markdown(f"""
+                            <div style='background-color:{label_color};border-left:6px solid #87CEEB;padding:10px;border-radius:5px;margin-bottom:10px;'>
+                                <h5 style='color:black;margin:0;font-weight:bold;'>🏗️ {crane_label}</h5>
+                            </div>""", unsafe_allow_html=True)
+                    # --- END NEW CRANE DAY LABELING ---
 
                     date_str = slot['date'].strftime('%a, %b %d, %Y')
                     time_str = ecm.format_time_for_display(slot.get('time'))
