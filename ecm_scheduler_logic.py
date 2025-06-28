@@ -503,7 +503,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             break 
     
         if day not in found_dates:
-            slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job)
+            slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job, customer, boat)
             if slot:
                 _is_active = day in active_crane_dates_in_window
                 _is_candidate = any(cd['date'] == day for cd in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, []))
