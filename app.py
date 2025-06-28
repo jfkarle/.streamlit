@@ -605,13 +605,40 @@ if app_mode == "Schedule New Boat":
                     ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
                     tide_display_str = format_tides_for_display(slot, ecm_hours)
 
-                    st.markdown(f"**Date:** {date_str}")
-                    if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
-                    if tide_display_str: st.markdown(tide_display_str)
-                    st.markdown(f"**Time:** {time_str}")
-                    st.markdown(f"**Truck:** {truck_id}")
-                    if slot.get('j17_needed'): st.markdown(f"**Crane:** J17")
-                    st.markdown(f"**Ramp:** {ramp_name}")
+                    # --- ORIGINAL (causing spacing) ---
+                    # st.markdown(f"**Date:** {date_str}")
+                    # if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
+                    # if tide_display_str: st.markdown(tide_display_str)
+                    # st.markdown(f"**Time:** {time_str}")
+                    # st.markdown(f"**Truck:** {truck_id}")
+                    # if slot.get('j17_needed'): st.markdown(f"**Crane:** J17")
+                    # st.markdown(f"**Ramp:** {ramp_name}")
+
+                    # --- REVISED for tighter spacing ---
+                    details_html = f"""
+                    <p style="margin-bottom: 0.25em;"><b>Date:</b> {date_str}</p>
+                    """
+                    if slot.get('tide_rule_concise'):
+                        details_html += f"""
+                        <p style="margin-bottom: 0.25em;"><b>Tide Rule:</b> {slot['tide_rule_concise']}</p>
+                        """
+                    if tide_display_str:
+                        details_html += f"""
+                        <p style="margin-bottom: 0.25em;">{tide_display_str}</p>
+                        """
+                    details_html += f"""
+                    <p style="margin-bottom: 0.25em;"><b>Time:</b> {time_str}</p>
+                    <p style="margin-bottom: 0.25em;"><b>Truck:</b> {truck_id}</p>
+                    """
+                    if slot.get('j17_needed'):
+                        details_html += f"""
+                        <p style="margin-bottom: 0.25em;"><b>Crane:</b> J17</p>
+                        """
+                    details_html += f"""
+                    <p style="margin-bottom: 0.25em;"><b>Ramp:</b> {ramp_name}</p>
+                    """
+                    st.markdown(details_html, unsafe_allow_html=True)
+                    # --- END REVISED ---
                     st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
         st.markdown("---")
 
