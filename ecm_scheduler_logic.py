@@ -387,6 +387,22 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], message, [], False
 
     def _find_first_slot_on_day(check_date, ramp_obj, trucks_to_check, is_crane_job_flag):
+    if check_date == datetime.date(2025, 10, 7):
+    print(f"DEBUG: Checking Oct 7th for customer {cust.customer_name}")
+    print(f"DEBUG: ECM Hours for Oct 7th: {ecm_hours}")
+    print(f"DEBUG: Tidal Windows for Oct 7th: {windows}")
+    print(f"DEBUG: Truck to check: {trucks_to_check[0].truck_id}")
+    print(f"DEBUG: Required duration (hours): {duration_hours}")
+    print(f"DEBUG: J17 duration (hours): {j17_duration}")
+    # Add print statements inside the 'for w in windows:' loop and 'while p_time < w['end_time']:' loop
+    # to see which slots are being tried and why they might be skipped/return None.
+    # Example:
+    # print(f"  Trying slot {p_time} in window {w['start_time']}-{w['end_time']}")
+    # if not check_truck_availability(...): print(f"    Truck not available at {p_time}")
+    # if needs_j17 and not check_truck_availability("J17",...): print(f"    J17 not available at {p_time}")
+
+        
+        
         ecm_hours = get_ecm_operating_hours(check_date)
         if not ecm_hours: return None
         
