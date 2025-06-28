@@ -379,7 +379,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], message, [], False
     # --- END NEW ---
 
-    # --- Helper function to find the first valid slot on a given day ---
+    # Helper function to find the first valid slot on a given day (remains unchanged)
     def _find_first_slot_on_day(check_date, ramp_obj, trucks_to_check, is_crane_job_flag):
         ecm_hours = get_ecm_operating_hours(check_date)
         if not ecm_hours: return None
@@ -426,8 +426,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
         return None
 
+
     # --- Main Search Execution ---
     found_slots = []
+    # Using a set to keep track of dates for which a slot has already been added
+    found_dates = set() 
     message = ""
     is_crane_job = boat.boat_type.startswith("Sailboat") and service_type in ["Launch", "Haul"]
     trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
@@ -447,10 +450,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         active_days_at_ramp = sorted(active_crane_days.get(selected_ramp_id, []), key=lambda d: abs(d - requested_date_obj))
         for day in active_days_at_ramp:
             if len(found_slots) >= num_suggestions_to_find: break
-            slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job)
-            if slot: found_slots.append(slot)
+            if day not in found_dates: # Check to ensure we haven't already added a slot for this date
+                slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job)
+                if slot: 
+                    found_slots.append(slot)
+                    found_dates.add(day) # Add the date to our set of found dates
         
         if found_slots:
+            # If we found active crane days, prioritize these and return them
             message = f"To group with another job, we found slots on {found_slots[0]['date'].strftime('%b %d')}, a day the crane is already scheduled at your ramp."
             return found_slots, message, [], False
 
@@ -460,8 +467,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
         for day_info in future_candidates:
             if len(found_slots) >= num_suggestions_to_find: break
-            slot = _find_first_slot_on_day(day_info['date'], ramp_obj, trucks, is_crane_job)
-            if slot: found_slots.append(slot)
+            # IMPORTANT: Check day_info['date'] as it holds the actual date object
+            if day_info['date'] not in found_dates: 
+                slot = _find_first_slot_on_day(day_info['date'], ramp_obj, trucks, is_crane_job)
+                if slot: 
+                    found_slots.append(slot)
+                    found_dates.add(day_info['date']) # Add the date to our set of found dates
         
         message = f"Found {len(found_slots)} available Crane Day(s) with ideal tides."
 
@@ -471,9 +482,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         search_end_date = current_date + timedelta(days=MAX_SEARCH_DAYS_FUTURE)
         
         while len(found_slots) < num_suggestions_to_find and current_date <= search_end_date:
-            slot = _find_first_slot_on_day(current_date, ramp_obj, trucks, is_crane_job)
-            if slot:
-                found_slots.append(slot)
+            if current_date not in found_dates: # Check to ensure we haven't already added a slot for this date
+                slot = _find_first_slot_on_day(current_date, ramp_obj, trucks, is_crane_job)
+                if slot:
+                    found_slots.append(slot)
+                    found_dates.add(current_date) # Add the date to our set of found dates
             current_date += timedelta(days=1)
         message = f"Found {len(found_slots)} available date(s) for {customer.customer_name}."
 
