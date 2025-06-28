@@ -678,105 +678,105 @@ if st.session_state.info_message and "crane job" in st.session_state.info_messag
 # --- PAGE 2: REPORTING ---
 elif app_mode == "Reporting":
     st.header("Reporting Dashboard")
-    st.info("This section is for viewing and exporting scheduled jobs.")
-    st.subheader("All Scheduled Jobs (Current Session)")
-    st.markdown("---")
-    st.subheader("Crane Day Candidate Calendar")
-    
-    # Create a list of the crane-specific ramps
-    crane_ramp_options = list(ecm.CANDIDATE_CRANE_DAYS.keys())
-    
-    selected_ramp_for_calendar = st.selectbox(
-        "Select a ramp to see its Candidate Crane Days:",
-        options=crane_ramp_options
-    )
-    
-    if selected_ramp_for_calendar:
-        # Get the list of candidate day objects for the selected ramp
-        candidate_days_for_selected_ramp = ecm.CANDIDATE_CRANE_DAYS[selected_ramp_for_calendar]
-        
-        # Call our new function to display the calendar
-        display_crane_day_calendar(candidate_days_for_selected_ramp)
-    
-    st.markdown("---")
+    st.info("This section is for viewing and exporting scheduled jobs.") # Keep this general info
 
-    if ecm.SCHEDULED_JOBS:
-        display_data = []
-        sorted_jobs = sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max)
-        for job in sorted_jobs:
-            customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
-            ramp = ecm.get_ramp_details(getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None))
-            
-            truck_info = job.assigned_hauling_truck_id if job.assigned_hauling_truck_id else "N/A"
-            crane_info = job.assigned_crane_truck_id if job.assigned_crane_truck_id else "N/A"
-            
-            boat_id = getattr(job, 'boat_id', None)
-            boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
-            is_sailboat = boat and 'sailboat' in getattr(boat, 'boat_type', '').lower()
-    
-            # --- INSERT THIS ENTIRE BLOCK HERE ---
-            # --- NEW: Get High Tide Info for Display ---
-            high_tide_display = "N/A"
-            # Assuming high_tides are stored as a list of dicts in the job object
-            if hasattr(job, 'high_tides') and job.high_tides:
-                # Sort high tides by time to display the earliest primary one or all
-                sorted_high_tides = sorted(job.high_tides, key=lambda t: t['time'])
-                if sorted_high_tides:
-                    # Display the time and optionally the height of the first high tide
-                    high_tide_time_str = ecm.format_time_for_display(sorted_high_tides[0]['time'])
-                    high_tide_height = sorted_high_tides[0].get('height', 'N/A')
-                    high_tide_display = f"{high_tide_time_str} ({high_tide_height}')"
-    
-                    # If you want to show ALL high tides for the day:
-                    # all_tide_strs = [ecm.format_time_for_display(t['time']) for t in sorted_high_tides]
-                    # high_tide_display = " / ".join(all_tide_strs)
+    # --- NEW: Use st.tabs for major sections ---
+    tab1, tab2, tab3 = st.tabs(["Scheduled Jobs Overview", "Crane Day Calendar", "PDF Export Tools"])
 
-            display_data.append({
-                "Job ID": job.job_id, "Status": job.job_status,
-                "Scheduled Date": job.scheduled_start_datetime.strftime("%Y-%m-%d") if job.scheduled_start_datetime else "N/A",
-                "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
-                "Service": job.service_type, "Customer": customer.customer_name if customer else "N/A",
-                "Truck": truck_info, "Crane": crane_info if crane_info != "N/A" else "",
-                "Ramp": ramp.ramp_name if ramp else "N/A",
-                "High Tide": high_tide_display,
+    with tab1:
+        st.subheader("All Scheduled Jobs (Current Session)")
+        # ... (Your existing code for displaying st.dataframe(pd.DataFrame(display_data))) ...
+        if ecm.SCHEDULED_JOBS:
+            display_data = []
+            sorted_jobs = sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max)
+            for job in sorted_jobs:
+                customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
+                ramp = ecm.get_ramp_details(getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None))
+                
+                truck_info = job.assigned_hauling_truck_id if job.assigned_hauling_truck_id else "N/A"
+                crane_info = job.assigned_crane_truck_id if job.assigned_crane_truck_id else "N/A"
+                
+                boat_id = getattr(job, 'boat_id', None)
+                boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
+                is_sailboat = boat and 'sailboat' in getattr(boat, 'boat_type', '').lower()
+
+                # --- NEW: Get High Tide Info for Display --- (This block needs to be moved here)
+                high_tide_display = "N/A"
+                if hasattr(job, 'high_tides') and job.high_tides:
+                    sorted_high_tides = sorted(job.high_tides, key=lambda t: t['time'])
+                    if sorted_high_tides:
+                        high_tide_time_str = ecm.format_time_for_display(sorted_high_tides[0]['time'])
+                        high_tide_height = sorted_high_tides[0].get('height', 'N/A')
+                        high_tide_display = f"{high_tide_time_str} ({high_tide_height}')"
+                # --- END NEW ---
+
+                display_data.append({
+                    "Job ID": job.job_id, "Status": job.job_status,
+                    "Scheduled Date": job.scheduled_start_datetime.strftime("%Y-%m-%d") if job.scheduled_start_datetime else "N/A",
+                    "Scheduled Time": ecm.format_time_for_display(job.scheduled_start_datetime.time()) if job.scheduled_start_datetime else "N/A",
+                    "Service": job.service_type, "Customer": customer.customer_name if customer else "N/A",
+                    "Truck": truck_info, "Crane": crane_info if crane_info != "N/A" else "",
+                    "Ramp": ramp.ramp_name if ramp else "N/A",
+                    "High Tide": high_tide_display, # Add this column
                 })
-        st.dataframe(pd.DataFrame(display_data))
-    else:
-        st.write("No jobs scheduled yet.")
-
-    st.subheader("Generate Daily Planner PDF")
-    selected_date = st.date_input("Select date to export:", value=datetime.date.today())
-    if st.button("📤 Generate PDF"):
-        jobs_today = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime.date() == selected_date]
-        if not jobs_today:
-            st.warning("No jobs scheduled for that date.")
+            st.dataframe(pd.DataFrame(display_data))
         else:
-            pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
-            st.download_button(
-                label="📥 Download Planner", data=pdf_buffer.getvalue(),
-                file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf"
-            )
+            st.write("No jobs scheduled yet.")
 
-    st.subheader("Export Multi-Day Planner")
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("Start Date", value=datetime.date.today(), key="multi_start")
-    with col2:
-        end_date = st.date_input("End Date", value=datetime.date.today() + datetime.timedelta(days=5), key="multi_end")
+    with tab2:
+        st.subheader("Crane Day Candidate Calendar")
+        # ... (Your existing code for calendar selection and display) ...
+        # Create a list of the crane-specific ramps
+        crane_ramp_options = list(ecm.CANDIDATE_CRANE_DAYS.keys())
+        
+        selected_ramp_for_calendar = st.selectbox(
+            "Select a ramp to see its Candidate Crane Days:",
+            options=crane_ramp_options,
+            key="calendar_ramp_select" # Add a unique key for the selectbox
+        )
+        
+        if selected_ramp_for_calendar:
+            candidate_days_for_selected_ramp = ecm.CANDIDATE_CRANE_DAYS[selected_ramp_for_calendar]
+            display_crane_day_calendar(candidate_days_for_selected_ramp)
 
-    if st.button("📤 Generate Multi-Day Planner PDF"):
-        if start_date > end_date:
-            st.error("Start date must be before or equal to end date.")
-        else:
-            jobs_in_range = [j for j in ecm.SCHEDULED_JOBS if start_date <= j.scheduled_start_datetime.date() <= end_date]
-            if not jobs_in_range:
-                st.warning("No jobs scheduled in this date range.")
+    with tab3:
+        st.subheader("Generate Daily Planner PDF")
+        selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input") # Add a unique key
+        if st.button("📤 Generate PDF", key="generate_daily_pdf_button"): # Add a unique key
+            jobs_today = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime.date() == selected_date]
+            if not jobs_today:
+                st.warning("No jobs scheduled for that date.")
             else:
-                merged_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
+                pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
                 st.download_button(
-                    label="📥 Download Multi-Day Planner", data=merged_pdf,
-                    file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf"
+                    label="📥 Download Planner", data=pdf_buffer.getvalue(),
+                    file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf",
+                    key="download_daily_planner_button" # Add a unique key
                 )
+
+        st.markdown("---") # Separator between daily and multi-day
+
+        st.subheader("Export Multi-Day Planner")
+        col1, col2 = st.columns(2)
+        with col1:
+            start_date = st.date_input("Start Date", value=datetime.date.today(), key="multi_start_date") # Add a unique key
+        with col2:
+            end_date = st.date_input("End Date", value=datetime.date.today() + datetime.timedelta(days=5), key="multi_end_date") # Add a unique key
+
+        if st.button("📤 Generate Multi-Day Planner PDF", key="generate_multi_pdf_button"): # Add a unique key
+            if start_date > end_date:
+                st.error("Start date must be before or equal to end date.")
+            else:
+                jobs_in_range = [j for j in ecm.SCHEDULED_JOBS if start_date <= j.scheduled_start_datetime.date() <= end_date]
+                if not jobs_in_range:
+                    st.warning("No jobs scheduled in this date range.")
+                else:
+                    merged_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
+                    st.download_button(
+                        label="📥 Download Multi-Day Planner", data=merged_pdf,
+                        file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf",
+                        key="download_multi_planner_button" # Add a unique key
+                    )
 
 # --- PAGE 3: SETTINGS ---
 
