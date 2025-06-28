@@ -864,49 +864,47 @@ elif app_mode == "Settings":
         help="Choose how many different date options to see when searching for a slot (default is 3)."
     )
 
-    st.markdown("---") # Separator for clarity
-    st.subheader("Crane Scheduling Search Windows")
-
-    st.session_state.crane_look_back_days = st.number_input(
-        "Crane Look-Back Days (before requested date)",
-        min_value=0,
-        max_value=30, # Max of 30 days back seems reasonable
-        value=st.session_state.crane_look_back_days,
-        step=1,
-        help="Number of days to search backwards from the requested date for existing crane activity to group jobs."
-    )
-
-    st.session_state.crane_look_forward_days = st.number_input(
-        "Crane Look-Forward Days (after requested date)",
-        min_value=7, # Min of 7 days forward
-        max_value=180, # Up to 6 months forward
-        value=st.session_state.crane_look_forward_days,
-        step=1,
-        help="Number of days to search forwards from the requested date for existing or candidate crane days."
-    )
-
-    st.success(f"Crane search will look {st.session_state.crane_look_back_days} days back and {st.session_state.crane_look_forward_days} days forward.")
-
-    st.success(f"Search results will now show {st.session_state.num_suggestions} suggestions.")
-
-    # --- QA & Data Generation Tools ---
     st.markdown("---")
     st.subheader("QA & Data Generation Tools")
+    st.write("This tool will create random, valid scheduled jobs to populate the calendar for testing.")
 
-    num_jobs_to_gen = st.number_input(
-        "Number of random jobs to generate:",
-        min_value=1,
-        max_value=100,
-        value=25,
-        step=1,
-        help="This will create random, valid scheduled jobs to populate the calendar for testing."
-    )
+    # Create columns for better layout
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        num_jobs_to_gen = st.number_input(
+            "Number of jobs to generate:",
+            min_value=1, max_value=100, value=25, step=1
+        )
+        service_type_input = st.selectbox(
+            "Type of jobs to create:",
+            options=["All", "Launch", "Haul", "Transport"],
+            index=0
+        )
+
+    with col2:
+        # Set default dates for the spring season
+        start_date_default = datetime.date(2025, 4, 15)
+        start_date_input = st.date_input("Start of date range:", value=start_date_default)
+    
+    with col3:
+        end_date_default = datetime.date(2025, 7, 1)
+        end_date_input = st.date_input("End of date range:", value=end_date_default)
+
 
     if st.button("Generate Random Jobs", key="qa_generate_jobs"):
-        with st.spinner(f"Generating {num_jobs_to_gen} random jobs... This may take a few moments."):
-            summary_message = ecm.generate_random_jobs(num_jobs_to_gen)
-        
-        st.success(summary_message)
-        st.info("Navigate to the 'Reporting' page to see the newly generated jobs on the schedule.")
+        if start_date_input > end_date_input:
+            st.error("Error: Start date cannot be after end date.")
+        else:
+            with st.spinner(f"Generating {num_jobs_to_gen} random '{service_type_input}' jobs... This may take a moment."):
+                summary_message = ecm.generate_random_jobs(
+                    num_jobs_to_gen, 
+                    start_date=start_date_input, 
+                    end_date=end_date_input, 
+                    service_type_filter=service_type_input
+                )
+            
+            st.success(summary_message)
+            st.info("Navigate to the 'Reporting' page to see the newly generated jobs on the schedule.")
 
 
