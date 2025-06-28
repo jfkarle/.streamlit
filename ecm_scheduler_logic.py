@@ -583,14 +583,25 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     # 4. priority_score (descending - for special overrides like earlier active days)
     # 5. Proximity to requested_date (ascending - closest dates after all other factors)
     # 6. Slot time (ascending - earlier in the day)
-    found_slots.sort(key=lambda s: (
-        s.get('existing_crane_jobs_count', 0), # Primary: More existing jobs first (desc)
-        s.get('is_active_crane_day', False),   # Secondary: Active days over others (desc)
-        s.get('is_candidate_crane_day', False), # Tertiary: Candidate days over regular (desc)
-        s.get('priority_score', 0),            # Quaternary: Explicit high priority (desc)
-        abs(s['date'] - requested_date_obj),   # Quinary: Closeness to requested date (asc)
-        s['time']                              # Senary: Earliest time (asc)
-    ), reverse=True) # Overall reverse=True because highest job count, True flags, highest score are "best"
+    # --- NEW: Conditional Sorting Logic ---
+    is_crane_job = boat.boat_type.startswith("Sailboat")
+    # First, sort all found slots by date proximity and time as a baseline
+    # This ensures that for any equal-priority items, the closest date is preferred.
+    found_slots.sort(key=lambda s: (abs(s['date'] - requested_date_obj), s['time']))
+
+    if is_crane_job:
+        # For CRANE jobs, apply a multi-level sort to prioritize filling up crane days.
+        # The list is already sorted by proximity, which will act as the final tie-breaker.
+        found_slots.sort(key=lambda s: (
+            s.get('existing_crane_jobs_count', 0),
+            s.get('is_active_crane_day', False),
+            s.get('is_candidate_crane_day', False),
+            s.get('priority_score', 0)
+        ), reverse=True)
+    else:
+        # For NON-CRANE (Powerboat) jobs, simply bring the requested date to the top of the list.
+        # The list is already sorted by proximity, so this is the only adjustment needed.
+        found_slots.sort(key=lambda s: s['date'] == requested_date_obj, reverse=True)
 
     if not found_slots:
         message = "No suitable slots could be found within the search window."
