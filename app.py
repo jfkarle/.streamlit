@@ -546,23 +546,11 @@ if app_mode == "Schedule New Boat":
         # --- NEW LOGIC FOR EXPLANATORY MESSAGE ---
         requested_date = st.session_state.get('search_requested_date')
         if requested_date and st.session_state.found_slots:
-            # Check if the requested date is among the suggested slots
             is_requested_date_suggested = any(slot['date'] == requested_date for slot in st.session_state.found_slots)
-            
-            # If the requested date is NOT suggested AND an earlier slot (due to high priority) was found
-            # and the current search was for a crane job (Sailboat)
-            # You might need to pass an additional flag from ecm.find_available_job_slots
-            # to indicate if an earlier crane day was prioritized.
-            # For simplicity for now, let's assume if the first slot is earlier and highly prioritized,
-            # it's because an existing crane day was found.
-            
             first_suggested_slot_date = st.session_state.found_slots[0]['date']
-
-            # Check if it was a crane job search (Sailboat)
             customer = ecm.get_customer_details(st.session_state.current_job_request['customer_id'])
             boat = ecm.get_boat_details(st.session_state.current_job_request['boat_id'])
             is_crane_job = boat.boat_type.startswith("Sailboat") and st.session_state.current_job_request['service_type'] in ["Launch", "Haul"]
-
 
             if not is_requested_date_suggested and first_suggested_slot_date < requested_date and is_crane_job:
                 days_prior = (requested_date - first_suggested_slot_date).days
@@ -572,75 +560,80 @@ if app_mode == "Schedule New Boat":
         cols = st.columns(3)
         for i, slot in enumerate(st.session_state.found_slots):
             with cols[i % 3]:
-                with st.container(border=True):
-                    # Existing Requested Date star
-                    if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
-                        st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:10px;border-radius:5px;margin-bottom:10px;'><h5 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h5></div>""", unsafe_allow_html=True)
-                        # ... (existing warnings)
+                # Determine if this is the first (best) slot for visual highlighting
+                is_first_slot_displayed = (i == 0)
 
-                    # --- NEW: Crane Day Labeling ---
-                    crane_label = ""
-                    label_color = ""
-                    # Prioritize ACTIVE over Candidate for display
-                    if slot.get('is_active_crane_day'): # Check this first
-                        crane_label = f"ACTIVE CRANE DAY: {ecm.get_ramp_details(slot['ramp_id']).ramp_name if slot['ramp_id'] else 'N/A'}"
-                        label_color = "#ADD8E6" # Light Blue
-                    elif slot.get('is_candidate_crane_day'): # Only check if not active
-                        crane_label = "CRANE DAY (Candidate)"
-                        label_color = "#DDA0DD" # Plum/Light Purple
+                # Base container style
+                container_style = "padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px;"
+                
+                # Apply special styling for the first slot
+                if is_first_slot_displayed:
+                    container_style = "padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;"
+                
+                # Use a custom div for the container to apply the style
+                st.markdown(f"""
+                    <div style="{container_style}">
+                    """, unsafe_allow_html=True) # Open the custom div
+
+                # --- Content inside the styled container ---
+
+                # Existing Requested Date star LABEL
+                if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
+                    st.markdown("""<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>""", unsafe_allow_html=True)
+                    # Reduced padding/margin for this label too for compactness
+                
+                # Crane Day Labeling
+                crane_label = ""
+                label_bg_color = ""
+                label_border_color = ""
+                # Prioritize ACTIVE over Candidate for display
+                if slot.get('is_active_crane_day'):
+                    crane_label = f"ACTIVE CRANE DAY: {ecm.get_ramp_details(slot['ramp_id']).ramp_name if slot['ramp_id'] else 'N/A'}"
+                    label_bg_color = "#ADD8E6" # Light Blue
+                    label_border_color = "#4682B4" # Steel Blue
+                elif slot.get('is_candidate_crane_day'):
+                    crane_label = "CRANE DAY (Candidate)"
+                    label_bg_color = "#DDA0DD" # Plum/Light Purple
+                    label_border_color = "#9932CC" # Dark Orchid
 
 
-                    if crane_label:
-                        st.markdown(f"""
-                            <div style='background-color:{label_color};border-left:6px solid #87CEEB;padding:10px;border-radius:5px;margin-bottom:10px;'>
-                                <h5 style='color:black;margin:0;font-weight:bold;'>🏗️ {crane_label}</h5>
-                            </div>""", unsafe_allow_html=True)
-                    # --- END NEW CRANE DAY LABELING ---
+                if crane_label:
+                    st.markdown(f"""
+                        <div style='background-color:{label_bg_color};border-left:6px solid {label_border_color};padding:5px;border-radius:3px;margin-bottom:8px;'>
+                            <h6 style='color:black;margin:0;font-weight:bold;'>🏗️ {crane_label}</h6>
+                        </div>""", unsafe_allow_html=True)
+                # --- END NEW CRANE DAY LABELING ---
 
-                    date_str = slot['date'].strftime('%a, %b %d, %Y')
-                    time_str = ecm.format_time_for_display(slot.get('time'))
-                    truck_id = slot.get('truck_id', 'N/A')
-                    ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
-                    ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
-                    ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
-                    tide_display_str = format_tides_for_display(slot, ecm_hours)
-
-                    # --- ORIGINAL (causing spacing) ---
-                    # st.markdown(f"**Date:** {date_str}")
-                    # if slot.get('tide_rule_concise'): st.markdown(f"**Tide Rule:** {slot['tide_rule_concise']}")
-                    # if tide_display_str: st.markdown(tide_display_str)
-                    # st.markdown(f"**Time:** {time_str}")
-                    # st.markdown(f"**Truck:** {truck_id}")
-                    # if slot.get('j17_needed'): st.markdown(f"**Crane:** J17")
-                    # st.markdown(f"**Ramp:** {ramp_name}")
-
-                    # --- REVISED for tighter spacing ---
-                    details_html = f"""
-                    <p style="margin-bottom: 0.25em;"><b>Date:</b> {date_str}</p>
-                    """
-                    if slot.get('tide_rule_concise'):
-                        details_html += f"""
-                        <p style="margin-bottom: 0.25em;"><b>Tide Rule:</b> {slot['tide_rule_concise']}</p>
-                        """
-                    if tide_display_str:
-                        details_html += f"""
-                        <p style="margin-bottom: 0.25em;">{tide_display_str}</p>
-                        """
+                # --- REVISED for tighter spacing of details (combine into one markdown block) ---
+                details_html = f"""
+                <p style="margin-bottom: 0.25em;"><b>Date:</b> {date_str}</p>
+                """
+                if slot.get('tide_rule_concise'):
                     details_html += f"""
-                    <p style="margin-bottom: 0.25em;"><b>Time:</b> {time_str}</p>
-                    <p style="margin-bottom: 0.25em;"><b>Truck:</b> {truck_id}</p>
+                    <p style="margin-bottom: 0.25em;"><b>Tide Rule:</b> {slot['tide_rule_concise']}</p>
                     """
-                    if slot.get('j17_needed'):
-                        details_html += f"""
-                        <p style="margin-bottom: 0.25em;"><b>Crane:</b> J17</p>
-                        """
+                if tide_display_str:
                     details_html += f"""
-                    <p style="margin-bottom: 0.25em;"><b>Ramp:</b> {ramp_name}</p>
+                    <p style="margin-bottom: 0.25em;">{tide_display_str}</p>
                     """
-                    st.markdown(details_html, unsafe_allow_html=True)
-                    # --- END REVISED ---
-                    st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
-        st.markdown("---")
+                details_html += f"""
+                <p style="margin-bottom: 0.25em;"><b>Time:</b> {time_str}</p>
+                <p style="margin-bottom: 0.25em;"><b>Truck:</b> {truck_id}</p>
+                """
+                if slot.get('j17_needed'):
+                    details_html += f"""
+                    <p style="margin-bottom: 0.25em;"><b>Crane:</b> J17</p>
+                    """
+                details_html += f"""
+                <p style="margin-bottom: 0.25em;"><b>Ramp:</b> {ramp_name}</p>
+                """
+                st.markdown(details_html, unsafe_allow_html=True)
+                # --- END REVISED for tighter spacing ---
+
+                # --- Close the custom div and add the button ---
+                st.markdown("</div>", unsafe_allow_html=True) # Close the custom div created above
+                st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,))
+        st.markdown("---") # Separator below the columns
 
     elif st.session_state.selected_slot:
         slot = st.session_state.selected_slot
