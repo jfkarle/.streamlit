@@ -231,7 +231,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.setFont("Helvetica", 7); c.drawCentredString(text_center_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
             c.drawCentredString(text_center_x, line3_y, f"(Draft: {boat.draft_ft}')")
             c.drawCentredString(text_center_x, line4_y, f"{_abbreviate_town(getattr(job, 'pickup_street_address', ''))}-{_abbreviate_town(getattr(job, 'dropoff_street_address', ''))}")
-            c.setLineWidth(2); c.line(text_center_x, y_bar_start, text_center_x, y_end); c.line(text_center_x - 6, y_end, text_center_x + 6, y_end)
+            c.setLineWidth(2); c.line(text_center_x, y_bar_start, text_center_x, y_end); c.line(text_center_x - 10, y_end, text_center_x + 10, y_end)
         
         if getattr(job, 'assigned_crane_truck_id') and 'J17' in column_map:
             crane_col_index = column_map['J17']; text_center_x_crane = margin + time_col_width + (crane_col_index + 0.5) * col_width
