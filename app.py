@@ -739,8 +739,7 @@ elif app_mode == "Reporting":
                 "Truck": truck_info, "Crane": crane_info if crane_info != "N/A" else "",
                 "Ramp": ramp.ramp_name if ramp else "N/A"
                 "High Tide": high_tide_display,
-        })
-            })
+                })
         st.dataframe(pd.DataFrame(display_data))
     else:
         st.write("No jobs scheduled yet.")
