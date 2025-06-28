@@ -561,83 +561,62 @@ if app_mode == "Schedule New Boat":
         for i, slot in enumerate(st.session_state.found_slots):
             with cols[i % 3]:
                 # Determine if this is the first (best) slot for visual highlighting
-                is_first_slot_displayed = (i == 0)
+                # This is the first slot being *displayed on the page*, not necessarily the first overall
+                # We check the page_index, which we will add in the next task. For now, this works.
+                is_first_slot_displayed = (i == 0 and st.session_state.get('slot_page_index', 0) == 0)
 
-                # Define all necessary variables FIRST
+                # --- Define card style, adding position:relative to allow the icon to be placed ---
+                container_div_style = "position:relative; padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px; height: 260px;"
+                if is_first_slot_displayed:
+                    container_div_style = "position:relative; padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px; height: 260px;"
+
+                # Start building the card
+                card_html_output = f'<div style="{container_div_style}">'
+
+                # --- NEW: Sailboat Icon Logic ---
+                crane_day_tooltip = ""
+                if slot.get('is_active_crane_day'):
+                    crane_day_tooltip = "Active Crane Day: A crane is already scheduled here this day."
+                elif slot.get('is_candidate_crane_day'):
+                    crane_day_tooltip = "Candidate Crane Day: Ideal tides for crane operations."
+
+                if crane_day_tooltip:
+                    # The title attribute creates the text you see when you hover over the icon.
+                    card_html_output += f"""
+                        <span title="{crane_day_tooltip}" style="position:absolute; top:8px; right:10px; font-size: 24px; cursor: help;">
+                            ⛵
+                        </span>
+                    """
+                # --- End of Icon Logic ---
+
+                # Existing "Requested Date" star label
+                if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
+                    card_html_output += "<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>"
+
+                # Card details
                 date_str = slot['date'].strftime('%a, %b %d, %Y')
                 time_str = ecm.format_time_for_display(slot.get('time'))
                 truck_id = slot.get('truck_id', 'N/A')
                 ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
                 ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
-                ecm_hours = ecm.get_ecm_operating_hours(slot['date'])
-                tide_display_str = format_tides_for_display(slot, ecm_hours)
-                
-                # Determine the container style based on whether it's the first slot
-                container_div_style = "padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px;"
-                
-                if is_first_slot_displayed:
-                    container_div_style = "padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;"
-                
-                # --- Build the ENTIRE card content as one HTML string, including the outer div ---
-                card_html_output = f"""
-                <div style="{container_div_style}">
+                tide_display_str = format_tides_for_display(slot, ecm.get_ecm_operating_hours(slot['date']))
+
+                card_html_output += f"""
+                    <p style="margin-bottom: 0.25em;"><b>Date:</b> {date_str}</p>
+                    <p style="margin-bottom: 0.25em;"><b>Tide Rule:</b> {slot.get('tide_rule_concise', 'N/A')}</p>
+                    <p style="margin-bottom: 0.5em;">{tide_display_str}</p>
+                    <p style="margin-bottom: 0.25em;"><b>Time:</b> {time_str}</p>
+                    <p style="margin-bottom: 0.25em;"><b>Truck:</b> {truck_id}</p>
+                    <p style="margin-bottom: 0.25em;"><b>Ramp:</b> {ramp_name}</p>
                 """
 
-                # Existing Requested Date star LABEL
-                if st.session_state.get('search_requested_date') and slot['date'] == st.session_state.search_requested_date:
-                    card_html_output += """<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>"""
-                
-                # Crane Day Labeling
-                crane_label = ""
-                label_bg_color = ""
-                label_border_color = ""
-                if slot.get('is_active_crane_day'):
-                    crane_label = f"ACTIVE CRANE DAY: {ecm.get_ramp_details(slot['ramp_id']).ramp_name if slot['ramp_id'] else 'N/A'}"
-                    label_bg_color = "#ADD8E6"
-                    label_border_color = "#4682B4"
-                elif slot.get('is_candidate_crane_day'):
-                    crane_label = "CRANE DAY (Candidate)"
-                    label_bg_color = "#DDA0DD"
-                    label_border_color = "#9932CC"
-
-                if crane_label:
-                    card_html_output += f"""
-                        <div style='background-color:{label_bg_color};border-left:6px solid {label_border_color};padding:5px;border-radius:3px;margin-bottom:8px;'>
-                            <h6 style='color:black;margin:0;font-weight:bold;'>🏗️ {crane_label}</h6>
-                        </div>"""
-
-                # REVISED for tighter spacing of details (combine into one markdown block)
-                card_html_output += f"""
-                <p style="margin-bottom: 0.25em;"><b>Date:</b> {date_str}</p>
-                """
-                if slot.get('tide_rule_concise'):
-                    card_html_output += f"""
-                    <p style="margin-bottom: 0.25em;"><b>Tide Rule:</b> {slot['tide_rule_concise']}</p>
-                    """
-                if tide_display_str:
-                    card_html_output += f"""
-                    <p style="margin-bottom: 0.25em;">{tide_display_str}</p>
-                    """
-                card_html_output += f"""
-                <p style="margin-bottom: 0.25em;"><b>Time:</b> {time_str}</p>
-                <p style="margin-bottom: 0.25em;"><b>Truck:</b> {truck_id}</p>
-                """
-                if slot.get('j17_needed'):
-                    card_html_output += f"""
-                    <p style="margin-bottom: 0.25em;"><b>Crane:</b> J17</p>
-                    """
-                card_html_output += f"""
-                <p style="margin-bottom: 0.25em;"><b>Ramp:</b> {ramp_name}</p>
-                """
-                
-                # Close the outer div
+                # Close the main div
                 card_html_output += "</div>"
 
-                # Render the entire card using st.html()
                 st.html(card_html_output)
 
-                # The standard Streamlit button (keep it separate for reliability)
                 st.button("Select this slot", key=f"select_slot_{i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
+                
         st.markdown("---") # Separator below the columns
 
     elif st.session_state.selected_slot:
