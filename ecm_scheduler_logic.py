@@ -325,8 +325,12 @@ def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ra
     if not check_truck_availability(truck.truck_id, start_dt, hauler_end_dt): return None
     needs_j17 = BOOKING_RULES.get(boat.boat_type, {}).get('crane_mins', 0) > 0
     if needs_j17 and not check_truck_availability("J17", start_dt, start_dt + datetime.timedelta(hours=j17_duration)): return None
-    return {'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'type': "Open", 'ramp_id': ramp.ramp_id if ramp else None, 'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0, **window_details}
-
+    return {'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'type': "Open", 
+            'ramp_id': ramp.ramp_id if ramp else None, 
+            'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0, 
+            'is_active_crane_day': is_active_crane_day, # NEW
+            'is_candidate_crane_day': is_candidate_crane_day, # NEW
+            **window_details}
 def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date_obj, trucks, duration, j17_duration, service_type):
     """Searches ±14 forward and -7 back to find dates where J17 is already assigned at same ramp"""
     grouping_slot = None
@@ -482,9 +486,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             if day not in found_dates:
                 slot = _find_first_slot_on_day(day, ramp_obj, trucks, is_crane_job)
                 if slot:
-                    # Give higher priority to slots on active crane days that were found *before* the requested date
-                    if day < requested_date_obj and day in all_relevant_crane_search_dates: # Assuming active_crane_days were added to all_relevant_crane_search_dates
-                         slot['priority_score'] = 1000 # Make it very high to float to top
+                    # Determine if this 'day' was originally an active or candidate day
+                    _is_active = day in {j.scheduled_start_datetime.date() for j in SCHEDULED_JOBS if getattr(j, 'assigned_crane_truck_id') and (getattr(j, 'pickup_ramp_id') == selected_ramp_id or getattr(j, 'dropoff_ramp_id') == selected_ramp_id)}
+                    _is_candidate = any(cd['date'] == day for cd in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, []))
+
+                    slot['is_active_crane_day'] = _is_active # Set the flag here
+                    slot['is_candidate_crane_day'] = _is_candidate # Set the flag here
+
+                    if day < requested_date_obj and _is_active: # Prioritize earlier active crane days
+                         slot['priority_score'] = 1000 
+
                     found_slots.append(slot)
                     found_dates.add(day)
     
@@ -511,12 +522,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             if current_date not in found_dates:
                 slot = _find_first_slot_on_day(current_date, ramp_obj, trucks, is_crane_job)
                 if slot:
+                    # Powerboats don't get the 'active/candidate' labels based on the same logic.
+                    # They might need J17, but it's not about grouping a 'crane day'.
+                    slot['is_active_crane_day'] = False
+                    slot['is_candidate_crane_day'] = False
                     found_slots.append(slot)
                     found_dates.add(current_date)
             current_date += timedelta(days=1)
         message = f"Found {len(found_slots)} available date(s) for {customer.customer_name}."
-    
-    # ... (rest of the function, including the final return)
     if not found_slots:
         return [], "No suitable slots could be found within the search window.", [], False
     
