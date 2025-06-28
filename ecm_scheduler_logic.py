@@ -88,21 +88,22 @@ def format_time_for_display(time_obj):
 def get_all_tide_times_for_ramp_and_date(ramp_obj, date_obj):
     """
     Fetches all high and low tide times for a given ramp and date
-    using the NOAA API and returns a dictionary.
+    using the new range-based NOAA API call.
     """
     if not ramp_obj or not ramp_obj.noaa_station_id:
         print(f"[ERROR] Ramp '{ramp_obj.ramp_name if ramp_obj else 'Unknown'}' missing NOAA station ID.")
         return {'H': [], 'L': []}
 
-    tide_data = fetch_noaa_tides(ramp_obj.noaa_station_id, date_obj)
+    # Call the new function for a single-day range
+    tides_for_range = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, date_obj, date_obj)
+    
+    # Get the specific day's data from the returned dictionary
+    tide_data_for_day = tides_for_range.get(date_obj, [])
 
     all_tides = {'H': [], 'L': []}
-    for tide_entry in tide_data:
+    for tide_entry in tide_data_for_day:
         tide_type = tide_entry.get('type')
         if tide_type in ['H', 'L']:
-            # --- THE FIX ---
-            # This now appends the entire tide record (with time and height),
-            # not just the time object.
             all_tides[tide_type].append(tide_entry)
             
     return all_tides
