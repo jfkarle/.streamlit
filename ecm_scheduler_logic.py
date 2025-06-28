@@ -386,8 +386,15 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         message = f"Error: The selected boat type '{boat.boat_type}' is not allowed at {ramp_obj.ramp_name}."
         return [], message, [], False
 
-    def _find_first_slot_on_day(check_date, ramp_obj, trucks_to_check, is_crane_job_flag):
-        # This line (line 390) MUST be indented.
+    def _find_first_slot_on_day(check_date, ramp_obj, trucks_to_check, is_crane_job_flag, customer, boat): # ADD customer, boat
+        ecm_hours = get_ecm_operating_hours(check_date)
+        if not ecm_hours: return None
+    
+        windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date)
+        rules = BOOKING_RULES.get(boat.boat_type, {})
+        duration_hours = rules.get('truck_mins', 90) / 60.0
+        j17_duration = rules.get('crane_mins', 0) / 60.0
+
         if check_date == datetime.date(2025, 10, 7):
             print(f"DEBUG: Checking Oct 7th for customer {cust.customer_name}")
             print(f"DEBUG: ECM Hours for Oct 7th: {ecm_hours}")
