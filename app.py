@@ -713,6 +713,23 @@ elif app_mode == "Reporting":
             boat_id = getattr(job, 'boat_id', None)
             boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
             is_sailboat = boat and 'sailboat' in getattr(boat, 'boat_type', '').lower()
+    
+            # --- INSERT THIS ENTIRE BLOCK HERE ---
+            # --- NEW: Get High Tide Info for Display ---
+            high_tide_display = "N/A"
+            # Assuming high_tides are stored as a list of dicts in the job object
+            if hasattr(job, 'high_tides') and job.high_tides:
+                # Sort high tides by time to display the earliest primary one or all
+                sorted_high_tides = sorted(job.high_tides, key=lambda t: t['time'])
+                if sorted_high_tides:
+                    # Display the time and optionally the height of the first high tide
+                    high_tide_time_str = ecm.format_time_for_display(sorted_high_tides[0]['time'])
+                    high_tide_height = sorted_high_tides[0].get('height', 'N/A')
+                    high_tide_display = f"{high_tide_time_str} ({high_tide_height}')"
+    
+                    # If you want to show ALL high tides for the day:
+                    # all_tide_strs = [ecm.format_time_for_display(t['time']) for t in sorted_high_tides]
+                    # high_tide_display = " / ".join(all_tide_strs)
 
             display_data.append({
                 "Job ID": job.job_id, "Status": job.job_status,
