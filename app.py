@@ -187,6 +187,30 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         total_minutes = (t.hour - start_hour) * 60 + t.minute
         return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
 
+    # --- NEW: Get and process tide times for highlighting ---
+    high_tide_highlights = []
+    low_tide_highlights = []
+    if jobs_for_day:
+        # Use the ramp from the first scheduled job to get the day's tide data
+        first_job = jobs_for_day[0]
+        ramp_id = getattr(first_job, 'pickup_ramp_id', None) or getattr(first_job, 'dropoff_ramp_id', None)
+        if ramp_id:
+            ramp_obj = ecm.get_ramp_details(ramp_id)
+            all_tides = ecm.get_all_tide_times_for_ramp_and_date(ramp_obj, report_date)
+
+            # Helper to round a time to the nearest 15-minute mark
+            def round_time_to_15_min(t):
+                total_minutes = t.hour * 60 + t.minute
+                rounded_minutes = int(round(total_minutes / 15.0) * 15)
+                if rounded_minutes >= 24 * 60:
+                    rounded_minutes = (24 * 60) - 15
+                h, m = divmod(rounded_minutes, 60)
+                return datetime.time(h, m)
+
+            high_tide_highlights = [round_time_to_15_min(t['time']) for t in all_tides.get('H', [])]
+            low_tide_highlights = [round_time_to_15_min(t['time']) for t in all_tides.get('L', [])]
+    # --- END NEW ---
+
     # --- Header & Column Drawing ---
     c.setFont("Helvetica-Bold", 12)
     c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
@@ -194,22 +218,42 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         c.setFont("Helvetica-Bold", 14)
         c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
 
-    # --- Time Grid (Restored to your original, working version) ---
+    # --- Time Grid (with Highlighting) ---
     for hour in range(start_hour, end_hour + 1):
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
             y = get_y_for_time(current_time)
+            
+            # --- NEW: Draw highlight rectangle if time matches a tide ---
+            highlight_color = None
+            if current_time in high_tide_highlights:
+                highlight_color = colors.Color(1, 1, 0, alpha=0.4) # Transparent Yellow
+            elif current_time in low_tide_highlights:
+                highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4) # Transparent Light Red
+
+            if highlight_color:
+                next_quarter_hour = (datetime.datetime.combine(datetime.date.min, current_time) + datetime.timedelta(minutes=15)).time()
+                y_next = get_y_for_time(next_quarter_hour)
+                rect_height = y - y_next
+                c.setFillColor(highlight_color)
+                c.rect(margin, y_next, width - (2 * margin), rect_height, fill=1, stroke=0)
+            # --- END NEW ---
+
             label_y = get_y_for_time((datetime.datetime.combine(datetime.date.today(), current_time) + datetime.timedelta(minutes=7.5)).time())
+            c.setStrokeColor(colors.black) # Ensure grid lines are black
             c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
+
             if minute == 0:
                 display_hour = hour if hour <= 12 else hour - 12
                 c.setFont("Helvetica-Bold", 9)
+                c.setFillColorRGB(0, 0, 0) # Ensure text is black
                 c.drawString(margin + 3, label_y - 3, str(display_hour))
                 c.setFont("Helvetica", 7)
                 c.drawString(margin + 18, label_y - 3, "00")
             else:
                 c.setFont("Helvetica", 6)
+                c.setFillColorRGB(0, 0, 0) # Ensure text is black
                 c.drawString(margin + 18, label_y - 2, f"{minute:02d}")
     
     # --- Vertical Grid Lines ---
@@ -227,6 +271,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         truck_id = getattr(job, 'assigned_hauling_truck_id', None)
         if truck_id in column_map:
             col_index = column_map[truck_id]; text_center_x = margin + time_col_width + (col_index + 0.5) * col_width
+            c.setFillColorRGB(0, 0, 0) # Ensure job text is black
             c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x, line1_y, customer.customer_name)
             c.setFont("Helvetica", 7); c.drawCentredString(text_center_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
             c.drawCentredString(text_center_x, line3_y, f"(Draft: {boat.draft_ft}')")
@@ -236,21 +281,19 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         if getattr(job, 'assigned_crane_truck_id') and 'J17' in column_map:
             crane_col_index = column_map['J17']; text_center_x_crane = margin + time_col_width + (crane_col_index + 0.5) * col_width
             y_crane_end = get_y_for_time(getattr(job, 'j17_busy_end_datetime').time())
+            c.setFillColorRGB(0, 0, 0) # Ensure job text is black
             c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x_crane, line1_y, customer.customer_name.split()[-1])
             c.setFont("Helvetica", 7); c.drawCentredString(text_center_x_crane, line2_y, _abbreviate_town(getattr(job, 'dropoff_street_address', '')))
             if 'mt' in boat.boat_type.lower(): c.drawCentredString(text_center_x_crane, line3_y, "TRANSPORT")
             c.setLineWidth(2); c.line(text_center_x_crane, y_bar_start, text_center_x_crane, y_crane_end); c.line(text_center_x_crane - 3, y_crane_end, text_center_x_crane + 3, y_crane_end)
 
     # --- Tide Footnote & Final Border Fix ---
-    # Get high tide for footnote
     primary_high_tide = None
     if jobs_for_day:
         first_job = jobs_for_day[0]
         ramp_id = getattr(first_job, 'pickup_ramp_id', None) or getattr(first_job, 'dropoff_ramp_id', None)
         if ramp_id:
-            # Call the new range-based function for a single day
             tides_in_range = ecm.fetch_noaa_tides_for_range(ecm.get_ramp_details(ramp_id).noaa_station_id, report_date, report_date)
-            # Get the specific data for the report date
             tides = tides_in_range.get(report_date, [])
             high_tides = [t for t in tides if t['type'] == 'H']
             if high_tides:
