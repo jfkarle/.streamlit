@@ -432,12 +432,15 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     global CRANE_DAY_LOGIC_ENABLED
     try:
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
-        # --- NEW: If a hard date range is being used, force the request date to be the start of that range ---
-        # This prevents the sorting logic from pulling in dates outside the desired window.
-        if hard_search_start_date:
-        requested_date_obj = hard_search_start_date
     except ValueError:
         return [], "Error: Invalid date format.", [], False
+    # --- NEW: If a hard date range is being used, force the request date to be the start of that range ---
+    # This prevents the sorting logic from pulling in dates outside the desired window.
+    if hard_search_start_date:
+        requested_date_obj = hard_search_start_date
+    # --- Determine the search window ---
+    # If hard boundaries are provided (from QA tool), use them.
+    if hard_search_start_date and hard_search_end_date:
 
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
     if not customer or not boat: return [], "Invalid Customer/Boat ID.", [], False
