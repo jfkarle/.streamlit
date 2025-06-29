@@ -809,5 +809,4 @@ def generate_random_jobs(num_to_generate, start_date, end_date, service_type_fil
     summary_message = f"Bulk generation complete. Successfully created {success_count} jobs. Failed to find slots for {fail_count} attempts."
     print(f"--- {summary_message} ---")
     return summary_message
-    print(f"--- {summary_message} ---")
-    return summary_message
+
