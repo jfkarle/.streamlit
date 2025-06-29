@@ -426,8 +426,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              num_suggestions_to_find=3, 
                              crane_look_back_days=7, 
                              crane_look_forward_days=60,
-                             hard_search_start_date=None,
-                             hard_search_end_date=None,
+                             hard_search_start_date=None, # <--- ADDED
+                             hard_search_end_date=None,   # <--- ADDED
                              **kwargs):
     try:
         requested_date_obj = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
