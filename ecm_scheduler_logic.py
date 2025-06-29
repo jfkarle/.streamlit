@@ -787,7 +787,9 @@ def generate_random_jobs(num_to_generate, start_date, end_date, service_type_fil
             force_preferred_truck=False,
             relax_ramp=False,
             manager_override=True,
-            crane_look_forward_days=90
+            crane_look_forward_days=90,
+            hard_search_start_date=start_date, # <--- ADDED
+            hard_search_end_date=end_date      # <--- ADDED
         )
 
         if slots:
