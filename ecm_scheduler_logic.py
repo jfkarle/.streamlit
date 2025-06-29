@@ -315,9 +315,20 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tide
     if not ecm_hours:
         return []
 
-    ecm_open = datetime.datetime.combine(date_to_check, ecm_hours['open'])
-    ecm_close = datetime.datetime.combine(date_to_check, ecm_hours['close'])
-    
+    ecm_open_dt = datetime.datetime.combine(date_to_check, ecm_hours['open'])
+    ecm_close_dt = datetime.datetime.combine(date_to_check, ecm_hours['close'])
+
+    # --- NEW: Handle "Transport" jobs that have no ramp ---
+    if not ramp_obj:
+        # For a transport, the window is the entire operating day.
+        return [{
+            'start_time': ecm_hours['open'],
+            'end_time': ecm_hours['close'],
+            'high_tide_times': [],
+            'tide_rule_concise': 'N/A'
+        }]
+    # --- END OF NEW LOGIC ---
+
     # Get tide data for the specific day from the pre-fetched dictionary
     tide_data_for_day = all_tides_in_range.get(date_to_check, [])
     
@@ -327,8 +338,8 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tide
     for t_win in tidal_windows:
         tidal_start = datetime.datetime.combine(date_to_check, t_win['start_time'])
         tidal_end = datetime.datetime.combine(date_to_check, t_win['end_time'])
-        overlap_start = max(tidal_start, ecm_open)
-        overlap_end = min(tidal_end, ecm_close)
+        overlap_start = max(tidal_start, ecm_open_dt)
+        overlap_end = min(tidal_end, ecm_close_dt)
         
         if overlap_start < overlap_end:
             final_windows.append({
