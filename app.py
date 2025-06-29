@@ -236,7 +236,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                 y_next = get_y_for_time(next_quarter_hour)
                 rect_height = y - y_next
                 c.setFillColor(highlight_color)
-                c.rect(margin, y_next, width - (2 * margin), rect_height, fill=1, stroke=0)
+                c.rect(margin, y_next, time_col_width, rect_height, fill=1, stroke=0)
             # --- END NEW ---
 
             label_y = get_y_for_time((datetime.datetime.combine(datetime.date.today(), current_time) + datetime.timedelta(minutes=7.5)).time())
