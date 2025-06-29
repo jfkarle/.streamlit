@@ -871,6 +871,30 @@ elif app_mode == "Settings":
         help="Choose how many different date options to see when searching for a slot (default is 3)."
     )
 
+# --- NEW CODE TO BE ADDED ---
+    st.markdown("---")
+    st.subheader("Crane Job Search Window")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.session_state.crane_look_back_days = st.number_input(
+            "Days to search in the PAST",
+            min_value=0,
+            max_value=30,
+            value=st.session_state.get('crane_look_back_days', 7),
+            step=1,
+            help="How many days BEFORE the requested date to search for an existing active crane day (default is 7)."
+        )
+    with col2:
+        st.session_state.crane_look_forward_days = st.number_input(
+            "Days to search in the FUTURE",
+            min_value=7,
+            max_value=180,
+            value=st.session_state.get('crane_look_forward_days', 60),
+            step=1,
+            help="How many days AFTER the requested date to search for available slots (default is 60)."
+        )
+    # --- END OF NEW CODE ---
+
     st.markdown("---")
     st.subheader("QA & Data Generation Tools")
     st.write("This tool will create random, valid scheduled jobs to populate the calendar for testing.")
