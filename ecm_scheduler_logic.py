@@ -461,50 +461,50 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], message, [], False
 
     def _find_first_slot_on_day(check_date, ramp_obj, trucks_to_check, is_crane_job_flag, customer, boat, all_tides_in_range, manager_override, service_type):
-    ecm_hours = get_ecm_operating_hours(check_date)
-    if not ecm_hours:
+        ecm_hours = get_ecm_operating_hours(check_date)
+        if not ecm_hours:
+            return None
+    
+        windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides_in_range)
+        
+        rules = BOOKING_RULES.get(boat.boat_type, {})
+        duration_hours = rules.get('truck_mins', 90) / 60.0
+        j17_duration = rules.get('crane_mins', 0) / 60.0
+    
+        blocked_window = None
+        if not is_crane_job_flag and not manager_override:
+            candidate_days_at_ramp = CANDIDATE_CRANE_DAYS.get(ramp_obj.ramp_id, [])
+            for day_info in candidate_days_at_ramp:
+                if day_info['date'] == check_date:
+                    ht = day_info['high_tide_time']
+                    start_blocked = (datetime.datetime.combine(check_date, ht) - timedelta(hours=3)).time()
+                    end_blocked = (datetime.datetime.combine(check_date, ht) + timedelta(hours=3)).time()
+                    blocked_window = (start_blocked, end_blocked)
+                    break
+        
+        for w in windows:
+            p_time = w['start_time']
+            while p_time < w['end_time']:
+                if blocked_window and (blocked_window[0] <= p_time < blocked_window[1]):
+                    p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
+                    continue
+                
+                is_first_slot = (p_time == ecm_hours['open'])
+                end_of_slot_dt = datetime.datetime.combine(check_date, p_time) + timedelta(hours=duration_hours)
+                is_last_slot = (end_of_slot_dt.time() >= ecm_hours['close'])
+                is_ecm_launch = (service_type == "Launch" and customer.is_ecm_customer)
+                is_ecm_haul = (service_type == "Haul" and customer.is_ecm_customer)
+    
+                if (is_first_slot and not is_ecm_launch) or (is_last_slot and not is_ecm_haul):
+                    p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
+                    continue
+    
+                slot = _check_and_create_slot_detail(check_date, p_time, trucks_to_check[0], customer, boat, service_type, ramp_obj, ecm_hours, duration_hours, j17_duration, w, is_active_crane_day=False, is_candidate_crane_day=False)
+                if slot:
+                    return slot 
+                p_time = (datetime.datetime.combine(datetime.date.min, p_time) + timedelta(minutes=30)).time()
+                
         return None
-
-    windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides_in_range)
-    
-    rules = BOOKING_RULES.get(boat.boat_type, {})
-    duration_hours = rules.get('truck_mins', 90) / 60.0
-    j17_duration = rules.get('crane_mins', 0) / 60.0
-
-    blocked_window = None
-    if not is_crane_job_flag and not manager_override:
-        candidate_days_at_ramp = CANDIDATE_CRANE_DAYS.get(ramp_obj.ramp_id, [])
-        for day_info in candidate_days_at_ramp:
-            if day_info['date'] == check_date:
-                ht = day_info['high_tide_time']
-                start_blocked = (datetime.datetime.combine(check_date, ht) - timedelta(hours=3)).time()
-                end_blocked = (datetime.datetime.combine(check_date, ht) + timedelta(hours=3)).time()
-                blocked_window = (start_blocked, end_blocked)
-                break
-    
-    for w in windows:
-        p_time = w['start_time']
-        while p_time < w['end_time']:
-            if blocked_window and (blocked_window[0] <= p_time < blocked_window[1]):
-                p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
-                continue
-            
-            is_first_slot = (p_time == ecm_hours['open'])
-            end_of_slot_dt = datetime.datetime.combine(check_date, p_time) + timedelta(hours=duration_hours)
-            is_last_slot = (end_of_slot_dt.time() >= ecm_hours['close'])
-            is_ecm_launch = (service_type == "Launch" and customer.is_ecm_customer)
-            is_ecm_haul = (service_type == "Haul" and customer.is_ecm_customer)
-
-            if (is_first_slot and not is_ecm_launch) or (is_last_slot and not is_ecm_haul):
-                p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
-                continue
-
-            slot = _check_and_create_slot_detail(check_date, p_time, trucks_to_check[0], customer, boat, service_type, ramp_obj, ecm_hours, duration_hours, j17_duration, w, is_active_crane_day=False, is_candidate_crane_day=False)
-            if slot:
-                return slot 
-            p_time = (datetime.datetime.combine(datetime.date.min, p_time) + timedelta(minutes=30)).time()
-            
-    return None
 
     found_slots = []
     found_dates = set() 
