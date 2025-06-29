@@ -503,82 +503,67 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not trucks:
         return [], "No suitable trucks for this boat length.", [], False
     # --- NEW: Fetch all tide data for the entire search window at once ---
-    search_start_date = requested_date_obj - timedelta(days=crane_look_back_days)
-    search_end_date = requested_date_obj + timedelta(days=crane_look_forward_days)
+# --- Determine the search window ---
+    # If hard boundaries are provided (from QA tool), use them.
+    if hard_search_start_date and hard_search_end_date:
+        search_start_date = hard_search_start_date
+        search_end_date = hard_search_end_date
+    # Otherwise, use the flexible window for manual searches.
+    else:
+        search_start_date = requested_date_obj - timedelta(days=crane_look_back_days)
+        search_end_date = requested_date_obj + timedelta(days=crane_look_forward_days)
+        
+    # --- Fetch all tide data for the determined search window at once ---
     all_tides_in_range = {}
     if ramp_obj:
         all_tides_in_range = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, search_start_date, search_end_date)
-    # --- END OF NEW BLOCK TO ADD ---
-    
-    potential_search_dates = []
-    current_iter_date = search_start_date
-    while current_iter_date <= search_end_date:
-        potential_search_dates.append(current_iter_date)
-        current_iter_date += timedelta(days=1)
 
-    # Separate out active crane days and sort them by how far before the requested date they are
+    # --- Build the list of dates to search within the determined window ---
+    # This logic now correctly uses the right start/end dates from above.
     active_crane_dates_in_window = sorted([
         job.scheduled_start_datetime.date() 
         for job in SCHEDULED_JOBS 
         if getattr(job, 'assigned_crane_truck_id') and 
            (getattr(job, 'pickup_ramp_id') == selected_ramp_id or getattr(job, 'dropoff_ramp_id') == selected_ramp_id) and
            (search_start_date <= job.scheduled_start_datetime.date() <= search_end_date)
-    ], key=lambda d: requested_date_obj - d if d < requested_date_obj else timedelta.max) # Sort earlier dates first
-    print(f"DEBUG: active_crane_dates_in_window: {active_crane_dates_in_window}")
+    ], key=lambda d: requested_date_obj - d if d < requested_date_obj else timedelta.max)
 
-# in ecm_scheduler_logic.py, inside find_available_job_slots
-
-    # Create a list of dates to search, ensuring priority for active crane days
     dates_to_search_prioritized = []
 
-    # 1. Add ALL active crane days within the window, sorted.
-    #    Sort them so earlier active days come first, then active days on/after requested date.
-    #    Use a list of unique dates to avoid duplicates if a job is scheduled twice for same day (unlikely but safe)
     active_crane_dates_sorted = sorted(list(active_crane_dates_in_window)) 
     
-    # Add earlier active crane days
     for day in active_crane_dates_sorted:
         if day < requested_date_obj and day not in dates_to_search_prioritized:
             dates_to_search_prioritized.append(day)
 
-    # Add the requested date (if not already an earlier active crane day)
     if requested_date_obj not in dates_to_search_prioritized and \
        search_start_date <= requested_date_obj <= search_end_date:
         dates_to_search_prioritized.append(requested_date_obj)
 
-    # Add any active crane days that are on or after the requested date
     for day in active_crane_dates_sorted:
         if day >= requested_date_obj and day not in dates_to_search_prioritized:
             dates_to_search_prioritized.append(day)
 
-    # Add all candidate crane days that are not already active
     candidate_dates_sorted = sorted([
         cd['date'] for cd in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, []) 
         if search_start_date <= cd['date'] <= search_end_date and \
-           cd['date'] not in dates_to_search_prioritized # Avoid adding active days again
+           cd['date'] not in dates_to_search_prioritized
     ])
     for day in candidate_dates_sorted:
         if day not in dates_to_search_prioritized:
             dates_to_search_prioritized.append(day)
 
-    # Add any other dates within the search window that haven't been added yet
     all_dates_in_window = []
     current_date_iter = search_start_date
     while current_date_iter <= search_end_date:
         all_dates_in_window.append(current_date_iter)
         current_date_iter += timedelta(days=1)
     
-    # Add remaining dates, sorted by proximity if needed, but primarily ensuring they are unique
     remaining_dates_sorted_by_proximity = sorted([
         d for d in all_dates_in_window if d not in dates_to_search_prioritized
-    ], key=lambda d: abs(d - requested_date_obj)) # Sort remaining by proximity
-    dates_to_search_prioritized.extend(remaining_dates_sorted_by_proximity)
+    ], key=lambda d: abs(d - requested_date_obj))
 
-    # --- NEW: Enforce hard search boundaries if they were provided ---
-    if hard_search_start_date and hard_search_end_date:
-        dates_to_search_prioritized = [
-            d for d in dates_to_search_prioritized if hard_search_start_date <= d <= hard_search_end_date
-        ]
+    dates_to_search_prioritized.extend(remaining_dates_sorted_by_proximity)
     # --- END OF NEW BLOCK ---
     
     print(f"DEBUG: dates_to_search_prioritized: {dates_to_search_prioritized}") # <--- ADD THIS PRINT
