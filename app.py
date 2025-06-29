@@ -714,7 +714,11 @@ elif app_mode == "Reporting":
                 # --- NEW: Get High Tide Info for Display --- (This block needs to be moved here)
                 high_tide_display = "N/A"
                 if hasattr(job, 'high_tides') and job.high_tides:
-                    sorted_high_tides = sorted(job.high_tides, key=lambda t: t['time'])
+                    # This key now finds the tide closest to noon
+                    sorted_high_tides = sorted(
+                        job.high_tides,
+                        key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - datetime.datetime.combine(datetime.date.min, datetime.time(12, 0)))
+                    )
                     if sorted_high_tides:
                         high_tide_time_str = ecm.format_time_for_display(sorted_high_tides[0]['time'])
                         high_tide_height = sorted_high_tides[0].get('height', 'N/A')
