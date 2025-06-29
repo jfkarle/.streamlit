@@ -499,9 +499,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
                     continue
     
-                slot = _check_and_create_slot_detail(check_date, p_time, trucks_to_check[0], customer, boat, service_type, ramp_obj, ecm_hours, duration_hours, j17_duration, w, is_active_crane_day=False, is_candidate_crane_day=False)
-                if slot:
-                    return slot 
+                # This new loop tries every suitable truck
+                for truck in trucks_to_check:
+                    slot = _check_and_create_slot_detail(check_date, p_time, truck, customer, boat, service_type, ramp_obj, ecm_hours, duration_hours, j17_duration, w, is_active_crane_day=False, is_candidate_crane_day=False)
+                    if slot:
+                        return slot # Return as soon as a slot is found with ANY suitable truck
                 p_time = (datetime.datetime.combine(datetime.date.min, p_time) + timedelta(minutes=30)).time()
                 
         return None
