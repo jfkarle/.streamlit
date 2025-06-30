@@ -294,22 +294,37 @@ def get_ecm_operating_hours(date):
     return None
 
 def calculate_ramp_windows(ramp, boat, tide_data, date):
+    """
+    Calculates the valid time windows for a given ramp and boat based on tide rules.
+    This corrected version uses an if/elif/else structure to prevent logical fall-through.
+    """
+    # Case 1: Ramps with no tide restrictions.
     if ramp.tide_calculation_method == "AnyTide":
         return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
-    if ramp.tide_calculation_method == "AnyTideWithDraftRule":
+
+    # Case 2: Ramps that have a tide rule based on boat draft.
+    elif ramp.tide_calculation_method == "AnyTideWithDraftRule":
+        # Shallow draft (< 5ft) boats have no restrictions.
         if boat.draft_ft is not None and boat.draft_ft < 5.0:
             return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
-        offset = datetime.timedelta(hours=3)
-        return [{'start_time': (datetime.datetime.combine(date, t['time']) - offset).time(),
-                 'end_time': (datetime.datetime.combine(date, t['time']) + offset).time()}
-                for t in tide_data if t['type'] == 'H']
-    if not tide_data:
-        return []
-    offset = datetime.timedelta(hours=float(ramp.tide_offset_hours1 or 0))
-    return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(), 
-             'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()} 
-            for t in tide_data if t['type']=='H']
+        # DEEP DRAFT (>= 5ft) boats get the restricted window.
+        else:
+            if not tide_data:
+                return []
+            offset = datetime.timedelta(hours=3) # Hardcoded 3-hour window
+            return [{'start_time': (datetime.datetime.combine(date, t['time']) - offset).time(),
+                     'end_time': (datetime.datetime.combine(date, t['time']) + offset).time()}
+                    for t in tide_data if t['type'] == 'H']
 
+    # Case 3: All other tide rules that use a specific offset (e.g., "HoursAroundHighTide").
+    else:
+        if not tide_data:
+            return []
+        # Use the ramp's specific offset value.
+        offset = datetime.timedelta(hours=float(ramp.tide_offset_hours1 or 0))
+        return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(),
+                 'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()}
+                for t in tide_data if t['type']=='H']
 def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tides_in_range):
     ecm_hours = get_ecm_operating_hours(date_to_check)
     if not ecm_hours:
