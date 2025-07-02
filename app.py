@@ -188,7 +188,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     time_col_width = 0.75 * inch
     content_width = width - 2 * margin - time_col_width
     col_width = content_width / len(planner_columns)
-    start_hour, end_hour = 7, 18
+    start_hour, end_hour = 7, 17
 
     def get_y_for_time(t):
         total_minutes = (t.hour - start_hour) * 60 + t.minute
