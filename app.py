@@ -991,7 +991,8 @@ elif app_mode == "Settings":
                     num_jobs_to_gen, 
                     start_date=start_date_input, 
                     end_date=end_date_input, 
-                    service_type_filter=service_type_input
+                    service_type_filter=service_type_input,
+                    master_schedule=st.session_state.master_schedule # <-- ADD THIS
                 )
             
             st.success(summary_message)
