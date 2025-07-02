@@ -249,11 +249,12 @@ def generate_daily_planner_V2(report_date, jobs_for_day):
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
     c.line(margin, top_y, margin, bottom_y)
-    # --- Force bottom horizontal line (6:00 PM) ---
+    # --- Force bottom horizontal grid line at 6:00 PM ---
+    six_pm_y = get_y_for_time(datetime.time(18, 0))
     c.setStrokeColor(colors.black)
     c.setLineWidth(1.0)
-    c.line(margin, bottom_y, width - margin, bottom_y)
-
+    c.line(margin, six_pm_y, width - margin, six_pm_y)
+    
     # --- Job Entries (With Correct Proportional Spacing) ---
     for job in jobs_for_day:
         start_time = getattr(job, 'scheduled_start_datetime').time(); end_time = getattr(job, 'scheduled_end_datetime').time()
