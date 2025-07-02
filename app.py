@@ -181,7 +181,7 @@ def generate_daily_planner_V2(report_date, jobs_for_day):
     header_height = 0.5 * inch
     footer_height = 0.5 * inch # Balanced footer space
     top_y = height - margin - header_height
-    bottom_y = margin + footer_height
+    bottom_y = get_y_for_time(datetime.time(18, 0))  # Aligns outer frame with 6:00 PM
     content_height = top_y - bottom_y
     # --- End ---
 
