@@ -189,6 +189,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     content_width = width - 2 * margin - time_col_width
     col_width = content_width / len(planner_columns)
     start_hour, end_hour = 7, 17
+    quarter_hour_height = (content_height / ((end_hour - start_hour) * 4))
 
     def get_y_for_time(t):
         total_minutes = (t.hour - start_hour) * 60 + t.minute
@@ -272,7 +273,11 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     for job in jobs_for_day:
         start_time = getattr(job, 'scheduled_start_datetime').time(); end_time = getattr(job, 'scheduled_end_datetime').time()
         y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
-        line1_y, line2_y, line3_y, line4_y = y0 - 12, y0 - 22, y0 - 32, y0 - 42; y_bar_start = y0 - 46
+        # --- This new logic makes text spacing proportional to the row height ---
+        line_height = quarter_hour_height * 0.65 
+        line1_y, line2_y, line3_y, line4_y = y0 - (line_height * 1), y0 - (line_height * 2), y0 - (line_height * 3), y0 - (line_height * 4)
+        y_bar_start = y0 - (line_height * 4.4)
+        # --- End of new logic ---
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None)); boat = ecm.get_boat_details(getattr(job, 'boat_id', None))
         
         truck_id = getattr(job, 'assigned_hauling_truck_id', None)
