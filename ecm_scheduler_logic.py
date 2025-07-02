@@ -216,15 +216,18 @@ def precompute_annual_availability(year, all_ramps_dict, all_trucks_dict):
             continue
 
         for ramp_id, ramp_obj in all_ramps_dict.items():
-            # Create a dummy boat object to satisfy the window calculation function
-            # We will iterate through each allowed boat type for the ramp.
             for boat_type in ramp_obj.allowed_boat_types:
-                dummy_boat = Boat(b_id=None, c_id=None, b_type=boat_type, b_len=30, draft=4.0)
+                
+                # =================== FIX IS HERE ===================
+                # Create a "dummy" boat object with the necessary properties 
+                # for the window calculation function.
+                dummy_boat = Boat(b_id=None, c_id=None, b_type=boat_type, b_len=30, draft=5.0)
                 
                 tides_for_day = all_tides_for_year.get(ramp_id, {})
                 
-                # This function already correctly intersects operating hours with tide windows
+                # This function now receives the expected Boat object.
                 windows = get_final_schedulable_ramp_times(ramp_obj, dummy_boat, current_date, tides_for_day)
+                # ================= END OF FIX ======================
 
                 for window in windows:
                     p_time = window['start_time']
