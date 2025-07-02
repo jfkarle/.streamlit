@@ -257,7 +257,7 @@ def generate_daily_planner_V2(report_date, jobs_for_day):
         
         line_height = quarter_hour_height * 0.7 
         line1_y, line2_y, line3_y, line4_y = y0 - (line_height * 1), y0 - (line_height * 2), y0 - (line_height * 3), y0 - (line_height * 4)
-        y_bar_start = y0 - (line_height * 4.4)
+        y_bar_start = y0 - (line_height * 5.0)
 
         customer = ecm.get_customer_details(getattr(job, 'customer_id', None)); boat = ecm.get_boat_details(getattr(job, 'boat_id', None))
         if not customer or not boat: continue
@@ -301,7 +301,7 @@ def generate_daily_planner_V2(report_date, jobs_for_day):
         tide_time_str = ecm.format_time_for_display(primary_high_tide['time'])
         tide_height_str = str(primary_high_tide.get('height', ''))
         footnote_text = f"High Tide: {tide_time_str} {tide_height_str}'"
-        c.setFont("Helvetica", 8); c.drawRightString(width - margin, margin, footnote_text)
+        c.setFont("Helvetica", 8); c.drawRightString(width - margin, margin + 12, footnote_text)
         
     c.save()
     buffer.seek(0)
