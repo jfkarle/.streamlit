@@ -185,7 +185,93 @@ def _get_crane_job_count_for_day(check_date, ramp_id):
             if job_ramp_id == ramp_id:
                 count += 1
     return count
+
+### Pre Computation Function July 2
+
+def precompute_annual_availability(year, all_ramps, all_trucks):
+    """
+    Pre-computes all theoretically possible job slots for an entire year.
+    This function combines static data: tides, ramp rules, and operating hours.
+
+    Args:
+        year (int): The year to generate the schedule for.
+        all_ramps (dict): A dictionary of all ramp objects, keyed by ramp_id.
+        all_trucks (list): A list of all truck objects.
+
+    Returns:
+        list: A comprehensive list of dictionary objects, where each object
+              represents a single, theoretically possible 30-minute job slot.
+    """
+    print(f"Starting pre-computation for {year}...")
+    master_schedule = []
+    start_date = datetime.date(year, 1, 1)
+    end_date = datetime.date(year, 12, 31)
     
+    # Fetch all tides for the entire year for all ramps to minimize NOAA calls
+    all_tides_for_year = {}
+    for ramp_id, ramp_obj in all_ramps.items():
+        if ramp_obj.noaa_station_id:
+            all_tides_for_year[ramp_id] = fetch_noaa_tides_for_range(
+                ramp_obj.noaa_station_id, start_date, end_date
+            )
+
+    # Iterate through each day of the year
+    for day_offset in range((end_date - start_date).days + 1):
+        current_date = start_date + datetime.timedelta(days=day_offset)
+        ecm_hours = get_ecm_operating_hours(current_date)
+        if not ecm_hours:
+            continue
+
+        # Iterate through each ramp
+        for ramp_id, ramp_obj in all_ramps.items():
+            tides_for_day = all_tides_for_year.get(ramp_id, {}).get(current_date, [])
+            
+            # This check is a placeholder for ramp-specific rules
+            # e.g., if ramp is only open on certain days of the week
+            if not is_ramp_open(ramp_obj, current_date):
+                continue
+                
+            # Iterate through each boat type the ramp allows
+            for boat_type in ramp_obj.allowed_boat_types:
+                # Get schedulable windows based on tide and ramp hours
+                windows = get_final_schedulable_ramp_times(ramp_obj, {'boat_type': boat_type}, current_date, tides_for_day)
+
+                for window in windows:
+                    p_time = window['start_time']
+                    while p_time < window['end_time']:
+                        slot_datetime = datetime.datetime.combine(current_date, p_time)
+                        
+                        # Find which trucks are suitable for this boat type
+                        # This can be refined with more specific boat data if needed
+                        suitable_trucks = [t.truck_id for t in all_trucks if is_truck_suitable(t, boat_type)]
+
+                        master_schedule.append({
+                            'slot_datetime': slot_datetime,
+                            'ramp_id': ramp_id,
+                            'boat_type': boat_type,
+                            'tide_quality': window.get('tide_quality', 'N/A'),
+                            'suitable_trucks': suitable_trucks
+                        })
+                        
+                        # Move to the next 30-minute slot
+                        p_time = (slot_datetime + datetime.timedelta(minutes=30)).time()
+
+    print(f"Pre-computation complete. Generated {len(master_schedule)} total possible slots.")
+    return master_schedule
+
+# --- Helper functions (placeholders, implement with your actual rules) ---
+
+def is_ramp_open(ramp_obj, check_date):
+    # Placeholder: Implement logic for ramp-specific hours or seasonal closures
+    return True
+
+def is_truck_suitable(truck_obj, boat_type):
+    # Placeholder: Implement your logic to check if a truck can handle a boat type
+    # For now, let's assume all trucks can handle all types
+    return True
+
+
+
 # --- Configuration & Data Models ---
 
 TODAY_FOR_SIMULATION = datetime.date.today()
