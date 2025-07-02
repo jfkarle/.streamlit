@@ -174,14 +174,21 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     width, height = letter
     planner_columns = ["S20/33", "S21/77", "S23/55", "J17"]
     column_map = {name: i for i, name in enumerate(planner_columns)}
+    
+    # --- New Layout Definitions ---
     margin = 0.5 * inch
+    header_height = 0.5 * inch
+    footer_height = 0.4 * inch # Explicitly define space for the footnote
+
+    top_y = height - margin - header_height
+    bottom_y = margin + footer_height # The grid's bottom sits above the footer
+    content_height = top_y - bottom_y
+    # --- End New ---
+
     time_col_width = 0.75 * inch
     content_width = width - 2 * margin - time_col_width
     col_width = content_width / len(planner_columns)
-    start_hour, end_hour = 7, 17
-    top_y = height - margin - 0.5 * inch
-    bottom_y = margin + 0.5 * inch
-    content_height = top_y - bottom_y
+    start_hour, end_hour = 7, 18
 
     def get_y_for_time(t):
         total_minutes = (t.hour - start_hour) * 60 + t.minute
