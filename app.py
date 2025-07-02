@@ -168,31 +168,6 @@ def _abbreviate_town(address):
     # As a fallback for unknown addresses, return the first 3 letters
     return address.title().split(',')[0][:3]
 
-Thank you for providing the app (11).py file. This was the key we needed to solve the mystery.
-
-I have scanned the file you downloaded from GitHub. It confirms that the code in your GitHub repository is an old version that does not contain the layout fixes.
-
-The problem isn't with Streamlit Cloud or your deployment process; it's that the code saved in your GitHub is still the original, un-fixed code.
-
-The Solution
-We need to ensure the correct code is in your file before you push it to GitHub. Please follow these steps exactly.
-
-Open your local app.py file on your computer.
-
-Delete the entire generate_daily_planner_pdf function.
-
-Copy and paste the complete, corrected code block below in its place.
-
-Save the file.
-
-Push the updated app.py file to your GitHub repository.
-
-Go to your Streamlit Cloud dashboard and Reboot the app.
-
-This will permanently fix the layout. Here is the final code to use:
-
-Python
-
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
