@@ -512,6 +512,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              selected_ramp_id=None,
                              force_preferred_truck=True,
                              num_suggestions_to_find=5,
+                             manager_override=False, # <--- ADD THIS ARGUMENT BACK
                              **kwargs):
     """
     Finds available job slots by filtering a pre-computed master schedule
@@ -527,25 +528,21 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], "Invalid Customer/Boat ID.", [], False
 
     # 1. Quickly filter the MASTER_SCHEDULE by the basic request parameters.
-    # This is much faster than running all the old calculations.
     potential_slots = [
         slot for slot in master_schedule
         if slot['ramp_id'] == selected_ramp_id and
            slot['boat_type'] == boat.boat_type and
-           # Search a window around the requested date
            (requested_date - datetime.timedelta(days=7)) <= slot['slot_datetime'].date() <= (requested_date + datetime.timedelta(days=60))
     ]
 
     # 2. Apply DYNAMIC filtering for things that change in real-time.
     available_slots = []
     
-    # Determine the job duration based on the boat type
     rules = BOOKING_RULES.get(boat.boat_type, {})
     hauler_duration = datetime.timedelta(minutes=rules.get('truck_mins', 90))
     j17_duration = datetime.timedelta(minutes=rules.get('crane_mins', 0))
     needs_j17 = j17_duration.total_seconds() > 0
 
-    # Get the list of suitable trucks for this specific boat
     suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
     if not suitable_trucks:
         return [], "No suitable trucks for this boat length.", [], False
@@ -554,23 +551,20 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         slot_start_dt = slot['slot_datetime']
         hauler_end_dt = slot_start_dt + hauler_duration
 
-        # A. Check for a free HAULING TRUCK
         found_truck_id = None
         for truck in suitable_trucks:
             if check_truck_availability(truck.truck_id, slot_start_dt, hauler_end_dt):
                 found_truck_id = truck.truck_id
-                break # Found a free truck, no need to check others for this slot
+                break
         
         if not found_truck_id:
-            continue # No suitable hauling truck is free for this slot
+            continue
 
-        # B. Check for CRANE (J17) availability if needed
         if needs_j17:
             crane_end_dt = slot_start_dt + j17_duration
             if not check_truck_availability("J17", slot_start_dt, crane_end_dt):
-                continue # J17 is not free, so this slot is not available
+                continue
 
-        # If all checks pass, this is a valid, bookable slot
         final_slot = slot.copy()
         final_slot.update({
             'date': slot_start_dt.date(),
@@ -583,7 +577,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not available_slots:
         return [], "No suitable slots could be found in the specified window.", [], False
 
-    # 3. Rank and sort the final list of truly available slots.
     available_slots.sort(key=lambda s: (abs(s['date'] - requested_date), s['time']))
 
     message = f"Found {len(available_slots)} available slots."
