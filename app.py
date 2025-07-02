@@ -407,6 +407,9 @@ def find_next_available_slot_after(date_obj, customer_id, boat_id, service_type,
             return slots[0]
         next_date += dt.timedelta(days=1)
     return None
+
+# 1. This is the correct function definition
+
 def initialize_session_state():
     defaults = {
         'data_loaded': False, 'info_message': "", 'current_job_request': None,
@@ -429,7 +432,19 @@ def initialize_session_state():
 
 # --- Main App Execution ---
 
+# 2. CALL the function once to initialize the app
 initialize_session_state()
+
+# 3. PLACE the new master_schedule code right here
+if 'master_schedule' not in st.session_state:
+    with st.spinner("Preparing annual schedule... This may take a moment on first run."):
+        st.session_state.master_schedule = ecm.precompute_annual_availability(
+            year=datetime.date.today().year,
+            all_ramps_dict=ecm.ECM_RAMPS
+        )
+
+
+# 4. The rest of your app code follows...
 st.title("Marine Transportation")
 
 # --- NAVIGATION SIDEBAR ---
