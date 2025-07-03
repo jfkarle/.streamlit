@@ -312,39 +312,40 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
 # --- Core Logic Functions ---
 get_customer_details = LOADED_CUSTOMERS.get; get_boat_details = LOADED_BOATS.get; get_ramp_details = ECM_RAMPS.get
 
-def calculate_ramp_windows(ramp, boat, tide_data, date):
+def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
     """
-    Calculates the valid time windows for a given ramp and boat based on tide rules.
-    This corrected version uses an if/elif/else structure to prevent logical fall-through.
+    Calculates scheduling statistics for all boats and ECM boats specifically.
+    A boat is only considered "launched" if its launch date is in the past.
     """
-    # Case 1: Ramps with no tide restrictions.
-    if ramp.tide_calculation_method == "AnyTide":
-        return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
+    today = datetime.date.today()
 
-    # Case 2: Ramps that have a tide rule based on boat draft.
-    elif ramp.tide_calculation_method == "AnyTideWithDraftRule":
-        # Shallow draft (< 5ft) boats have no restrictions.
-        if boat.draft_ft is not None and boat.draft_ft < 5.0:
-            return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
-        # DEEP DRAFT (>= 5ft) boats get the restricted window.
-        else:
-            if not tide_data:
-                return []
-            offset = datetime.timedelta(hours=3) # Hardcoded 3-hour window
-            return [{'start_time': (datetime.datetime.combine(date, t['time']) - offset).time(),
-                     'end_time': (datetime.datetime.combine(date, t['time']) + offset).time()}
-                    for t in tide_data if t['type'] == 'H']
+    # --- Calculate stats for ALL boats ---
+    total_all_boats = len(all_boats)
+    
+    scheduled_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled"}
+    scheduled_all_boats = len(scheduled_customer_ids)
 
-    # Case 3: All other tide rules that use a specific offset (e.g., "HoursAroundHighTide").
-    else:
-        if not tide_data:
-            return []
-        # Use the ramp's specific offset value.
-        offset = datetime.timedelta(hours=float(ramp.tide_offset_hours1 or 0))
-        return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(),
-                 'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()}
-                for t in tide_data if t['type']=='H']
-        
+    # NEW: Only count launches where the scheduled date is before today
+    launched_customer_ids = {
+        j.customer_id for j in scheduled_jobs 
+        if j.job_status == "Scheduled" 
+        and j.service_type == "Launch" 
+        and j.scheduled_start_datetime.date() < today
+    }
+    launched_all_boats = len(launched_customer_ids)
+
+    # --- Calculate stats for ECM boats ONLY ---
+    ecm_customer_ids = {c_id for c_id, cust in all_customers.items() if cust.is_ecm_customer}
+    total_ecm_boats = len(ecm_customer_ids)
+
+    scheduled_ecm_boats = len(scheduled_customer_ids.intersection(ecm_customer_ids))
+    launched_ecm_boats = len(launched_customer_ids.intersection(ecm_customer_ids))
+
+    return {
+        'all_boats': {'total': total_all_boats, 'scheduled': scheduled_all_boats, 'launched': launched_all_boats},
+        'ecm_boats': {'total': total_ecm_boats, 'scheduled': scheduled_ecm_boats, 'launched': launched_ecm_boats}
+    }
+    
 def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tides_in_range, truck_id, truck_hours_schedule):
     """
     Calculates the final, schedulable time windows by combining a specific
