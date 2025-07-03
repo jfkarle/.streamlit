@@ -552,8 +552,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 for window in windows:
                     p_time = window['start_time']
                         end_time = window['end_time']
-                    
-                    slot_found_for_day = False
+
                     while p_time < end_time:
                         slot_start_dt = datetime.datetime.combine(check_date, p_time)
                         
