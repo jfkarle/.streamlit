@@ -543,15 +543,15 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, min(date_list), max(date_list))
 
         for check_date in sorted(list(set(date_list))):
+            slot_found_for_day = False  #<-- CORRECT location
             if len(found_slots) >= num_suggestions_to_find: break
             
             for truck in suitable_trucks:
-                # Get the final combined window of truck hours and tides
-                windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
+                windows = get_final_schedulable_ramp_times(...)
                 
                 for window in windows:
                     p_time = window['start_time']
-                    end_time = window['end_time']
+                        end_time = window['end_time']
                     
                     slot_found_for_day = False
                     while p_time < end_time:
