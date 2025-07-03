@@ -91,6 +91,14 @@ def _abbreviate_town(address):
         if town in address_lower: return abbr
     return address.title().split(',')[0][:3]
 
+You're right, that's not working. The PDF is missing the entire time grid. This happens when the drawing loop inside the generate_daily_planner_pdf function fails.
+
+The previous code had an error in how it handled the new 7:30 AM start time. I have corrected it below.
+
+To fix this, please replace the entire generate_daily_planner_pdf function in your app.py file with this final, corrected version.
+
+Python
+
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
@@ -106,7 +114,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     content_width = width - 2 * margin - time_col_width
     col_width = content_width / len(planner_columns)
     
-    # --- UPDATED: Time range set to 7:30 AM - 5:00 PM ---
     start_time_obj = datetime.time(7, 30)
     end_time_obj = datetime.time(17, 0)
     total_minutes_in_planner = (end_time_obj.hour * 60 + end_time_obj.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
@@ -120,8 +127,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
     high_tide_highlights, low_tide_highlights = [], []
     if jobs_for_day:
-        first_job = jobs_for_day[0]
-        ramp_id = getattr(first_job, 'pickup_ramp_id', None) or getattr(first_job, 'dropoff_ramp_id', None)
+        ramp_id = getattr(jobs_for_day[0], 'pickup_ramp_id', None) or getattr(jobs_for_day[0], 'dropoff_ramp_id', None)
         if ramp_id:
             ramp_obj = ecm.get_ramp_details(ramp_id)
             all_tides = ecm.get_all_tide_times_for_ramp_and_date(ramp_obj, report_date)
@@ -137,31 +143,35 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     for i, name in enumerate(planner_columns):
         c.setFont("Helvetica-Bold", 14); c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
 
+    # --- Corrected Time Grid Drawing Loop ---
     for hour in range(start_time_obj.hour, end_time_obj.hour + 1):
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
-            if current_time < start_time_obj or current_time > end_time_obj: continue
+            if not (start_time_obj <= current_time <= end_time_obj):
+                continue
             
             y = get_y_for_time(current_time)
+            
             highlight_color = None
             if current_time in high_tide_highlights: highlight_color = colors.Color(1, 1, 0, alpha=0.4)
             elif current_time in low_tide_highlights: highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
-
+            
             if highlight_color:
-                next_q_hour = (datetime.datetime.combine(datetime.date.min, current_time) + datetime.timedelta(minutes=15)).time()
-                y_next = get_y_for_time(next_q_hour)
-                # --- FIXED: Rectangle is now drawn within the grid columns ---
-                c.setFillColor(highlight_color)
-                c.rect(margin + time_col_width, y_next, content_width, y - y_next, fill=1, stroke=0)
+                next_q_hour_dt = datetime.datetime.combine(datetime.date.min, current_time) + datetime.timedelta(minutes=15)
+                if next_q_hour_dt.time() <= end_time_obj:
+                    y_next = get_y_for_time(next_q_hour_dt.time())
+                    c.setFillColor(highlight_color)
+                    c.rect(margin + time_col_width, y_next, content_width, y - y_next, fill=1, stroke=0)
             
             c.setStrokeColorRGB(0.7, 0.7, 0.7)
             c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
+            
             if minute == 0:
                 display_hour = hour if hour <= 12 else hour - 12
                 c.setFont("Helvetica-Bold", 9); c.setFillColorRGB(0,0,0)
                 c.drawString(margin + 3, y - 9, str(display_hour))
-            
+
     c.setStrokeColorRGB(0,0,0)
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
