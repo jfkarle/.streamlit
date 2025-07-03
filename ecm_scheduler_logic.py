@@ -217,69 +217,6 @@ def _get_crane_job_count_for_day(check_date, ramp_id):
                 count += 1
     return count
 
-#=========== START: NEW PRE-COMPUTATION CODE ===========
-
-def precompute_annual_availability(year, all_ramps_dict):
-    """
-    Pre-computes all theoretically possible job slots for an entire year.
-    This is an offline process that combines all "known-ahead-of-time" data.
-    """
-    print(f"--- Starting Annual Pre-computation for {year} ---")
-    master_schedule = []
-    start_date = datetime.date(year, 1, 1)
-    end_date = datetime.date(year, 12, 31)
-
-    # 1. Fetch all tide data for the entire year for every ramp at once.
-    all_tides_for_year = {}
-    for ramp_id, ramp_obj in all_ramps_dict.items():
-        if ramp_obj.noaa_station_id:
-            print(f"Fetching annual tides for {ramp_obj.ramp_name}...")
-            all_tides_for_year[ramp_id] = fetch_noaa_tides_for_range(
-                ramp_obj.noaa_station_id, start_date, end_date
-            )
-
-    # 2. Iterate through every day and every ramp to build the master list.
-    current_date = start_date
-    while current_date <= end_date:
-        ecm_hours = get_ecm_operating_hours(current_date)
-        if not ecm_hours:
-            current_date += datetime.timedelta(days=1)
-            continue
-
-        for ramp_id, ramp_obj in all_ramps_dict.items():
-            # Get the tide data for the specific ramp and the entire year
-            ramp_tide_data = all_tides_for_year.get(ramp_id, {})
-
-            for boat_type in ramp_obj.allowed_boat_types:
-                # Create a "dummy" boat object with properties needed for rule checks
-                dummy_boat = Boat(b_id=None, c_id=None, b_type=boat_type, b_len=30, draft=5.0)
-
-                # This function call now passes the correct arguments
-                windows = get_final_schedulable_ramp_times(ramp_obj, dummy_boat, current_date, ramp_tide_data)
-
-                for window in windows:
-                    p_time = window['start_time']
-                    while p_time < window['end_time']:
-                        slot_datetime = datetime.datetime.combine(current_date, p_time)
-                        
-                        master_schedule.append({
-                            'slot_datetime': slot_datetime,
-                            'ramp_id': ramp_id,
-                            'boat_type': boat_type,
-                            'tide_rule_concise': window.get('tide_rule_concise'),
-                            'high_tide_times': window.get('high_tide_times', [])
-                        })
-                        
-                        p_time = (slot_datetime + datetime.timedelta(minutes=30)).time()
-        
-        current_date += datetime.timedelta(days=1)
-
-    print(f"--- Pre-computation complete. Generated {len(master_schedule)} total possible slots. ---")
-    return master_schedule
-
-#=========== END: NEW PRE-COMPUTATION CODE ===========
-
-
 # --- Configuration & Data Models ---
 
 TODAY_FOR_SIMULATION = datetime.date.today()
