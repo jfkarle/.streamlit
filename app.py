@@ -6,6 +6,7 @@ import csv
 import math
 from reportlab.lib.pagesizes import letter
 import calendar
+from reportlab.lib import colors
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet
