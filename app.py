@@ -581,15 +581,16 @@ if app_mode == "Schedule New Boat":
                 st.session_state.slot_page_index = 0 # <--- ADD THIS LINE
             
                 slots, message, warning_msgs, was_forced = ecm.find_available_job_slots(
-                    num_suggestions_to_find=st.session_state.get('num_suggestions', 3), # <-- Add this line
+                    num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
                     crane_look_back_days=st.session_state.crane_look_back_days,
                     crane_look_forward_days=st.session_state.crane_look_forward_days,
+                    truck_operating_hours=st.session_state.truck_operating_hours, #<-- Ensure this line is present
                     **job_request,
                     force_preferred_truck=(not relax_truck_input),
                     relax_ramp=relax_ramp_input,
                     manager_override=manager_override_input
                 )
-            
+                            
                 st.session_state.info_message = message
                 st.session_state.found_slots = slots
                 st.session_state.warning_msgs = warning_msgs
