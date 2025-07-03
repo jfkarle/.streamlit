@@ -416,7 +416,7 @@ def initialize_session_state():
         'num_suggestions': 3, # Keep this existing setting
         'crane_look_back_days': 7,  # NEW DEFAULT
         'crane_look_forward_days': 60, # NEW DEFAULT (changed from 120, to give more control)
-        'slot_page_index': 0
+        'slot_page_index': 0,
         'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS
     }
     for key, default_value in defaults.items():
