@@ -417,6 +417,7 @@ def initialize_session_state():
         'crane_look_back_days': 7,  # NEW DEFAULT
         'crane_look_forward_days': 60, # NEW DEFAULT (changed from 120, to give more control)
         'slot_page_index': 0
+        'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS
     }
     for key, default_value in defaults.items():
         if key not in st.session_state:
@@ -917,40 +918,82 @@ elif app_mode == "Settings":
     st.header("Application Settings")
 
     st.subheader("Scheduling Defaults")
-    if 'num_suggestions' not in st.session_state: # This already exists, just for context
-        st.session_state.num_suggestions = 3
     st.session_state.num_suggestions = st.number_input(
         "Number of Suggested Dates to Return",
-        min_value=1, # Changed min_value to 1 as per unique slot requirement
-        max_value=6,
-        value=st.session_state.num_suggestions,
-        step=1,
-        help="Choose how many different date options to see when searching for a slot (default is 3)."
+        min_value=1, max_value=6,
+        value=st.session_state.get('num_suggestions', 3), step=1,
+        help="Choose how many different date options to see when searching for a slot."
     )
 
-# --- NEW CODE TO BE ADDED ---
     st.markdown("---")
     st.subheader("Crane Job Search Window")
     col1, col2 = st.columns(2)
     with col1:
         st.session_state.crane_look_back_days = st.number_input(
-            "Days to search in the PAST",
-            min_value=0,
-            max_value=30,
-            value=st.session_state.get('crane_look_back_days', 7),
-            step=1,
-            help="How many days BEFORE the requested date to search for an existing active crane day (default is 7)."
+            "Days to search in the PAST", min_value=0, max_value=30,
+            value=st.session_state.get('crane_look_back_days', 7), step=1,
+            help="How many days BEFORE the requested date to search for an existing active crane day."
         )
     with col2:
         st.session_state.crane_look_forward_days = st.number_input(
-            "Days to search in the FUTURE",
-            min_value=7,
-            max_value=180,
-            value=st.session_state.get('crane_look_forward_days', 60),
-            step=1,
-            help="How many days AFTER the requested date to search for available slots (default is 60)."
+            "Days to search in the FUTURE", min_value=7, max_value=180,
+            value=st.session_state.get('crane_look_forward_days', 60), step=1,
+            help="How many days AFTER the requested date to search for available slots."
         )
-    # --- END OF NEW CODE ---
+
+    # --- START: NEW UI FOR TRUCK HOURS ---
+    st.markdown("---")
+    st.subheader("Truck & Crane Weekly Hours")
+    st.info("NOTE: Changes made here are for the current session only and will reset if the app is reloaded.")
+
+    # Get a copy of the schedule from session state to modify
+    current_schedule = st.session_state.truck_operating_hours.copy()
+
+    # Dropdown to select which truck to edit
+    truck_id_to_edit = st.selectbox(
+        "Select a resource to edit its weekly schedule:",
+        options=list(current_schedule.keys())
+    )
+
+    if truck_id_to_edit:
+        days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+        # Use a form to batch the updates
+        with st.form(key=f"schedule_form_{truck_id_to_edit}"):
+            st.write(f"**Editing hours for {truck_id_to_edit}**")
+
+            new_hours_for_truck = {}
+            for i, day_name in enumerate(days_of_week):
+                st.markdown(f"**{day_name}**")
+
+                # Get the current hours for this day, defaulting to None if not set
+                current_hours = current_schedule.get(truck_id_to_edit, {}).get(i)
+                is_working = current_hours is not None
+
+                # Get start/end times, using defaults if the truck is not working
+                start_time = current_hours[0] if is_working else datetime.time(8, 0)
+                end_time = current_hours[1] if is_working else datetime.time(16, 0)
+
+                cols = st.columns([1, 2, 2])
+                with cols[0]:
+                    is_working_today = st.checkbox("Working", value=is_working, key=f"{truck_id_to_edit}_{i}_working")
+                with cols[1]:
+                    new_start_time = st.time_input("Start Time", value=start_time, key=f"{truck_id_to_edit}_{i}_start", disabled=not is_working_today)
+                with cols[2]:
+                    new_end_time = st.time_input("End Time", value=end_time, key=f"{truck_id_to_edit}_{i}_end", disabled=not is_working_today)
+
+                # Store the new hours tuple or None based on the checkbox
+                if is_working_today:
+                    new_hours_for_truck[i] = (new_start_time, new_end_time)
+                else:
+                    new_hours_for_truck[i] = None
+
+            submitted = st.form_submit_button("Save Hours for this Truck")
+            if submitted:
+                # Update the schedule for the edited truck
+                st.session_state.truck_operating_hours[truck_id_to_edit] = new_hours_for_truck
+                st.success(f"Successfully updated weekly hours for {truck_id_to_edit}!")
+    # --- END: NEW UI FOR TRUCK HOURS ---
 
     st.markdown("---")
     st.subheader("QA & Data Generation Tools")
@@ -974,7 +1017,7 @@ elif app_mode == "Settings":
         # Set default dates for the spring season
         start_date_default = datetime.date(2025, 4, 15)
         start_date_input = st.date_input("Start of date range:", value=start_date_default)
-    
+
     with col3:
         end_date_default = datetime.date(2025, 7, 1)
         end_date_input = st.date_input("End of date range:", value=end_date_default)
@@ -990,10 +1033,9 @@ elif app_mode == "Settings":
                     start_date=start_date_input, 
                     end_date=end_date_input, 
                     service_type_filter=service_type_input,
-                    master_schedule=st.session_state.master_schedule # <-- ADD THIS
+                    master_schedule=st.session_state.master_schedule
                 )
-            
+
             st.success(summary_message)
             st.info("Navigate to the 'Reporting' page to see the newly generated jobs on the schedule.")
-
 
