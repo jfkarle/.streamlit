@@ -110,7 +110,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     end_time_obj = datetime.time(17, 30)
     total_minutes = (end_time_obj.hour * 60 + end_time_obj.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
 
-    # UPDATED: Increased top margin to prevent title overlap
     top_y = height - margin - 0.8 * inch 
     bottom_y = margin + 0.5 * inch
     content_height = top_y - bottom_y
@@ -120,55 +119,65 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         return top_y - ((minutes_into_day / total_minutes) * content_height)
 
     high_tide_highlights, low_tide_highlights = [], []
+    primary_high_tide = None
     if jobs_for_day:
         ramp_id = getattr(jobs_for_day[0], 'pickup_ramp_id', None) or getattr(jobs_for_day[0], 'dropoff_ramp_id', None)
         if ramp_id:
             ramp_obj = ecm.get_ramp_details(ramp_id)
             all_tides = ecm.get_all_tide_times_for_ramp_and_date(ramp_obj, report_date)
+            high_tides = all_tides.get('H', [])
+            if high_tides:
+                noon = datetime.datetime.combine(datetime.date.min, datetime.time(12,0))
+                primary_high_tide = min(high_tides, key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - noon))
+            
             def round_time(t):
                 mins = t.hour * 60 + t.minute; rounded = int(round(mins / 15.0) * 15)
                 return datetime.time(min(23, rounded // 60), rounded % 60)
             high_tide_highlights = [round_time(t['time']) for t in all_tides.get('H', [])]
             low_tide_highlights = [round_time(t['time']) for t in all_tides.get('L', [])]
     
+    # --- Page Headers ---
     c.setFont("Helvetica-Bold", 12); c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
+    if primary_high_tide:
+        tide_time_str = ecm.format_time_for_display(primary_high_tide['time'])
+        tide_height_str = f"{float(primary_high_tide.get('height', 0)):.1f}'"
+        c.setFont("Helvetica-Bold", 9); c.drawString(margin, height - 0.6 * inch, f"High Tide: {tide_time_str} ({tide_height_str})")
+
     for i, name in enumerate(planner_columns):
         c.setFont("Helvetica-Bold", 14); c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
 
+    # --- Time Grid ---
     c.setFont("Helvetica-Bold", 9)
     c.drawString(margin + 3, top_y - 9, "7:30")
-
     for hour in range(start_time_obj.hour + 1, end_time_obj.hour + 1):
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
             if not (start_time_obj <= current_time <= end_time_obj): continue
-            
             y = get_y_for_time(current_time)
-            highlight_color = None
-            if current_time in high_tide_highlights: highlight_color = colors.Color(1, 1, 0, alpha=0.4)
-            elif current_time in low_tide_highlights: highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
-            
-            if highlight_color:
-                y_next = get_y_for_time((datetime.datetime.combine(datetime.date.min, current_time) + datetime.timedelta(minutes=15)).time())
-                c.setFillColor(highlight_color)
-                c.rect(margin + 1, y_next, time_col_width - 2, y - y_next, fill=1, stroke=0)
-
+            if minute == 0:
+                highlight_color = None
+                if current_time in high_tide_highlights: highlight_color = colors.Color(1, 1, 0, alpha=0.4)
+                elif current_time in low_tide_highlights: highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
+                if highlight_color:
+                    c.setFillColor(highlight_color)
+                    c.rect(margin + 1, y - 11, time_col_width - 2, 13, fill=1, stroke=0)
             c.setStrokeColorRGB(0.7, 0.7, 0.7)
             c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
-            
             if minute == 0:
                 display_hour = hour if hour <= 12 else hour - 12
                 c.setFont("Helvetica-Bold", 9); c.setFillColorRGB(0,0,0)
                 c.drawString(margin + 3, y - 9, str(display_hour))
 
+    # --- Grid Borders ---
     c.setStrokeColorRGB(0,0,0)
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
     c.line(margin, top_y, margin, bottom_y); c.line(width - margin, top_y, width - margin, bottom_y)
-    # --- ADDED: Explicitly draw the bottom line to finish the frame ---
     c.line(margin, bottom_y, width - margin, bottom_y)
+    c.line(margin, top_y, width - margin, top_y) # <-- ADDED: Completes the top border
 
+    # --- Job Entries ---
     for job in jobs_for_day:
         start_time, end_time = job.scheduled_start_datetime.time(), job.scheduled_end_datetime.time()
         if start_time < start_time_obj: start_time = start_time_obj
@@ -191,7 +200,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.save()
     buffer.seek(0)
     return buffer
-
 def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     from PyPDF2 import PdfMerger
     from io import BytesIO
