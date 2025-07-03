@@ -668,7 +668,7 @@ def confirm_and_schedule_job(original_request, selected_slot):
     # 7. Return success message
     return new_job.job_id, f"SUCCESS: Job {new_job.job_id} for {customer.customer_name} scheduled."
 
-def generate_random_jobs(num_to_generate, start_date, end_date, service_type_filter, master_schedule):
+def generate_random_jobs(num_to_generate, start_date, end_date, service_type_filter, truck_operating_hours):
     """
     Finds and schedules a specified number of random, valid jobs within a given
     date range and for a specific service type.
@@ -688,7 +688,7 @@ def generate_random_jobs(num_to_generate, start_date, end_date, service_type_fil
 
     for i in range(num_to_generate):
         service_type = random.choice(["Launch", "Haul", "Transport"]) if service_type_filter.lower() == 'all' else service_type_filter
-        
+
         random_customer_id = random.choice(customer_ids)
         customer = get_customer_details(random_customer_id)
         boat = next((b for b in LOADED_BOATS.values() if b.customer_id == random_customer_id), None)
@@ -699,15 +699,14 @@ def generate_random_jobs(num_to_generate, start_date, end_date, service_type_fil
         random_ramp_id = random.choice(ramp_ids) if service_type in ["Launch", "Haul"] else None
         random_date = start_date + datetime.timedelta(days=random.randint(0, date_range_days))
 
-        # CHANGE 2: Pass the master_schedule to the internal function call
         slots, _, _, _ = find_available_job_slots(
-            master_schedule=master_schedule,
             customer_id=random_customer_id,
             boat_id=boat.boat_id,
             service_type=service_type,
             requested_date_str=random_date.strftime('%Y-%m-%d'),
             selected_ramp_id=random_ramp_id,
-            force_preferred_truck=False
+            force_preferred_truck=False,
+            truck_operating_hours=truck_operating_hours # Pass the schedule
         )
 
         if slots:
