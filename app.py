@@ -121,7 +121,7 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
         jobs_for_day = [j for j in jobs if j.scheduled_start_datetime.date() == single_date]
         if jobs_for_day:
-            daily_pdf_buffer = generate_daily_planner_V2(single_date, jobs_for_day)
+            daily_pdf_buffer = generate_daily_planner(single_date, jobs_for_day)
             merger.append(daily_pdf_buffer)
     output = BytesIO()
     merger.write(output)
@@ -822,7 +822,7 @@ elif app_mode == "Reporting":
             if not jobs_today:
                 st.warning("No jobs scheduled for that date.")
             else:
-                pdf_buffer = generate_daily_planner_V2(selected_date, jobs_today)
+                pdf_buffer = generate_daily_planner(selected_date, jobs_today)
                 st.download_button(
                     label="📥 Download Planner", data=pdf_buffer.getvalue(),
                     file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf",
