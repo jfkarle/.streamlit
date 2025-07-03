@@ -84,6 +84,44 @@ def display_crane_day_calendar(crane_days_for_ramp):
                             """, unsafe_allow_html=True)
 # --- Helper Functions ---
 
+def create_gauge(value, max_value, label, unit='%'):
+    """
+    Generates an SVG string for a semi-circle gauge chart.
+    """
+    if max_value == 0:
+        percent = 0
+    else:
+        percent = min(max(value / max_value, 0), 1)
+
+    angle = percent * 180
+    rads = math.radians(angle - 90)
+    x = 50 + 40 * math.cos(rads)
+    y = 50 + 40 * math.sin(rads)
+    
+    # Path for the progress arc
+    large_arc_flag = 1 if angle > 180 else 0 # This will always be 0 for a semi-circle
+    d = f"M 10 50 A 40 40 0 {large_arc_flag} 1 {x} {y}"
+    
+    # SVG styling
+    track_color = "#e0e0e0"
+    fill_color = "#4CAF50" # Green
+    if percent < 0.4:
+        fill_color = "#FFC107" # Amber
+    if percent < 0.2:
+        fill_color = "#F44336" # Red
+        
+    font_color = "#333"
+
+    svg = f"""
+    <svg viewBox="0 0 100 60" style="width: 150px; height: 90px; overflow: visible;">
+        <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="{track_color}" stroke-width="10" fill="none" />
+        <path d="{d}" stroke="{fill_color}" stroke-width="10" fill="none" />
+        <text x="50" y="45" text-anchor="middle" font-size="16" font-weight="bold" fill="{font_color}">{value}</text>
+        <text x="50" y="60" text-anchor="middle" font-size="8" fill="{font_color}">{label}</text>
+    </svg>
+    """
+    return svg
+    
 def format_tides_for_display(slot, truck_schedule):
     tide_times = slot.get('high_tide_times', [])
     if not tide_times:
@@ -452,7 +490,37 @@ initialize_session_state()
 
 
 # 4. The rest of your app code follows...
-st.title("Marine Transportation")
+st.title("ECM Logistics")
+
+### NEW DASHBOARD 
+
+# --- NEW: Progress Dashboard ---
+with st.container(border=True):
+    stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("All Boats")
+        c1, c2 = st.columns(2)
+        with c1:
+            scheduled_gauge_svg = create_gauge(stats['all_boats']['scheduled'], stats['all_boats']['total'], "Scheduled")
+            st.markdown(scheduled_gauge_svg, unsafe_allow_html=True)
+        with c2:
+            launched_gauge_svg = create_gauge(stats['all_boats']['launched'], stats['all_boats']['total'], "Launched")
+            st.markdown(launched_gauge_svg, unsafe_allow_html=True)
+            
+    with col2:
+        st.subheader("ECM Boats")
+        c1, c2 = st.columns(2)
+        with c1:
+            scheduled_gauge_svg_ecm = create_gauge(stats['ecm_boats']['scheduled'], stats['ecm_boats']['total'], "Scheduled")
+            st.markdown(scheduled_gauge_svg_ecm, unsafe_allow_html=True)
+        with c2:
+            launched_gauge_svg_ecm = create_gauge(stats['ecm_boats']['launched'], stats['ecm_boats']['total'], "Launched")
+            st.markdown(launched_gauge_svg_ecm, unsafe_allow_html=True)
+st.markdown("---")
+
 
 # --- NAVIGATION SIDEBAR ---
 st.sidebar.title("Navigation")
