@@ -7,6 +7,37 @@ import requests
 import random # <--- ADD THIS LINE
 from datetime import timedelta, time
 
+# --- NEW: Data Model for Individual Truck/Crane Operating Hours ---
+# This structure replaces the old global operating_hours_rules list.
+# The UI in app.py will modify this dictionary in the session state.
+DEFAULT_TRUCK_OPERATING_HOURS = {
+    # Using Monday=0, Sunday=6, and time(hour, minute) format
+    "S20/33": {
+        0: (time(7, 0), time(15, 0)), 1: (time(7, 0), time(15, 0)),
+        2: (time(7, 0), time(15, 0)), 3: (time(7, 0), time(15, 0)),
+        4: (time(7, 0), time(15, 0)), 5: (time(8, 0), time(12, 0)),
+        6: None,
+    },
+    "S21/77": {
+        0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)),
+        2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)),
+        4: (time(8, 0), time(16, 0)), 5: None,
+        6: None,
+    },
+    "S23/55": {
+        0: (time(8, 0), time(17, 0)), 1: (time(8, 0), time(17, 0)),
+        2: (time(8, 0), time(17, 0)), 3: (time(8, 0), time(17, 0)),
+        4: (time(8, 0), time(17, 0)), 5: (time(7, 30), time(17, 30)),
+        6: None,
+    },
+    "J17": {
+        0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)),
+        2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)),
+        4: (time(8, 0), time(16, 0)), 5: None,
+        6: None,
+    }
+}
+
 # --- Utility Functions ---
 
 CANDIDATE_CRANE_DAYS = {
@@ -296,14 +327,7 @@ ECM_RAMPS = {
     "HinghamHarbor": Ramp("HinghamHarbor", "Hingham Harbor", "8444662", "HoursAroundHighTide", 3.0), # CORRECTED
     "WeymouthWessagusset": Ramp("WeymouthWessagusset", "Weymouth Harbor (Wessagusset)", "8444788", "HoursAroundHighTide", 3.0), # CORRECTED
 }
-operating_hours_rules = [
-    OperatingHoursEntry("Standard", 0, datetime.time(8,0), datetime.time(16,0)), OperatingHoursEntry("Standard", 1, datetime.time(8,0), datetime.time(16,0)),
-    OperatingHoursEntry("Standard", 2, datetime.time(8,0), datetime.time(16,0)), OperatingHoursEntry("Standard", 3, datetime.time(8,0), datetime.time(16,0)),
-    OperatingHoursEntry("Standard", 4, datetime.time(8,0), datetime.time(16,0)), OperatingHoursEntry("Busy", 0, datetime.time(7,30), datetime.time(17,30)),
-    OperatingHoursEntry("Busy", 1, datetime.time(7,30), datetime.time(17,30)), OperatingHoursEntry("Busy", 2, datetime.time(7,30), datetime.time(17,30)),
-    OperatingHoursEntry("Busy", 3, datetime.time(7,30), datetime.time(17,30)), OperatingHoursEntry("Busy", 4, datetime.time(7,30), datetime.time(17,30)),
-    OperatingHoursEntry("BusySaturday", 5, datetime.time(7,30), datetime.time(17,30)),
-]
+
 LOADED_CUSTOMERS = {}; LOADED_BOATS = {}
 def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
     global LOADED_CUSTOMERS, LOADED_BOATS
@@ -351,13 +375,6 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
 # --- Core Logic Functions ---
 get_customer_details = LOADED_CUSTOMERS.get; get_boat_details = LOADED_BOATS.get; get_ramp_details = ECM_RAMPS.get
 
-def get_ecm_operating_hours(date):
-    season = "Busy" if date.month in [4,5,6,9,10] else "Standard"
-    if season == "Busy" and date.weekday() == 5 and date.month in [5,9]: season = "BusySaturday"
-    for rule in operating_hours_rules:
-        if rule.season == season and rule.day_of_week == date.weekday(): return {"open": rule.open_time, "close": rule.close_time}
-    return None
-
 def calculate_ramp_windows(ramp, boat, tide_data, date):
     """
     Calculates the valid time windows for a given ramp and boat based on tide rules.
@@ -390,37 +407,44 @@ def calculate_ramp_windows(ramp, boat, tide_data, date):
         return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(),
                  'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()}
                 for t in tide_data if t['type']=='H']
-def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tides_in_range):
-    ecm_hours = get_ecm_operating_hours(date_to_check)
-    if not ecm_hours:
-        return []
+        
+def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tides_in_range, truck_id, truck_hours_schedule):
+    """
+    Calculates the final, schedulable time windows by combining a specific
+    truck's working hours with the ramp's tidal windows for a given day.
+    """
+    # 1. Get the specific truck's working hours for the given day
+    day_of_week = date_to_check.weekday()
+    truck_hours = truck_hours_schedule.get(truck_id, {}).get(day_of_week)
+    if not truck_hours:
+        return [] # This truck is not working on this day
 
-    ecm_open_dt = datetime.datetime.combine(date_to_check, ecm_hours['open'])
-    ecm_close_dt = datetime.datetime.combine(date_to_check, ecm_hours['close'])
+    truck_open_dt = datetime.datetime.combine(date_to_check, truck_hours[0])
+    truck_close_dt = datetime.datetime.combine(date_to_check, truck_hours[1])
 
-    # --- NEW: Handle "Transport" jobs that have no ramp ---
+    # 2. Handle "Transport" jobs that have no ramp (window is just truck hours)
     if not ramp_obj:
-        # For a transport, the window is the entire operating day.
         return [{
-            'start_time': ecm_hours['open'],
-            'end_time': ecm_hours['close'],
+            'start_time': truck_hours[0],
+            'end_time': truck_hours[1],
             'high_tide_times': [],
             'tide_rule_concise': 'N/A'
         }]
-    # --- END OF NEW LOGIC ---
 
-    # Get tide data for the specific day from the pre-fetched dictionary
+    # 3. Get the ramp's tidal windows based on its rules
     tide_data_for_day = all_tides_in_range.get(date_to_check, [])
-    
     tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
-    
+
+    # 4. Find the overlap between the truck's working hours and the ramp's tidal windows
     final_windows = []
     for t_win in tidal_windows:
-        tidal_start = datetime.datetime.combine(date_to_check, t_win['start_time'])
-        tidal_end = datetime.datetime.combine(date_to_check, t_win['end_time'])
-        overlap_start = max(tidal_start, ecm_open_dt)
-        overlap_end = min(tidal_end, ecm_close_dt)
-        
+        tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'])
+        tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'])
+
+        # Find the intersection of the two windows
+        overlap_start = max(tidal_start_dt, truck_open_dt)
+        overlap_end = min(tidal_end_dt, truck_close_dt)
+
         if overlap_start < overlap_end:
             final_windows.append({
                 'start_time': overlap_start.time(),
@@ -428,7 +452,7 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tide
                 'high_tide_times': [t['time'] for t in tide_data_for_day if t['type'] == 'H'],
                 'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
             })
-            
+
     return final_windows
 
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
