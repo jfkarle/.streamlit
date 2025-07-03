@@ -177,27 +177,31 @@ def generate_daily_planner_V2(report_date, jobs_for_day):
     planner_columns = ["S20/33", "S21/77", "S23/55", "J17"]
     column_map = {name: i for i, name in enumerate(planner_columns)}
 
-    start_hour, end_hour = 7, 18  # Must come first
-
+    start_hour, end_hour = 7, 18
     margin = 0.5 * inch
     header_height = 0.5 * inch
     footer_height = 0.5 * inch
     top_y = height - margin - header_height
 
-    # TEMP bottom_y placeholder (used to calculate content height)
+    # TEMP layout for initial content_height estimate
     temp_bottom_y = margin + footer_height
     content_height = top_y - temp_bottom_y
 
-    # Now define Y-mapping function (needs content_height)
+    # Initial Y mapping function
     def get_y_for_time(t):
         total_minutes = (t.hour - start_hour) * 60 + t.minute
         return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
 
-    # FINAL bottom_y based on 6:00 PM row
+    # Calculate actual bottom_y from 6:00 PM
     bottom_y = get_y_for_time(datetime.time(18, 0))
 
-    # Recalculate content_height now that true bottom_y is known
+    # Recalculate true content height
     content_height = top_y - bottom_y
+
+    # Rebind get_y_for_time with correct content height
+    def get_y_for_time(t):
+        total_minutes = (t.hour - start_hour) * 60 + t.minute
+        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
 
     time_col_width = 0.75 * inch
     content_width = width - 2 * margin - time_col_width
