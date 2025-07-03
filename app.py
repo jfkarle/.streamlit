@@ -820,34 +820,27 @@ if st.session_state.info_message and "crane job" in st.session_state.info_messag
             st.warning(st.session_state.info_message)
 
 # --- PAGE 2: REPORTING ---
+# --- PAGE 2: REPORTING ---
 elif app_mode == "Reporting":
     st.header("Reporting Dashboard")
-    st.info("This section is for viewing and exporting scheduled jobs.") # Keep this general info
+    st.info("This section is for viewing and exporting scheduled jobs.")
 
     # --- NEW: Use st.tabs for major sections ---
-    tab1, tab2, tab3 = st.tabs(["Scheduled Jobs Overview", "Crane Day Calendar", "PDF Export Tools"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Scheduled Jobs Overview", "Crane Day Calendar", "Scheduling Progress", "PDF Export Tools"])
 
     with tab1:
         st.subheader("All Scheduled Jobs (Current Session)")
-        # ... (Your existing code for displaying st.dataframe(pd.DataFrame(display_data))) ...
         if ecm.SCHEDULED_JOBS:
             display_data = []
             sorted_jobs = sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max)
             for job in sorted_jobs:
                 customer = ecm.get_customer_details(getattr(job, 'customer_id', None))
                 ramp = ecm.get_ramp_details(getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None))
-                
                 truck_info = job.assigned_hauling_truck_id if job.assigned_hauling_truck_id else "N/A"
                 crane_info = job.assigned_crane_truck_id if job.assigned_crane_truck_id else "N/A"
                 
-                boat_id = getattr(job, 'boat_id', None)
-                boat = ecm.LOADED_BOATS.get(boat_id) if boat_id else None
-                is_sailboat = boat and 'sailboat' in getattr(boat, 'boat_type', '').lower()
-
-                # --- NEW: Get High Tide Info for Display --- (This block needs to be moved here)
                 high_tide_display = "N/A"
                 if hasattr(job, 'high_tides') and job.high_tides:
-                    # This key now finds the tide closest to noon
                     sorted_high_tides = sorted(
                         job.high_tides,
                         key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - datetime.datetime.combine(datetime.date.min, datetime.time(12, 0)))
@@ -856,7 +849,6 @@ elif app_mode == "Reporting":
                         high_tide_time_str = ecm.format_time_for_display(sorted_high_tides[0]['time'])
                         high_tide_height = sorted_high_tides[0].get('height', 'N/A')
                         high_tide_display = f"{high_tide_time_str} ({high_tide_height}')"
-                # --- END NEW ---
 
                 display_data.append({
                     "Job ID": job.job_id, "Status": job.job_status,
@@ -865,7 +857,7 @@ elif app_mode == "Reporting":
                     "Service": job.service_type, "Customer": customer.customer_name if customer else "N/A",
                     "Truck": truck_info, "Crane": crane_info if crane_info != "N/A" else "",
                     "Ramp": ramp.ramp_name if ramp else "N/A",
-                    "High Tide": high_tide_display, # Add this column
+                    "High Tide": high_tide_display,
                 })
             st.dataframe(pd.DataFrame(display_data))
         else:
@@ -873,24 +865,78 @@ elif app_mode == "Reporting":
 
     with tab2:
         st.subheader("Crane Day Candidate Calendar")
-        # ... (Your existing code for calendar selection and display) ...
-        # Create a list of the crane-specific ramps
         crane_ramp_options = list(ecm.CANDIDATE_CRANE_DAYS.keys())
-        
         selected_ramp_for_calendar = st.selectbox(
             "Select a ramp to see its Candidate Crane Days:",
             options=crane_ramp_options,
-            key="calendar_ramp_select" # Add a unique key for the selectbox
+            key="calendar_ramp_select"
         )
-        
         if selected_ramp_for_calendar:
             candidate_days_for_selected_ramp = ecm.CANDIDATE_CRANE_DAYS[selected_ramp_for_calendar]
             display_crane_day_calendar(candidate_days_for_selected_ramp)
 
     with tab3:
+        st.subheader("Scheduling Progress Report")
+        stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
+        
+        st.markdown("#### All Boats")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Boats", stats['all_boats']['total'])
+        col2.metric("Boats Scheduled", stats['all_boats']['scheduled'])
+        col3.metric("Boats Launched", stats['all_boats']['launched'])
+
+        st.markdown("#### ECM Boats")
+        colA, colB, colC = st.columns(3)
+        colA.metric("Total ECM Boats", stats['ecm_boats']['total'])
+        colB.metric("ECM Boats Scheduled", stats['ecm_boats']['scheduled'])
+        colC.metric("ECM Boats Launched", stats['ecm_boats']['launched'])
+
+        st.markdown("---")
+        st.subheader("Download Detailed Status Report")
+
+        report_data = []
+        all_cust_by_id = {c.customer_id: c for c in ecm.LOADED_CUSTOMERS.values()}
+        scheduled_jobs_by_cust = {}
+        for job in ecm.SCHEDULED_JOBS:
+            if job.job_status == "Scheduled":
+                if job.customer_id not in scheduled_jobs_by_cust:
+                    scheduled_jobs_by_cust[job.customer_id] = []
+                scheduled_jobs_by_cust[job.customer_id].append(job.service_type)
+
+        for boat in ecm.LOADED_BOATS.values():
+            cust = all_cust_by_id.get(boat.customer_id)
+            if not cust: continue
+            
+            status = "Not Scheduled"
+            if cust.customer_id in scheduled_jobs_by_cust:
+                services = scheduled_jobs_by_cust[cust.customer_id]
+                if "Launch" in services:
+                    status = "Launched"
+                else:
+                    status = f"Scheduled ({', '.join(services)})"
+
+            report_data.append({
+                "Customer Name": cust.customer_name,
+                "Boat Type": boat.boat_type,
+                "Boat Length": boat.boat_length,
+                "Is ECM Boat": cust.is_ecm_customer,
+                "Scheduling Status": status,
+            })
+        
+        df_report = pd.DataFrame(report_data)
+        csv = df_report.to_csv(index=False).encode('utf-8')
+
+        st.download_button(
+            label="📥 Download Full Report (.csv)",
+            data=csv,
+            file_name=f"scheduling_status_report_{datetime.date.today()}.csv",
+            mime="text/csv",
+        )
+
+    with tab4:
         st.subheader("Generate Daily Planner PDF")
-        selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input") # Add a unique key
-        if st.button("📤 Generate PDF", key="generate_daily_pdf_button"): # Add a unique key
+        selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
+        if st.button("📤 Generate PDF", key="generate_daily_pdf_button"):
             jobs_today = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime.date() == selected_date]
             if not jobs_today:
                 st.warning("No jobs scheduled for that date.")
@@ -899,19 +945,18 @@ elif app_mode == "Reporting":
                 st.download_button(
                     label="📥 Download Planner", data=pdf_buffer.getvalue(),
                     file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf",
-                    key="download_daily_planner_button" # Add a unique key
+                    key="download_daily_planner_button"
                 )
 
-        st.markdown("---") # Separator between daily and multi-day
-
+        st.markdown("---")
         st.subheader("Export Multi-Day Planner")
-        col1, col2 = st.columns(2)
-        with col1:
-            start_date = st.date_input("Start Date", value=datetime.date.today(), key="multi_start_date") # Add a unique key
-        with col2:
-            end_date = st.date_input("End Date", value=datetime.date.today() + datetime.timedelta(days=5), key="multi_end_date") # Add a unique key
+        dcol1, dcol2 = st.columns(2)
+        with dcol1:
+            start_date = st.date_input("Start Date", value=datetime.date.today(), key="multi_start_date")
+        with dcol2:
+            end_date = st.date_input("End Date", value=datetime.date.today() + datetime.timedelta(days=5), key="multi_end_date")
 
-        if st.button("📤 Generate Multi-Day Planner PDF", key="generate_multi_pdf_button"): # Add a unique key
+        if st.button("📤 Generate Multi-Day Planner PDF", key="generate_multi_pdf_button"):
             if start_date > end_date:
                 st.error("Start date must be before or equal to end date.")
             else:
@@ -923,7 +968,7 @@ elif app_mode == "Reporting":
                     st.download_button(
                         label="📥 Download Multi-Day Planner", data=merged_pdf,
                         file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf",
-                        key="download_multi_planner_button" # Add a unique key
+                        key="download_multi_planner_button"
                     )
 
 # --- PAGE 3: SETTINGS ---
