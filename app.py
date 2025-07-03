@@ -391,16 +391,16 @@ def find_next_available_slot_after(date_obj, customer_id, boat_id, service_type,
     next_date = date_obj + dt.timedelta(days=1)
     for _ in range(max_search_days):
         date_str = next_date.strftime('%Y-%m-%d')
-        slots, message, _, _ = ecm.find_available_job_slots(
-            customer_id=customer_id,
-            boat_id=boat_id,
-            service_type=service_type,
-            requested_date_str=date_str,
-            selected_ramp_id=selected_ramp_id,
-            force_preferred_truck=(not relax_truck),
-            relax_ramp=relax_ramp,
-            ignore_forced_search=True
-        )
+        slots, message, warning_msgs, was_forced = ecm.find_available_job_slots(
+        num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
+        crane_look_back_days=st.session_state.crane_look_back_days,
+        crane_look_forward_days=st.session_state.crane_look_forward_days,
+        truck_operating_hours=st.session_state.truck_operating_hours, # <-- ADD THIS LINE
+        **job_request,
+        force_preferred_truck=(not relax_truck_input),
+        relax_ramp=relax_ramp_input,
+        manager_override=manager_override_input
+    )
         if slots:
             return slots[0]
         next_date += dt.timedelta(days=1)
