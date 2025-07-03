@@ -435,12 +435,7 @@ def initialize_session_state():
 initialize_session_state()
 
 # 3. PLACE the new master_schedule code right here
-if 'master_schedule' not in st.session_state:
-    with st.spinner("Preparing annual schedule... This may take a moment on first run."):
-        st.session_state.master_schedule = ecm.precompute_annual_availability(
-            year=datetime.date.today().year,
-            all_ramps_dict=ecm.ECM_RAMPS
-        )
+### REMOVED
 
 
 # 4. The rest of your app code follows...
