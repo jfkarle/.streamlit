@@ -278,7 +278,7 @@ elif app_mode == "Settings":
                     with st.expander(summary):
                         c1,c2,c3 = st.columns([1,2,2])
                         working = c1.checkbox("Working", value=is_working, key=f"{truck_id}_{i}_w")
-                        start, end = (current[0], current[1]) if is_working else (time(8,0), time(16,0))
+                        start, end = (current[0], current[1]) if is_working else (datetime.time(8,0), datetime.time(16,0))
                         new_start = c2.time_input("Start", value=start, key=f"{truck_id}_{i}_s", disabled=not working)
                         new_end = c3.time_input("End", value=end, key=f"{truck_id}_{i}_e", disabled=not working)
                         new_hours[i] = (new_start, new_end) if working else None
