@@ -511,7 +511,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              selected_ramp_id=None,
                              force_preferred_truck=True,
                              num_suggestions_to_find=5,
-                             manager_override=False, # <--- ADD THIS ARGUMENT BACK
+                             manager_override=False,
                              **kwargs):
     """
     Finds available job slots by filtering a pre-computed master schedule
@@ -525,6 +525,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
     if not customer or not boat:
         return [], "Invalid Customer/Boat ID.", [], False
+
+    # --- START: NEW VALIDATION LOGIC ---
+    # This explicit check provides a much clearer error message to the user.
+    if service_type in ["Launch", "Haul"] and selected_ramp_id:
+        ramp_obj = get_ramp_details(selected_ramp_id)
+        if ramp_obj and boat.boat_type not in ramp_obj.allowed_boat_types:
+            message = (f"Validation Error: The selected boat type ('{boat.boat_type}') is not "
+                       f"permitted at the selected ramp ('{ramp_obj.ramp_name}').")
+            return [], message, [], False
+    # --- END: NEW VALIDATION LOGIC ---
 
     # 1. Quickly filter the MASTER_SCHEDULE by the basic request parameters.
     potential_slots = [
