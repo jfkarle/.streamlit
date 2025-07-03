@@ -296,7 +296,7 @@ def generate_progress_report_pdf(stats, analysis):
         bc_ramp.x = 50; bc_ramp.y = 50; bc_ramp.height = 125; bc_ramp.width = 300
         bc_ramp.data = ramp_data
         bc_ramp.categoryAxis.categoryNames = ramp_names
-        bc_ramp.categoryAxis.labels.boxAngle = 45 # Angle labels to fit
+        bc_ramp.categoryAxis.labels.angle = 45 # Angle labels to fit
         drawing.add(bc_ramp)
         story.append(drawing)
 
