@@ -136,7 +136,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             high_tide_highlights = [round_time(t['time']) for t in all_tides.get('H', [])]
             low_tide_highlights = [round_time(t['time']) for t in all_tides.get('L', [])]
     
-    # --- Page Headers ---
     c.setFont("Helvetica-Bold", 12); c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
     if primary_high_tide:
         tide_time_str = ecm.format_time_for_display(primary_high_tide['time'])
@@ -146,38 +145,44 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     for i, name in enumerate(planner_columns):
         c.setFont("Helvetica-Bold", 14); c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
 
-    # --- Time Grid ---
     c.setFont("Helvetica-Bold", 9)
     c.drawString(margin + 3, top_y - 9, "7:30")
+
     for hour in range(start_time_obj.hour + 1, end_time_obj.hour + 1):
+        # --- UPDATED HIGHLIGHT LOGIC ---
+        hour_highlight_color = None
+        for m_check in [0, 15, 30, 45]:
+            check_time = datetime.time(hour, m_check)
+            if check_time in high_tide_highlights:
+                hour_highlight_color = colors.Color(1, 1, 0, alpha=0.4)
+                break
+            elif check_time in low_tide_highlights:
+                hour_highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
+                break
+        
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
             if not (start_time_obj <= current_time <= end_time_obj): continue
             y = get_y_for_time(current_time)
-            if minute == 0:
-                highlight_color = None
-                if current_time in high_tide_highlights: highlight_color = colors.Color(1, 1, 0, alpha=0.4)
-                elif current_time in low_tide_highlights: highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
-                if highlight_color:
-                    c.setFillColor(highlight_color)
-                    c.rect(margin + 1, y - 11, time_col_width - 2, 13, fill=1, stroke=0)
+            
             c.setStrokeColorRGB(0.7, 0.7, 0.7)
             c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
+            
             if minute == 0:
+                if hour_highlight_color:
+                    c.setFillColor(hour_highlight_color)
+                    c.rect(margin + 1, y - 11, time_col_width - 2, 13, fill=1, stroke=0)
                 display_hour = hour if hour <= 12 else hour - 12
                 c.setFont("Helvetica-Bold", 9); c.setFillColorRGB(0,0,0)
                 c.drawString(margin + 3, y - 9, str(display_hour))
 
-    # --- Grid Borders ---
     c.setStrokeColorRGB(0,0,0)
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
     c.line(margin, top_y, margin, bottom_y); c.line(width - margin, top_y, width - margin, bottom_y)
-    c.line(margin, bottom_y, width - margin, bottom_y)
-    c.line(margin, top_y, width - margin, top_y) # <-- ADDED: Completes the top border
+    c.line(margin, bottom_y, width - margin, bottom_y); c.line(margin, top_y, width - margin, top_y)
 
-    # --- Job Entries ---
     for job in jobs_for_day:
         start_time, end_time = job.scheduled_start_datetime.time(), job.scheduled_end_datetime.time()
         if start_time < start_time_obj: start_time = start_time_obj
@@ -200,6 +205,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.save()
     buffer.seek(0)
     return buffer
+    
 def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     from PyPDF2 import PdfMerger
     from io import BytesIO
