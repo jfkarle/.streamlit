@@ -315,7 +315,7 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
                     row['customer_name'],
                     row.get('street_address', ''),
                     row.get('preferred_truck'),
-                    row.get('is_ecm_boat', '').lower() == 'true',
+                    row.get('is_ecm_boat', '').lower() in ['true', 'yes'],
                     home_line2,
                     home_citystatezip
                 )
