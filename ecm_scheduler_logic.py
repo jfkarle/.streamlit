@@ -330,22 +330,7 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
                 LOADED_BOATS[boat_id] = Boat(
                     boat_id,
                     cust_id,
-                    row['boat_type'],
-                    boat_length,
-                    boat_draft
-                )
-        
-        # --- NEW ---
-        # After loading all other data, scan for candidate days
-        load_candidate_days_from_file()
-        return True
-    except FileNotFoundError:
-        return False
-
-# --- Core Logic Functions ---
-get_customer_details = LOADED_CUSTOMERS.get; get_boat_details = LOADED_BOATS.get; get_ramp_details = ECM_RAMPS.get
-
-def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
+                    row['boat_type'],def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
     """
     Calculates scheduling statistics for all boats and ECM boats specifically.
     A boat is only considered "launched" if its launch date is in the past.
@@ -358,7 +343,7 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
     scheduled_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled"}
     scheduled_all_boats = len(scheduled_customer_ids)
 
-    # NEW: Only count launches where the scheduled date is before today
+    # This line ensures only launches with a date before today are counted
     launched_customer_ids = {
         j.customer_id for j in scheduled_jobs 
         if j.job_status == "Scheduled" 
