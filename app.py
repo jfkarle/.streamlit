@@ -7,6 +7,11 @@ import math
 from reportlab.lib.pagesizes import letter
 import calendar
 from io import BytesIO
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.barcharts import VerticalBarChart
+from reportlab.graphics.charts.piecharts import Pie
 
 st.set_page_config(layout="wide")
 
@@ -221,6 +226,114 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     output.seek(0)
     return output
 
+#### Detailed report generation
+
+def generate_progress_report_pdf(stats, analysis):
+    """Generates a multi-page PDF progress report with stats, charts, and tables."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    story = []
+    styles = getSampleStyleSheet()
+
+    # --- Page 1: Title and Executive Summary ---
+    story.append(Paragraph("ECM Season Progress Report", styles['h1']))
+    story.append(Paragraph(f"Generated on: {datetime.date.today().strftime('%B %d, %Y')}", styles['Normal']))
+    story.append(Spacer(1, 24))
+
+    story.append(Paragraph("Executive Summary", styles['h2']))
+    story.append(Spacer(1, 12))
+
+    # Overall Stats
+    total_boats = stats['all_boats']['total']
+    scheduled_boats = stats['all_boats']['scheduled']
+    launched_boats = stats['all_boats']['launched']
+    percent_scheduled = (scheduled_boats / total_boats * 100) if total_boats > 0 else 0
+    percent_launched = (launched_boats / total_boats * 100) if total_boats > 0 else 0
+    
+    summary_data = [
+        ['Metric', 'Value'],
+        ['Total Boats in Fleet:', f'{total_boats}'],
+        ['Boats Scheduled:', f'{scheduled_boats} ({percent_scheduled:.0f}%)'],
+        ['Boats Launched (to date):', f'{launched_boats} ({percent_launched:.0f}%)'],
+        ['Boats Remaining to Schedule:', f'{total_boats - scheduled_boats}'],
+    ]
+    summary_table = Table(summary_data, colWidths=[200, 100])
+    summary_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
+    ]))
+    story.append(summary_table)
+    story.append(Spacer(1, 24))
+
+    # --- Page 2: Analytics ---
+    story.append(PageBreak())
+    story.append(Paragraph("Scheduling Analytics", styles['h2']))
+    story.append(Spacer(1, 12))
+    
+    # Jobs by Day Chart
+    if analysis['by_day']:
+        story.append(Paragraph("Jobs by Day of Week", styles['h3']))
+        drawing = Drawing(400, 200)
+        day_data = [(v for k,v in sorted(analysis['by_day'].items()))]
+        day_names = [k for k,v in sorted(analysis['by_day'].items())]
+        bc = VerticalBarChart()
+        bc.x = 50; bc.y = 50; bc.height = 125; bc.width = 300
+        bc.data = day_data
+        bc.categoryAxis.categoryNames = day_names
+        drawing.add(bc)
+        story.append(drawing)
+        story.append(Spacer(1, 12))
+
+    # Jobs by Ramp Chart
+    if analysis['by_ramp']:
+        story.append(Paragraph("Jobs by Ramp", styles['h3']))
+        drawing = Drawing(400, 200)
+        ramp_data = [(v for k,v in sorted(analysis['by_ramp'].items()))]
+        ramp_names = [k for k,v in sorted(analysis['by_ramp'].items())]
+        bc_ramp = VerticalBarChart()
+        bc_ramp.x = 50; bc_ramp.y = 50; bc_ramp.height = 125; bc_ramp.width = 300
+        bc_ramp.data = ramp_data
+        bc_ramp.categoryAxis.categoryNames = ramp_names
+        bc_ramp.categoryAxis.labels.boxAngle = 45 # Angle labels to fit
+        drawing.add(bc_ramp)
+        story.append(drawing)
+
+    # --- Page 3+: Detailed List ---
+    story.append(PageBreak())
+    story.append(Paragraph("Detailed Boat Status", styles['h2']))
+    story.append(Spacer(1, 12))
+    
+    table_data = [["Customer Name", "Boat Details", "ECM?", "Scheduling Status"]]
+    for boat in ecm.LOADED_BOATS.values():
+        cust = ecm.get_customer_details(boat.customer_id)
+        if not cust: continue
+        services = [j.service_type for j in ecm.SCHEDULED_JOBS if j.customer_id == cust.customer_id and j.job_status == "Scheduled"]
+        status = "Launched" if "Launch" in services else (f"Scheduled ({', '.join(services)})" if services else "Not Scheduled")
+        table_data.append([
+            Paragraph(cust.customer_name, styles['Normal']),
+            Paragraph(f"{boat.boat_length}' {boat.boat_type}", styles['Normal']),
+            "Yes" if cust.is_ecm_customer else "No",
+            status
+        ])
+    
+    detail_table = Table(table_data, colWidths=[150, 150, 50, 150])
+    detail_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+        ('BACKGROUND', (0,1), (-1,-1), colors.beige),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
+    ]))
+    story.append(detail_table)
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+    
+
 # --- Session State Initialization ---
 def initialize_session_state():
     defaults = {
@@ -376,17 +489,31 @@ elif app_mode == "Reporting":
     with tab3:
         st.subheader("Scheduling Progress Report")
         stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
-        st.markdown("#### Overall Progress"); c1,c2=st.columns(2); c1.metric("Boats Scheduled", stats['all_boats']['scheduled'], f"{stats['all_boats']['total']} Total"); c2.metric("Boats Launched", stats['all_boats']['launched'], f"{stats['all_boats']['scheduled']} Scheduled")
-        st.markdown("#### ECM Boats"); c1,c2=st.columns(2); c1.metric("ECM Scheduled", stats['ecm_boats']['scheduled'], f"{stats['ecm_boats']['total']} Total"); c2.metric("ECM Launched", stats['ecm_boats']['launched'], f"{stats['ecm_boats']['scheduled']} Scheduled")
-        st.markdown("---"); st.subheader("Download Detailed Status Report")
-        report_data = []
-        for boat in ecm.LOADED_BOATS.values():
-            cust = ecm.get_customer_details(boat.customer_id)
-            if not cust: continue
-            services = [j.service_type for j in ecm.SCHEDULED_JOBS if j.customer_id == cust.customer_id and j.job_status == "Scheduled"]
-            status = "Launched" if "Launch" in services else (f"Scheduled ({', '.join(services)})" if services else "Not Scheduled")
-            report_data.append({"Customer": cust.customer_name, "Boat": f"{boat.boat_length}' {boat.boat_type}", "ECM": cust.is_ecm_customer, "Status": status})
-        st.download_button("📥 Download Full Report (.csv)", pd.DataFrame(report_data).to_csv(index=False).encode('utf-8'), f"status_report_{datetime.date.today()}.csv", "text/csv")
+        
+        st.markdown("#### Overall Progress")
+        c1, c2 = st.columns(2)
+        c1.metric("Boats Scheduled", f"{stats['all_boats']['scheduled']} / {stats['all_boats']['total']}")
+        c2.metric("Boats Launched (to date)", f"{stats['all_boats']['launched']} / {stats['all_boats']['total']}")
+        
+        st.markdown("#### ECM Boats")
+        c1, c2 = st.columns(2)
+        c1.metric("ECM Scheduled", f"{stats['ecm_boats']['scheduled']} / {stats['ecm_boats']['total']}")
+        c2.metric("ECM Launched (to date)", f"{stats['ecm_boats']['launched']} / {stats['ecm_boats']['total']}")
+        
+        st.markdown("---")
+        st.subheader("Download Formatted PDF Report")
+
+        if st.button("📊 Generate PDF Report"):
+            with st.spinner("Generating your report..."):
+                analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
+                pdf_buffer = generate_progress_report_pdf(stats, analysis)
+                
+                st.download_button(
+                    label="📥 Download Report (.pdf)",
+                    data=pdf_buffer,
+                    file_name=f"progress_report_{datetime.date.today()}.csv",
+                    mime="application/pdf",
+                )
     with tab4:
         st.subheader("Generate Daily Planner PDF")
         selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
