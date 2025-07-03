@@ -725,3 +725,31 @@ def generate_random_jobs(num_to_generate, start_date, end_date, service_type_fil
     summary_message = f"Bulk generation complete. Successfully created {success_count} jobs. Failed to find slots for {fail_count} attempts."
     print(f"--- {summary_message} ---")
     return summary_message
+
+def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
+    """
+    Calculates scheduling statistics for all boats and ECM boats specifically.
+    """
+    # --- Calculate stats for ALL boats ---
+    total_all_boats = len(all_boats)
+    
+    # Get unique customer IDs from all scheduled jobs
+    scheduled_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled"}
+    scheduled_all_boats = len(scheduled_customer_ids)
+
+    # Get unique customer IDs from LAUNCH jobs only
+    launched_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled" and j.service_type == "Launch"}
+    launched_all_boats = len(launched_customer_ids)
+
+    # --- Calculate stats for ECM boats ONLY ---
+    ecm_customer_ids = {c_id for c_id, cust in all_customers.items() if cust.is_ecm_customer}
+    total_ecm_boats = len(ecm_customer_ids)
+
+    # Find the intersection of scheduled/launched customers and ECM customers
+    scheduled_ecm_boats = len(scheduled_customer_ids.intersection(ecm_customer_ids))
+    launched_ecm_boats = len(launched_customer_ids.intersection(ecm_customer_ids))
+
+    return {
+        'all_boats': {'total': total_all_boats, 'scheduled': scheduled_all_boats, 'launched': launched_all_boats},
+        'ecm_boats': {'total': total_ecm_boats, 'scheduled': scheduled_ecm_boats, 'launched': launched_ecm_boats}
+    }
