@@ -500,8 +500,9 @@ def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date_obj, tr
                         p_time = (datetime.datetime.combine(datetime.date.min, p_time) + timedelta(minutes=30)).time()
     return grouping_slot
     
-
 # In ecm_scheduler_logic (9).py
+
+#=========== START: REPLACEMENT find_available_job_slots FUNCTION ===========
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
                              master_schedule,
@@ -509,11 +510,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              force_preferred_truck=True,
                              num_suggestions_to_find=5,
                              manager_override=False,
+                             crane_look_back_days=7,      #<-- NEW ARG
+                             crane_look_forward_days=60,  #<-- NEW ARG
                              **kwargs):
     """
-    Finds available job slots by filtering a pre-computed master schedule
-    and applying real-time constraints like truck availability.
-    This version ensures only the first available slot for any given day is returned.
+    Finds available job slots using a multi-stage search to prioritize crane efficiency.
+
+    - Stage 1: (Crane Jobs Only) Search for slots on ACTIVE crane days at the same ramp.
+    - Stage 2: (Crane Jobs Only) Search for slots on CANDIDATE crane days with ideal tides.
+    - Stage 3: (All Jobs) Perform a general search for any available day.
+    The manager_override flag skips directly to Stage 3.
     """
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
@@ -521,89 +527,105 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], "Error: Invalid date format.", [], False
 
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
-    if not customer or not boat:
-        return [], "Invalid Customer/Boat ID.", [], False
+    if not customer or not boat: return [], "Invalid Customer/Boat ID.", [], False
 
-    if service_type in ["Launch", "Haul"] and selected_ramp_id:
-        ramp_obj = get_ramp_details(selected_ramp_id)
-        if ramp_obj and boat.boat_type not in ramp_obj.allowed_boat_types:
+    ramp_obj = get_ramp_details(selected_ramp_id)
+    if service_type in ["Launch", "Haul"] and ramp_obj:
+        if boat.boat_type not in ramp_obj.allowed_boat_types:
             message = (f"Validation Error: The selected boat type ('{boat.boat_type}') is not "
                        f"permitted at the selected ramp ('{ramp_obj.ramp_name}').")
             return [], message, [], False
 
-    # 1. Filter the master schedule
-    potential_slots = [
-        slot for slot in master_schedule
-        if slot['ramp_id'] == selected_ramp_id and
-           slot['boat_type'] == boat.boat_type and
-           slot['slot_datetime'].date() >= (requested_date - datetime.timedelta(days=7)) # Simplified date check
-    ]
-
-    # --- START: RE-IMPLEMENTED ONE-SLOT-PER-DAY LOGIC ---
-    available_slots = []
-    dates_with_slots = set() # Use a set to track dates for which we've found a slot
-
-    # Sort all potential slots chronologically to ensure we find the EARLIEST slot each day
-    potential_slots.sort(key=lambda s: s['slot_datetime'])
-
     rules = BOOKING_RULES.get(boat.boat_type, {})
-    hauler_duration = datetime.timedelta(minutes=rules.get('truck_mins', 90))
-    j17_duration = datetime.timedelta(minutes=rules.get('crane_mins', 0))
-    needs_j17 = j17_duration.total_seconds() > 0
-    suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
+    needs_j17 = rules.get('crane_mins', 0) > 0
 
-    if not suitable_trucks:
-        return [], "No suitable trucks for this boat length.", [], False
+    # --- HELPER FUNCTION for finding slots in a given date range ---
+    def _find_slots_in_range(date_list, slot_type_flag):
+        found_slots = []
+        dates_with_slots = set()
+        
+        # Filter master schedule once for all dates in the list
+        potential_slots = [
+            s for s in master_schedule
+            if s['slot_datetime'].date() in date_list
+            and s['ramp_id'] == selected_ramp_id
+            and s['boat_type'] == boat.boat_type
+        ]
+        potential_slots.sort(key=lambda s: s['slot_datetime'])
 
-    for slot in potential_slots:
-        slot_start_dt = slot['slot_datetime']
-        slot_date = slot_start_dt.date()
+        hauler_duration = datetime.timedelta(minutes=rules.get('truck_mins', 90))
+        j17_duration = datetime.timedelta(minutes=rules.get('crane_mins', 0))
+        suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
 
-        # If we've already found a slot for this day, skip to the next one
-        if slot_date in dates_with_slots:
-            continue
+        for slot in potential_slots:
+            slot_start_dt = slot['slot_datetime']
+            slot_date = slot_start_dt.date()
 
-        # Stop searching if we have found enough suggestions
-        if len(available_slots) >= num_suggestions_to_find:
-            break
+            if slot_date in dates_with_slots: continue
+            if len(found_slots) >= num_suggestions_to_find: break
 
-        hauler_end_dt = slot_start_dt + hauler_duration
-        found_truck_id = None
-        for truck in suitable_trucks:
-            if check_truck_availability(truck.truck_id, slot_start_dt, hauler_end_dt):
-                found_truck_id = truck.truck_id
-                break
+            if not check_truck_availability("J17", slot_start_dt, slot_start_dt + j17_duration): continue
+            
+            found_truck_id = None
+            for truck in suitable_trucks:
+                if check_truck_availability(truck.truck_id, slot_start_dt, slot_start_dt + hauler_duration):
+                    found_truck_id = truck.truck_id
+                    break
+            
+            if found_truck_id:
+                final_slot = slot.copy()
+                final_slot.update({
+                    'date': slot_date, 'time': slot_start_dt.time(), 'truck_id': found_truck_id,
+                    'j17_needed': needs_j17, 'type': slot_type_flag,
+                    'is_active_crane_day': (slot_type_flag == 'Active Day Grouping'),
+                    'is_candidate_crane_day': (slot_type_flag == 'Candidate Day Activation')
+                })
+                found_slots.append(final_slot)
+                dates_with_slots.add(slot_date)
+        return found_slots
 
-        if not found_truck_id:
-            continue
+    # --- MAIN LOGIC ---
+    if needs_j17 and not manager_override:
+        search_start_date = requested_date - datetime.timedelta(days=crane_look_back_days)
+        search_end_date = requested_date + datetime.timedelta(days=crane_look_forward_days)
+        
+        # STAGE 1: Search for ACTIVE crane days
+        active_days = {
+            d.date() for d_str, status in crane_daily_status.items()
+            if selected_ramp_id in status.get('ramps_visited', set())
+            and search_start_date <= (d := datetime.datetime.strptime(d_str, '%Y-%m-%d').date()) <= search_end_date
+        }
+        if active_days:
+            slots = _find_slots_in_range(list(active_days), "Active Day Grouping")
+            if slots:
+                slots.sort(key=lambda s: abs(s['date'] - requested_date))
+                return slots, "Found slots by grouping with an existing crane job.", [], True
 
-        if needs_j17:
-            crane_end_dt = slot_start_dt + j17_duration
-            if not check_truck_availability("J17", slot_start_dt, crane_end_dt):
-                continue
+        # STAGE 2: Search for CANDIDATE crane days
+        candidate_days_info = CANDIDATE_CRANE_DAYS.get(selected_ramp_id, [])
+        candidate_dates = {
+            day['date'] for day in candidate_days_info
+            if search_start_date <= day['date'] <= search_end_date
+        }
+        if candidate_dates:
+            slots = _find_slots_in_range(list(candidate_dates), "Candidate Day Activation")
+            if slots:
+                slots.sort(key=lambda s: abs(s['date'] - requested_date))
+                message = "Found open slots on ideal tide days, activating a new crane day."
+                return slots, message, [], True
 
-        # If we get here, the slot is valid. Add it to our results.
-        final_slot = slot.copy()
-        final_slot.update({
-            'date': slot_start_dt.date(),
-            'time': slot_start_dt.time(),
-            'truck_id': found_truck_id,
-            'j17_needed': needs_j17
-        })
-        available_slots.append(final_slot)
-        dates_with_slots.add(slot_date) # CRITICAL: Record that we have found a slot for this date.
-    # --- END: RE-IMPLEMENTED ONE-SLOT-PER-DAY LOGIC ---
-
-
-    if not available_slots:
+    # STAGE 3: General search if no crane logic applies, override is used, or no crane slots found
+    all_dates = [requested_date + datetime.timedelta(days=i) for i in range(crane_look_forward_days)]
+    slots = _find_slots_in_range(all_dates, "General Availability")
+    if not slots:
         return [], "No suitable slots could be found in the specified window.", [], False
+    
+    slots.sort(key=lambda s: abs(s['date'] - requested_date))
+    message = f"Found {len(slots)} available slots through general search."
+    return slots[:num_suggestions_to_find], message, [], False
 
-    # The final sort by proximity to requested date is still useful
-    available_slots.sort(key=lambda s: abs(s['date'] - requested_date))
 
-    message = f"Found {len(available_slots)} available slots."
-    # The slice for num_suggestions_to_find is now redundant due to the check in the loop, but it's safe to keep
-    return available_slots[:num_suggestions_to_find], message, [], False
+#=========== END: REPLACEMENT find_available_job_slots FUNCTION ===========
 
 #=========== END: REPLACEMENT find_available_job_slots FUNCTION ===========
 
