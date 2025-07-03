@@ -290,7 +290,7 @@ def generate_progress_report_pdf(stats, analysis):
     if analysis['by_ramp']:
         story.append(Paragraph("Jobs by Ramp", styles['h3']))
         drawing = Drawing(400, 200)
-        ramp_data = [(v for k,v in sorted(analysis['by_ramp'].items()))]
+        ramp_data = [tuple(v for k,v in sorted(analysis['by_ramp'].items()))]
         ramp_names = [k for k,v in sorted(analysis['by_ramp'].items())]
         bc_ramp = VerticalBarChart()
         bc_ramp.x = 50; bc_ramp.y = 50; bc_ramp.height = 125; bc_ramp.width = 300
