@@ -107,15 +107,15 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     col_width = content_width / len(planner_columns)
     
     start_time_obj = datetime.time(7, 30)
-    end_time_obj = datetime.time(17, 0)
-    total_minutes_in_planner = (end_time_obj.hour * 60 + end_time_obj.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
+    end_time_obj = datetime.time(17, 30) # Extend to 5:30 PM for better spacing
+    total_minutes = (end_time_obj.hour * 60 + end_time_obj.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
 
     top_y, bottom_y = height - margin - 0.5 * inch, margin + 0.5 * inch
     content_height = top_y - bottom_y
 
     def get_y_for_time(t):
         minutes_into_day = (t.hour * 60 + t.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
-        return top_y - ((minutes_into_day / total_minutes_in_planner) * content_height)
+        return top_y - ((minutes_into_day / total_minutes) * content_height)
 
     high_tide_highlights, low_tide_highlights = [], []
     if jobs_for_day:
@@ -123,43 +123,42 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         if ramp_id:
             ramp_obj = ecm.get_ramp_details(ramp_id)
             all_tides = ecm.get_all_tide_times_for_ramp_and_date(ramp_obj, report_date)
-            def round_time_to_15_min(t):
-                total_minutes = t.hour * 60 + t.minute; rounded_minutes = int(round(total_minutes / 15.0) * 15)
-                if rounded_minutes >= 24 * 60: rounded_minutes = (24 * 60) - 15
-                h, m = divmod(rounded_minutes, 60); return datetime.time(h, m)
-            high_tide_highlights = [round_time_to_15_min(t['time']) for t in all_tides.get('H', [])]
-            low_tide_highlights = [round_time_to_15_min(t['time']) for t in all_tides.get('L', [])]
+            def round_time(t):
+                mins = t.hour * 60 + t.minute; rounded = int(round(mins / 15.0) * 15)
+                return datetime.time(min(23, rounded // 60), rounded % 60)
+            high_tide_highlights = [round_time(t['time']) for t in all_tides.get('H', [])]
+            low_tide_highlights = [round_time(t['time']) for t in all_tides.get('L', [])]
     
-    c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
+    c.setFont("Helvetica-Bold", 12); c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
     for i, name in enumerate(planner_columns):
         c.setFont("Helvetica-Bold", 14); c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
 
-    # --- Corrected Time Grid Drawing Loop ---
-    for hour in range(start_time_obj.hour, end_time_obj.hour + 1):
+    # --- Final Time Grid Drawing Loop ---
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(margin + 3, top_y - 9, "7:30")
+
+    for hour in range(start_time_obj.hour + 1, end_time_obj.hour + 1):
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
-            if not (start_time_obj <= current_time <= end_time_obj):
-                continue
+            if current_time >= end_time_obj: continue
             
             y = get_y_for_time(current_time)
             
-            highlight_color = None
-            if current_time in high_tide_highlights: highlight_color = colors.Color(1, 1, 0, alpha=0.4)
-            elif current_time in low_tide_highlights: highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
-            
-            if highlight_color:
-                next_q_hour_dt = datetime.datetime.combine(datetime.date.min, current_time) + datetime.timedelta(minutes=15)
-                if next_q_hour_dt.time() <= end_time_obj:
-                    y_next = get_y_for_time(next_q_hour_dt.time())
-                    c.setFillColor(highlight_color)
-                    c.rect(margin + time_col_width, y_next, content_width, y - y_next, fill=1, stroke=0)
-            
+            # Draw grid lines first
             c.setStrokeColorRGB(0.7, 0.7, 0.7)
             c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
             
+            # Draw hour labels and highlights
             if minute == 0:
+                highlight_color = None
+                if current_time in high_tide_highlights: highlight_color = colors.Color(1, 1, 0, alpha=0.4)
+                elif current_time in low_tide_highlights: highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
+                
+                if highlight_color:
+                    c.setFillColor(highlight_color)
+                    c.rect(margin + 1, y - 11, time_col_width - 2, 13, fill=1, stroke=0)
+
                 display_hour = hour if hour <= 12 else hour - 12
                 c.setFont("Helvetica-Bold", 9); c.setFillColorRGB(0,0,0)
                 c.drawString(margin + 3, y - 9, str(display_hour))
