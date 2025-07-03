@@ -84,14 +84,27 @@ def display_crane_day_calendar(crane_days_for_ramp):
                             """, unsafe_allow_html=True)
 # --- Helper Functions ---
 
-def format_tides_for_display(slot, ecm_hours):
+def format_tides_for_display(slot, truck_schedule):
     tide_times = slot.get('high_tide_times', [])
     if not tide_times:
         return ""
-    if not ecm_hours or not ecm_hours.get('open'):
+
+    # --- NEW: Get operating hours for the specific truck in the slot ---
+    truck_id = slot.get('truck_id')
+    slot_date = slot.get('date')
+    op_hours = None
+
+    if truck_id and slot_date:
+        day_of_week = slot_date.weekday()
+        # Look up the hours from the main schedule dictionary
+        op_hours = truck_schedule.get(truck_id, {}).get(day_of_week)
+
+    if not op_hours:
+        # If no specific hours are found, just list the tides without highlighting a primary one.
         return "HT: " + " / ".join([ecm.format_time_for_display(t) for t in tide_times])
 
-    op_open, op_close = ecm_hours['open'], ecm_hours['close']
+    op_open, op_close = op_hours[0], op_hours[1]
+    # --- END NEW ---
 
     def get_tide_relevance_score(tide_time):
         tide_dt = datetime.datetime.combine(datetime.date.today(), tide_time)
@@ -663,8 +676,7 @@ if app_mode == "Schedule New Boat":
                 truck_id = slot.get('truck_id', 'N/A')
                 ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
                 ramp_name = ramp_details.ramp_name if ramp_details else "N/A"
-                tide_display_str = format_tides_for_display(slot, ecm.get_ecm_operating_hours(slot['date']))
-
+                tide_display_str = format_tides_for_display(slot, st.session_state.truck_operating_hours)
                 card_html_output += f"""
                     <p style="margin-bottom: 0.25em;"><b>Date:</b> {date_str}</p>
                     <p style="margin-bottom: 0.25em;"><b>Tide Rule:</b> {slot.get('tide_rule_concise', 'N/A')}</p>
