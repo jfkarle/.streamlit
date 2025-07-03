@@ -91,14 +91,6 @@ def _abbreviate_town(address):
         if town in address_lower: return abbr
     return address.title().split(',')[0][:3]
 
-You're right, that's not working. The PDF is missing the entire time grid. This happens when the drawing loop inside the generate_daily_planner_pdf function fails.
-
-The previous code had an error in how it handled the new 7:30 AM start time. I have corrected it below.
-
-To fix this, please replace the entire generate_daily_planner_pdf function in your app.py file with this final, corrected version.
-
-Python
-
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
