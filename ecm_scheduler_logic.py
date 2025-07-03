@@ -330,3 +330,40 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
         'all_boats': {'total': total_all_boats, 'scheduled': len(scheduled_customer_ids), 'launched': len(launched_customer_ids)},
         'ecm_boats': {'total': len(ecm_customer_ids), 'scheduled': len(scheduled_customer_ids.intersection(ecm_customer_ids)), 'launched': len(launched_customer_ids.intersection(ecm_customer_ids))}
     }
+
+from collections import Counter
+
+def analyze_job_distribution(scheduled_jobs, all_boats_map, all_ramps_map):
+    """Analyzes scheduled jobs to find distributions by day, boat type, and ramp."""
+    if not scheduled_jobs:
+        return {
+            'by_day': Counter(),
+            'by_boat_type': Counter(),
+            'by_ramp': Counter()
+        }
+
+    # Analyze distribution by day of the week
+    day_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
+    day_counter = Counter(day_map[job.scheduled_start_datetime.weekday()] for job in scheduled_jobs)
+
+    # Analyze distribution by boat type
+    boat_type_counter = Counter()
+    for job in scheduled_jobs:
+        boat = all_boats_map.get(job.boat_id)
+        if boat:
+            boat_type_counter[boat.boat_type] += 1
+            
+    # Analyze distribution by ramp
+    ramp_counter = Counter()
+    for job in scheduled_jobs:
+        ramp_id = job.pickup_ramp_id or job.dropoff_ramp_id
+        if ramp_id:
+            ramp = all_ramps_map.get(ramp_id)
+            if ramp:
+                ramp_counter[ramp.ramp_name] += 1
+
+    return {
+        'by_day': day_counter,
+        'by_boat_type': boat_type_counter,
+        'by_ramp': ramp_counter
+    }
