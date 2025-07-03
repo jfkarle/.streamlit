@@ -535,6 +535,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
 
     # --- THIS IS THE NEW DYNAMIC SLOT FINDER ---
+    # --- THIS IS THE NEW DYNAMIC SLOT FINDER ---
     def _find_slots_for_dates(date_list, slot_type_flag):
         found_slots = []
         # Pre-fetch all tides for the entire date range for performance
@@ -543,19 +544,20 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, min(date_list), max(date_list))
 
         for check_date in sorted(list(set(date_list))):
-            slot_found_for_day = False  #<-- CORRECT location
+            slot_found_for_day = False
             if len(found_slots) >= num_suggestions_to_find: break
-            
+
             for truck in suitable_trucks:
-                windows = get_final_schedulable_ramp_times(...)
-                
+                # Get the final combined window of truck hours and tides
+                windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
+
                 for window in windows:
                     p_time = window['start_time']
-                        end_time = window['end_time']
+                    end_time = window['end_time']
 
                     while p_time < end_time:
                         slot_start_dt = datetime.datetime.combine(check_date, p_time)
-                        
+
                         # Check availability of the hauling truck
                         if not check_truck_availability(truck.truck_id, slot_start_dt, slot_start_dt + hauler_duration):
                             p_time = (slot_start_dt + datetime.timedelta(minutes=30)).time()
@@ -578,7 +580,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         found_slots.append(final_slot)
                         slot_found_for_day = True
                         break # Found a slot with this truck, move to next day
-                    
+
                     if slot_found_for_day:
                         break # Found a slot for this day, move to next day
                 if slot_found_for_day:
