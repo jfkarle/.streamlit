@@ -176,11 +176,15 @@ def generate_daily_planner_V2(report_date, jobs_for_day):
     planner_columns = ["S20/33", "S21/77", "S23/55", "J17"]
     column_map = {name: i for i, name in enumerate(planner_columns)}
 
+    def get_y_for_time(t):
+        total_minutes = (t.hour - start_hour) * 60 + t.minute
+        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
+    
     # --- Corrected Layout Definitions ---
     margin = 0.5 * inch
     header_height = 0.5 * inch
     footer_height = 0.5 * inch # Balanced footer space
-    top_y = height - margin - header_height
+    top_y = height - margin - header_height  
     bottom_y = get_y_for_time(datetime.time(18, 0))  # Aligns outer frame with 6:00 PM
     content_height = top_y - bottom_y
     # --- End ---
@@ -192,10 +196,6 @@ def generate_daily_planner_V2(report_date, jobs_for_day):
     
     # Dynamically calculate the height of a 15-minute row
     quarter_hour_height = (content_height / ((end_hour - start_hour) * 4))
-
-    def get_y_for_time(t):
-        total_minutes = (t.hour - start_hour) * 60 + t.minute
-        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
 
     # --- Get and process tide times for highlighting ---
     high_tide_highlights, low_tide_highlights = [], []
