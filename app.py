@@ -506,24 +506,36 @@ with st.container(border=True):
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("All Boats")
+        st.subheader("Overall Progress")
         c1, c2 = st.columns(2)
         with c1:
+            # Use the improved gauge to show % scheduled
             scheduled_gauge_svg = create_gauge(stats['all_boats']['scheduled'], stats['all_boats']['total'], "Scheduled")
             st.markdown(scheduled_gauge_svg, unsafe_allow_html=True)
         with c2:
+            # Use the improved gauge to show % launched
             launched_gauge_svg = create_gauge(stats['all_boats']['launched'], stats['all_boats']['total'], "Launched")
             st.markdown(launched_gauge_svg, unsafe_allow_html=True)
             
     with col2:
         st.subheader("ECM Boats")
+        # Use st.metric for clear numerical display
+        ecm_total = stats['ecm_boats']['total']
         c1, c2 = st.columns(2)
         with c1:
-            scheduled_gauge_svg_ecm = create_gauge(stats['ecm_boats']['scheduled'], stats['ecm_boats']['total'], "Scheduled")
-            st.markdown(scheduled_gauge_svg_ecm, unsafe_allow_html=True)
+            st.metric(
+                label="Scheduled",
+                value=stats['ecm_boats']['scheduled'],
+                delta=f"/ {ecm_total} Total",
+                delta_color="off"
+            )
         with c2:
-            launched_gauge_svg_ecm = create_gauge(stats['ecm_boats']['launched'], stats['ecm_boats']['total'], "Launched")
-            st.markdown(launched_gauge_svg_ecm, unsafe_allow_html=True)
+             st.metric(
+                label="Launched (to date)",
+                value=stats['ecm_boats']['launched'],
+                 delta=f"/ {stats['ecm_boats']['scheduled']} Sched.",
+                 delta_color="off"
+            )
 st.markdown("---")
 
 
