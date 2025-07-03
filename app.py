@@ -209,6 +209,11 @@ def generate_daily_planner_V2(report_date, jobs_for_day):
 
     quarter_hour_height = content_height / ((end_hour - start_hour) * 4)
 
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+
 # --- Cancel, Rebook, and Audit ---
 
 CANCELED_JOBS_AUDIT_LOG = []
