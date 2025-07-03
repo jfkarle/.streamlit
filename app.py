@@ -78,6 +78,98 @@ def display_crane_day_calendar(crane_days_for_ramp):
                     font_weight = "bold" if is_candidate or is_today else "normal"
                     cols[i].markdown(f'<div style="padding:10px; border-radius:5px; border: 2px solid {border_color}; background-color:{bg_color}; height: 60px;"><p style="text-align: right; font-weight: {font_weight}; color: black;">{day.day}</p></div>', unsafe_allow_html=True)
 
+def _abbreviate_town(address):
+    """
+    Takes a full address string or a special keyword ('HOME') and returns
+    a standardized three-letter abbreviation for the town.
+    """
+    if not address: return ""
+    abbr_map = { "pembroke": "Pem", "scituate": "Sci", "green harbor": "GrH", "marshfield": "Mar", "cohasset": "Coh", "weymouth": "Wey", "plymouth": "Ply", "sandwich": "San", "duxbury": "Dux", "humarock": "Hum", "hingham": "Hin", "hull": "Hul" }
+    if 'HOME' in address.upper(): return "Pem"
+    address_lower = address.lower()
+    for town, abbr in abbr_map.items():
+        if town in address_lower: return abbr
+    return address.title().split(',')[0][:3]
+
+def generate_daily_planner_pdf(report_date, jobs_for_day):
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    planner_columns = ["S20/33", "S21/77", "S23/55", "J17"]
+    column_map = {name: i for i, name in enumerate(planner_columns)}
+    margin, time_col_width = 0.5 * inch, 0.75 * inch
+    content_width = width - 2 * margin - time_col_width
+    col_width = content_width / len(planner_columns)
+    start_hour, end_hour = 7, 17
+    top_y, bottom_y = height - margin - 0.5 * inch, margin + 0.5 * inch
+    content_height = top_y - bottom_y
+
+    def get_y_for_time(t):
+        total_minutes = (t.hour - start_hour) * 60 + t.minute
+        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
+    
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
+    for i, name in enumerate(planner_columns):
+        c.setFont("Helvetica-Bold", 14)
+        c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
+
+    for hour in range(start_hour, end_hour + 1):
+        y = get_y_for_time(datetime.time(hour, 0))
+        c.setLineWidth(1.0); c.line(margin, y, width - margin, y)
+        display_hour = hour if hour <= 12 else hour - 12
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(margin + 3, y - 9, str(display_hour))
+
+    for i in range(len(planner_columns) + 1):
+        x = margin + time_col_width + i * col_width
+        c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
+    
+    for job in jobs_for_day:
+        start_time, end_time = job.scheduled_start_datetime.time(), job.scheduled_end_datetime.time()
+        y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
+        line1_y, line2_y, line3_y = y0 - 12, y0 - 22, y0 - 32
+        customer = ecm.get_customer_details(job.customer_id); boat = ecm.get_boat_details(job.boat_id)
+        
+        truck_id = job.assigned_hauling_truck_id
+        if truck_id in column_map:
+            col_index = column_map[truck_id]; text_center_x = margin + time_col_width + (col_index + 0.5) * col_width
+            c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x, line1_y, customer.customer_name)
+            c.setFont("Helvetica", 7); c.drawCentredString(text_center_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
+            c.drawCentredString(text_center_x, line3_y, f"{_abbreviate_town(job.pickup_street_address)}-{_abbreviate_town(job.dropoff_street_address)}")
+            c.setLineWidth(2); c.line(text_center_x, y0 - 40, text_center_x, y_end); c.line(text_center_x - 10, y_end, text_center_x + 10, y_end)
+        
+        if job.assigned_crane_truck_id and 'J17' in column_map:
+            crane_col_index = column_map['J17']; text_center_x_crane = margin + time_col_width + (crane_col_index + 0.5) * col_width
+            y_crane_end = get_y_for_time(job.j17_busy_end_datetime.time())
+            c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x_crane, line1_y, customer.customer_name.split()[-1])
+            c.setFont("Helvetica", 7); c.drawCentredString(text_center_x_crane, line2_y, _abbreviate_town(job.dropoff_street_address))
+            c.setLineWidth(2); c.line(text_center_x_crane, y0-40, text_center_x_crane, y_crane_end); c.line(text_center_x_crane-3, y_crane_end, text_center_x_crane+3, y_crane_end)
+            
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+def generate_multi_day_planner_pdf(start_date, end_date, jobs):
+    from PyPDF2 import PdfMerger
+    from io import BytesIO
+    merger = PdfMerger()
+    for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
+        jobs_for_day = [j for j in jobs if j.scheduled_start_datetime.date() == single_date]
+        if jobs_for_day:
+            daily_pdf_buffer = generate_daily_planner_pdf(single_date, jobs_for_day)
+            merger.append(daily_pdf_buffer)
+    output = BytesIO()
+    merger.write(output)
+    merger.close()
+    output.seek(0)
+    return output
+
 # --- Session State Initialization ---
 def initialize_session_state():
     defaults = {
@@ -245,8 +337,42 @@ elif app_mode == "Reporting":
             report_data.append({"Customer": cust.customer_name, "Boat": f"{boat.boat_length}' {boat.boat_type}", "ECM": cust.is_ecm_customer, "Status": status})
         st.download_button("📥 Download Full Report (.csv)", pd.DataFrame(report_data).to_csv(index=False).encode('utf-8'), f"status_report_{datetime.date.today()}.csv", "text/csv")
     with tab4:
-        st.subheader("PDF Export Tools") # Placeholder for now
+        st.subheader("Generate Daily Planner PDF")
+        selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
+        if st.button("📤 Generate PDF", key="generate_daily_pdf_button"):
+            jobs_today = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime.date() == selected_date]
+            if not jobs_today:
+                st.warning("No jobs scheduled for that date.")
+            else:
+                pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
+                st.download_button(
+                    label="📥 Download Planner", data=pdf_buffer.getvalue(),
+                    file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf",
+                    key="download_daily_planner_button"
+                )
 
+        st.markdown("---")
+        st.subheader("Export Multi-Day Planner")
+        dcol1, dcol2 = st.columns(2)
+        with dcol1:
+            start_date = st.date_input("Start Date", value=datetime.date.today(), key="multi_start_date")
+        with dcol2:
+            end_date = st.date_input("End Date", value=datetime.date.today() + datetime.timedelta(days=5), key="multi_end_date")
+
+        if st.button("📤 Generate Multi-Day Planner PDF", key="generate_multi_pdf_button"):
+            if start_date > end_date:
+                st.error("Start date must be before or equal to end date.")
+            else:
+                jobs_in_range = [j for j in ecm.SCHEDULED_JOBS if start_date <= j.scheduled_start_datetime.date() <= end_date]
+                if not jobs_in_range:
+                    st.warning("No jobs scheduled in this date range.")
+                else:
+                    merged_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
+                    st.download_button(
+                        label="📥 Download Multi-Day Planner", data=merged_pdf,
+                        file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf",
+                        key="download_multi_planner_button"
+                    )
 # --- SETTINGS PAGE ---
 elif app_mode == "Settings":
     st.header("Application Settings")
