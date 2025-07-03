@@ -105,15 +105,19 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     margin, time_col_width = 0.5 * inch, 0.75 * inch
     content_width = width - 2 * margin - time_col_width
     col_width = content_width / len(planner_columns)
-    start_hour, end_hour = 7, 17
+    
+    # --- UPDATED: Time range set to 7:30 AM - 5:00 PM ---
+    start_time_obj = datetime.time(7, 30)
+    end_time_obj = datetime.time(17, 0)
+    total_minutes_in_planner = (end_time_obj.hour * 60 + end_time_obj.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
+
     top_y, bottom_y = height - margin - 0.5 * inch, margin + 0.5 * inch
     content_height = top_y - bottom_y
 
     def get_y_for_time(t):
-        total_minutes = (t.hour - start_hour) * 60 + t.minute
-        return top_y - (total_minutes / ((end_hour - start_hour) * 60) * content_height)
+        minutes_into_day = (t.hour * 60 + t.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
+        return top_y - ((minutes_into_day / total_minutes_in_planner) * content_height)
 
-    # --- NEW: Get and process tide times for highlighting ---
     high_tide_highlights, low_tide_highlights = [], []
     if jobs_for_day:
         first_job = jobs_for_day[0]
@@ -121,81 +125,65 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         if ramp_id:
             ramp_obj = ecm.get_ramp_details(ramp_id)
             all_tides = ecm.get_all_tide_times_for_ramp_and_date(ramp_obj, report_date)
-
             def round_time_to_15_min(t):
-                total_minutes = t.hour * 60 + t.minute
-                rounded_minutes = int(round(total_minutes / 15.0) * 15)
+                total_minutes = t.hour * 60 + t.minute; rounded_minutes = int(round(total_minutes / 15.0) * 15)
                 if rounded_minutes >= 24 * 60: rounded_minutes = (24 * 60) - 15
-                h, m = divmod(rounded_minutes, 60)
-                return datetime.time(h, m)
-
+                h, m = divmod(rounded_minutes, 60); return datetime.time(h, m)
             high_tide_highlights = [round_time_to_15_min(t['time']) for t in all_tides.get('H', [])]
             low_tide_highlights = [round_time_to_15_min(t['time']) for t in all_tides.get('L', [])]
     
     c.setFont("Helvetica-Bold", 12)
     c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
     for i, name in enumerate(planner_columns):
-        c.setFont("Helvetica-Bold", 14)
-        c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
+        c.setFont("Helvetica-Bold", 14); c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
 
-    # --- UPDATED: Time Grid with 15-min intervals and Highlighting ---
-    for hour in range(start_hour, end_hour + 1):
+    for hour in range(start_time_obj.hour, end_time_obj.hour + 1):
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
-            y = get_y_for_time(current_time)
+            if current_time < start_time_obj or current_time > end_time_obj: continue
             
+            y = get_y_for_time(current_time)
             highlight_color = None
-            if current_time in high_tide_highlights:
-                highlight_color = colors.Color(1, 1, 0, alpha=0.4) # Transparent Yellow
-            elif current_time in low_tide_highlights:
-                highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4) # Transparent Light Red
+            if current_time in high_tide_highlights: highlight_color = colors.Color(1, 1, 0, alpha=0.4)
+            elif current_time in low_tide_highlights: highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
 
             if highlight_color:
-                next_quarter_hour = (datetime.datetime.combine(datetime.date.min, current_time) + datetime.timedelta(minutes=15)).time()
-                y_next = get_y_for_time(next_quarter_hour)
-                rect_height = y - y_next
+                next_q_hour = (datetime.datetime.combine(datetime.date.min, current_time) + datetime.timedelta(minutes=15)).time()
+                y_next = get_y_for_time(next_q_hour)
+                # --- FIXED: Rectangle is now drawn within the grid columns ---
                 c.setFillColor(highlight_color)
-                c.rect(margin, y_next, width - (2 * margin), rect_height, fill=1, stroke=0)
+                c.rect(margin + time_col_width, y_next, content_width, y - y_next, fill=1, stroke=0)
             
-            c.setStrokeColorRGB(0.7, 0.7, 0.7) # Light grey for grid lines
-            c.setLineWidth(0.5 if minute != 0 else 1.0)
+            c.setStrokeColorRGB(0.7, 0.7, 0.7)
+            c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
-
             if minute == 0:
                 display_hour = hour if hour <= 12 else hour - 12
                 c.setFont("Helvetica-Bold", 9); c.setFillColorRGB(0,0,0)
                 c.drawString(margin + 3, y - 9, str(display_hour))
             
-    # --- Vertical Grid Lines ---
     c.setStrokeColorRGB(0,0,0)
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
-    c.line(margin, top_y, margin, bottom_y)
-    c.line(width - margin, top_y, width - margin, bottom_y)
+    c.line(margin, top_y, margin, bottom_y); c.line(width - margin, top_y, width - margin, bottom_y)
 
-    # --- Job Entries ---
     for job in jobs_for_day:
         start_time, end_time = job.scheduled_start_datetime.time(), job.scheduled_end_datetime.time()
         y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
         line1_y, line2_y, line3_y = y0 - 12, y0 - 22, y0 - 32
-        customer = ecm.get_customer_details(job.customer_id); boat = ecm.get_boat_details(job.boat_id)
-        
-        truck_id = job.assigned_hauling_truck_id
-        if truck_id in column_map:
-            col_index = column_map[truck_id]; text_center_x = margin + time_col_width + (col_index + 0.5) * col_width
-            c.setFillColorRGB(0, 0, 0)
-            c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x, line1_y, customer.customer_name)
-            c.setFont("Helvetica", 7); c.drawCentredString(text_center_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
-            c.drawCentredString(text_center_x, line3_y, f"{_abbreviate_town(job.pickup_street_address)}-{_abbreviate_town(job.dropoff_street_address)}")
-            c.setLineWidth(2); c.line(text_center_x, y0 - 40, text_center_x, y_end); c.line(text_center_x - 10, y_end, text_center_x + 10, y_end)
-        
+        customer, boat = ecm.get_customer_details(job.customer_id), ecm.get_boat_details(job.boat_id)
+        if job.assigned_hauling_truck_id in column_map:
+            col_index = column_map[job.assigned_hauling_truck_id]; text_x = margin + time_col_width + (col_index + 0.5) * col_width
+            c.setFillColorRGB(0,0,0); c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_x, line1_y, customer.customer_name)
+            c.setFont("Helvetica", 7); c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
+            c.drawCentredString(text_x, line3_y, f"{_abbreviate_town(job.pickup_street_address)}-{_abbreviate_town(job.dropoff_street_address)}")
+            c.setLineWidth(2); c.line(text_x, y0 - 40, text_x, y_end); c.line(text_x - 10, y_end, text_x + 10, y_end)
         if job.assigned_crane_truck_id and 'J17' in column_map:
-            crane_col_index = column_map['J17']; text_center_x_crane = margin + time_col_width + (crane_col_index + 0.5) * col_width
+            crane_col_index = column_map['J17']; crane_text_x = margin + time_col_width + (crane_col_index + 0.5) * col_width
             y_crane_end = get_y_for_time(job.j17_busy_end_datetime.time())
-            c.setFillColorRGB(0, 0, 0)
-            c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_center_x_crane, line1_y, customer.customer_name.split()[-1])
-            c.setFont("Helvetica", 7); c.drawCentredString(text_center_x_crane, line2_y, _abbreviate_town(job.dropoff_street_address))
-            c.setLineWidth(2); c.line(text_center_x_crane, y0-40, text_center_x_crane, y_crane_end); c.line(text_center_x_crane-3, y_crane_end, text_center_x_crane+3, y_crane_end)
+            c.setFillColorRGB(0,0,0); c.setFont("Helvetica-Bold", 8); c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
+            c.setFont("Helvetica", 7); c.drawCentredString(crane_text_x, line2_y, _abbreviate_town(job.dropoff_street_address))
+            c.setLineWidth(2); c.line(crane_text_x, y0-40, crane_text_x, y_crane_end); c.line(crane_text_x-3, y_crane_end, crane_text_x+3, y_crane_end)
 
     c.save()
     buffer.seek(0)
