@@ -15,9 +15,6 @@ import calendar
 
 #This line MUST remain under the IMPORTS section up here
 st.set_page_config(layout="wide")
-st.header("CONFIRMED: LATEST GITHUB CODE IS RUNNING")
-
-
 
 # --- NEW CALENDAR DISPLAY FUNCTION ---
 def display_crane_day_calendar(crane_days_for_ramp):
