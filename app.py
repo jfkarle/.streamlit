@@ -276,7 +276,7 @@ def generate_progress_report_pdf(stats, analysis):
     if analysis['by_day']:
         story.append(Paragraph("Jobs by Day of Week", styles['h3']))
         drawing = Drawing(400, 200)
-        day_data = [(v for k,v in sorted(analysis['by_day'].items()))]
+        day_data = [tuple(v for k,v in sorted(analysis['by_day'].items()))]
         day_names = [k for k,v in sorted(analysis['by_day'].items())]
         bc = VerticalBarChart()
         bc.x = 50; bc.y = 50; bc.height = 125; bc.width = 300
