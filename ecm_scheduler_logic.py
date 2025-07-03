@@ -466,7 +466,6 @@ def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date_obj, tr
 #=========== START: REPLACEMENT find_available_job_slots FUNCTION ===========
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
-                             master_schedule,
                              selected_ramp_id=None,
                              force_preferred_truck=True,
                              num_suggestions_to_find=5,
