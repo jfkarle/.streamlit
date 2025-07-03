@@ -1,787 +1,287 @@
-# ecm_scheduler_logic.py
-# FINAL VERIFIED VERSION
-
-import csv
+import streamlit as st
 import datetime
-import requests
-import random # <--- ADD THIS LINE
-from datetime import timedelta, time
+import ecm_scheduler_logic as ecm
+import pandas as pd
+import csv
+import math
+from reportlab.lib.pagesizes import letter
+import calendar
+from io import BytesIO
 
-# --- NEW: Data Model for Individual Truck/Crane Operating Hours ---
-# This structure replaces the old global operating_hours_rules list.
-# The UI in app.py will modify this dictionary in the session state.
-DEFAULT_TRUCK_OPERATING_HOURS = {
-    # Using Monday=0, Sunday=6, and time(hour, minute) format
-    "S20/33": {
-        0: (time(7, 0), time(15, 0)), 1: (time(7, 0), time(15, 0)),
-        2: (time(7, 0), time(15, 0)), 3: (time(7, 0), time(15, 0)),
-        4: (time(7, 0), time(15, 0)), 5: (time(8, 0), time(12, 0)),
-        6: None,
-    },
-    "S21/77": {
-        0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)),
-        2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)),
-        4: (time(8, 0), time(16, 0)), 5: None,
-        6: None,
-    },
-    "S23/55": {
-        0: (time(8, 0), time(17, 0)), 1: (time(8, 0), time(17, 0)),
-        2: (time(8, 0), time(17, 0)), 3: (time(8, 0), time(17, 0)),
-        4: (time(8, 0), time(17, 0)), 5: (time(7, 30), time(17, 30)),
-        6: None,
-    },
-    "J17": {
-        0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)),
-        2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)),
-        4: (time(8, 0), time(16, 0)), 5: None,
-        6: None,
+st.set_page_config(layout="wide")
+
+# --- Helper Functions for UI ---
+
+def create_gauge(value, max_value, label):
+    """Generates an SVG string for a semi-circle gauge chart that displays an absolute value."""
+    if max_value == 0: percent = 0
+    else: percent = min(max(value / max_value, 0), 1)
+    angle = percent * 180
+    rads = math.radians(angle - 90)
+    x, y = 50 + 40 * math.cos(rads), 50 + 40 * math.sin(rads)
+    d = f"M 10 50 A 40 40 0 0 1 {x} {y}"
+    fill_color = "#F44336"
+    if percent >= 0.4: fill_color = "#FFC107"
+    if percent >= 0.8: fill_color = "#4CAF50"
+    main_text, sub_label = str(value), f"{label.upper()} OF {max_value}"
+    return f'''
+    <svg viewBox="0 0 100 65" style="width: 150px; height: 97px; overflow: visible;">
+        <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="#e0e0e0" stroke-width="10" fill="none" />
+        <path d="{d}" stroke="{fill_color}" stroke-width="10" fill="none" />
+        <text x="50" y="45" text-anchor="middle" font-size="20" font-weight="bold" fill="#333">{main_text}</text>
+        <text x="50" y="60" text-anchor="middle" font-size="8" fill="#333">{sub_label}</text>
+    </svg>
+    '''
+
+def format_tides_for_display(slot, truck_schedule):
+    tide_times = slot.get('high_tide_times', [])
+    if not tide_times: return ""
+    truck_id, slot_date = slot.get('truck_id'), slot.get('date')
+    op_hours = truck_schedule.get(truck_id, {}).get(slot_date.weekday()) if truck_id and slot_date else None
+    if not op_hours: return "HT: " + " / ".join([ecm.format_time_for_display(t) for t in tide_times])
+    op_open, op_close = op_hours[0], op_hours[1]
+    def get_tide_relevance_score(tide_time):
+        tide_dt = datetime.datetime.combine(datetime.date.today(), tide_time)
+        open_dt, close_dt = datetime.datetime.combine(datetime.date.today(), op_open), datetime.datetime.combine(datetime.date.today(), op_close)
+        return (0, abs((tide_dt - open_dt).total_seconds())) if open_dt <= tide_dt <= close_dt else (1, min(abs((tide_dt - open_dt).total_seconds()), abs((tide_dt - close_dt).total_seconds())))
+    sorted_tides = sorted(tide_times, key=get_tide_relevance_score)
+    if not sorted_tides: return ""
+    primary_tide_str = ecm.format_time_for_display(sorted_tides[0])
+    if len(sorted_tides) == 1: return f"**HIGH TIDE: {primary_tide_str}**"
+    secondary_tides_str = " / ".join([ecm.format_time_for_display(t) for t in sorted_tides[1:]])
+    return f"**HIGH TIDE: {primary_tide_str}** (and {secondary_tides_str.lower()})"
+
+def handle_slot_selection(slot_data):
+    st.session_state.selected_slot = slot_data
+
+def display_crane_day_calendar(crane_days_for_ramp):
+    candidate_dates, today = {d['date'] for d in crane_days_for_ramp}, datetime.date.today()
+    _, cal_col, _ = st.columns([1, 2, 1])
+    with cal_col, st.container(border=True):
+        selected_month_str = st.selectbox("Select a month to view:", [(today + datetime.timedelta(days=30*i)).strftime("%B %Y") for i in range(6)])
+        if not selected_month_str: return
+        selected_month = datetime.datetime.strptime(selected_month_str, "%B %Y")
+        st.subheader(f"Calendar for {selected_month_str}")
+        header_cols = st.columns(7)
+        for col, day_name in zip(header_cols, ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
+            with col: st.markdown(f"<p style='text-align: center; font-weight: bold;'>{day_name}</p>", unsafe_allow_html=True)
+        st.markdown("---")
+        for week in calendar.Calendar().monthdatescalendar(selected_month.year, selected_month.month):
+            cols = st.columns(7)
+            for i, day in enumerate(week):
+                if day.month != selected_month.month:
+                    cols[i].markdown(f'<div style="padding:10px; border-radius:5px; background-color:#F0F2F6; height: 60px;"><p style="text-align: right; color: #D3D3D3;">{day.day}</p></div>', unsafe_allow_html=True)
+                else:
+                    is_candidate, is_today = day in candidate_dates, day == today
+                    bg_color = "#E8F5E9" if is_candidate else "#FFFFFF"
+                    border_color = "#1E88E5" if is_today else ("#4CAF50" if is_candidate else "#E0E0E0")
+                    font_weight = "bold" if is_candidate or is_today else "normal"
+                    cols[i].markdown(f'<div style="padding:10px; border-radius:5px; border: 2px solid {border_color}; background-color:{bg_color}; height: 60px;"><p style="text-align: right; font-weight: {font_weight}; color: black;">{day.day}</p></div>', unsafe_allow_html=True)
+
+# --- Session State Initialization ---
+def initialize_session_state():
+    defaults = {
+        'data_loaded': False, 'info_message': "", 'current_job_request': None, 'found_slots': [], 
+        'selected_slot': None, 'search_requested_date': None, 'was_forced_search': False,
+        'num_suggestions': 3, 'crane_look_back_days': 7, 'crane_look_forward_days': 60,
+        'slot_page_index': 0, 'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS,
+        'show_copy_dropdown': False
     }
-}
+    for key, default_value in defaults.items():
+        if key not in st.session_state: st.session_state[key] = default_value
+    if not st.session_state.data_loaded:
+        if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"):
+            st.session_state.data_loaded = True
+        else: st.error("Failed to load customer and boat data.")
 
-# --- Utility Functions ---
+initialize_session_state()
 
-CANDIDATE_CRANE_DAYS = {
-    'ScituateHarborJericho': [],
-    'PlymouthHarbor': [],
-    'WeymouthWessagusset': [],
-    'CohassetParkerAve': []
-}
-ACTIVE_CRANE_DAYS = {
-    'ScituateHarborJericho': [],
-    'PlymouthHarbor': [],
-    'WeymouthWessagusset': [],
-    'CohassetParkerAve': []
-}
-# --- NEW: Configuration for Crane Day Logic ---
-CRANE_DAY_LOGIC_ENABLED = True # Master toggle for the entire feature
-CANDIDATE_DAY_TIDE_WINDOW = (time(10, 30), time(14, 30)) # 10:30 AM to 2:30 PM
-MAX_SEARCH_DAYS_FUTURE = 120 # Search up to 120 days in the future
-SEARCH_DAYS_PAST = 7         # Search up to 7 days in the past
-CRANE_DAY_REVERSION_WINDOW_DAYS = 7 # Days before an empty Crane Day opens up
+# --- Main App Body ---
+st.title("Marine Transportation")
 
-def _get_crane_job_count_for_day(check_date, ramp_id):
-    """Counts active crane jobs for a given ramp on a specific date."""
-    count = 0
-    for job in SCHEDULED_JOBS:
-        if (job.job_status == "Scheduled" and 
-            getattr(job, 'assigned_crane_truck_id', None) == "J17" and
-            job.scheduled_start_datetime.date() == check_date):
-            job_ramp_id = getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None)
-            if job_ramp_id == ramp_id:
-                count += 1
-    return count
-def fetch_noaa_tides_for_range(station_id, start_date, end_date):
-    """Fetches all tide predictions for a given station over a date range in a single API call."""
-    start_str = start_date.strftime("%Y%m%d")
-    end_str = end_date.strftime("%Y%m%d")
-    
-    base = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
-    params = {
-        "product": "predictions", "application": "ecm-boat-scheduler",
-        "begin_date": start_str, "end_date": end_str, "datum": "MLLW",
-        "station": station_id, "time_zone": "lst_ldt", "units": "english",
-        "interval": "hilo", "format": "json"
-    }
-    
-    try:
-        resp = requests.get(base, params=params, timeout=15) # Increased timeout for larger request
-        resp.raise_for_status()
+with st.container(border=True):
+    stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Overall Progress")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(create_gauge(stats['all_boats']['scheduled'], stats['all_boats']['total'], "Scheduled"), unsafe_allow_html=True)
+        with c2:
+            st.markdown(create_gauge(stats['all_boats']['launched'], stats['all_boats']['total'], "Launched"), unsafe_allow_html=True)
+    with col2:
+        st.subheader("ECM Boats")
+        c1, c2 = st.columns(2)
+        with c1: st.metric(label="Scheduled", value=stats['ecm_boats']['scheduled'], delta=f"/ {stats['ecm_boats']['total']} Total", delta_color="off")
+        with c2: st.metric(label="Launched (to date)", value=stats['ecm_boats']['launched'], delta=f"/ {stats['ecm_boats']['scheduled']} Sched.", delta_color="off")
+st.markdown("---")
+
+st.sidebar.title("Navigation")
+app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
+
+# --- PAGE 1: SCHEDULER ---
+if app_mode == "Schedule New Boat":
+    if st.session_state.info_message:
+        st.info(st.session_state.info_message); st.session_state.info_message = ""
+    if st.session_state.get("confirmation_message"):
+        st.success(f"✅ {st.session_state.confirmation_message}")
+        if st.button("Schedule Another Job"): st.session_state.pop("confirmation_message", None); st.rerun()
+
+    st.sidebar.header("New Job Request")
+    customer_name_input = st.sidebar.text_input("Enter Customer Name:", help="e.g., Olivia, James, Tho")
+    customer, boat = None, None
+
+    if customer_name_input:
+        results = [c for c in ecm.LOADED_CUSTOMERS.values() if customer_name_input.lower() in c.customer_name.lower()]
+        if len(results) == 1: customer = results[0]
+        elif len(results) > 1:
+            options = {c.customer_name: c for c in results}
+            customer = options.get(st.sidebar.selectbox("Multiple matches, please select:", options.keys()))
+        else: st.sidebar.warning("No customer found.")
+
+    if customer:
+        st.sidebar.success(f"Selected: {customer.customer_name}")
+        boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
+        if not boat: st.sidebar.error(f"No boat found for {customer.customer_name}."); st.stop()
+
+    if customer and boat:
+        st.sidebar.markdown("---"); st.sidebar.subheader("Selected Customer & Boat:")
+        st.sidebar.write(f"**Customer:** {customer.customer_name}")
+        st.sidebar.write(f"**ECM Boat:** {'Yes' if customer.is_ecm_customer else 'No'}")
+        st.sidebar.write(f"**Boat Type:** {boat.boat_type}")
+        st.sidebar.write(f"**Boat Length:** {boat.boat_length}ft")
+        st.sidebar.write(f"**Preferred Truck:** {ecm.ECM_TRUCKS.get(customer.preferred_truck_id, type('',(object,),{'truck_name':'N/A'})()).truck_name}")
+        st.sidebar.markdown("---")
+
+        service_type = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
+        req_date = st.sidebar.date_input("Requested Date:", datetime.date.today() + datetime.timedelta(days=7))
+        ramp_id = st.sidebar.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys())) if service_type in ["Launch", "Haul"] else None
         
-        # Process the full range of predictions
-        predictions = resp.json().get("predictions", [])
-        
-        # Group the results by date for easy lookup later
-        grouped_tides = {}
-        for tide in predictions:
-            tide_dt = datetime.datetime.strptime(tide["t"], "%Y-%m-%d %H:%M")
-            date_key = tide_dt.date()
-            if date_key not in grouped_tides:
-                grouped_tides[date_key] = []
+        st.sidebar.markdown("---"); st.sidebar.subheader("Search Options")
+        relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
+        manager_override = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
+
+        if st.sidebar.button("Find Best Slot"):
+            st.session_state.current_job_request = {'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'), 'selected_ramp_id': ramp_id}
+            st.session_state.search_requested_date = req_date
+            st.session_state.slot_page_index = 0
             
-            grouped_tides[date_key].append({
-                'type': tide["type"].upper(),
-                'time': tide_dt.time(),
-                'height': tide["v"]
-            })
-        return grouped_tides
+            slots, msg, _, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override)
+            st.session_state.info_message, st.session_state.found_slots, st.session_state.selected_slot = msg, slots, None
+            st.rerun()
+
+    if st.session_state.found_slots and not st.session_state.selected_slot:
+        st.subheader("Please select your preferred slot:")
+        total_slots, page_index, slots_per_page = len(st.session_state.found_slots), st.session_state.slot_page_index, 3
         
-    except Exception as e:
-        print(f"ERROR fetching tides for station {station_id} from {start_str} to {end_str}: {e}")
-        return {}
+        nav_cols = st.columns([1, 1, 5, 1, 1])
+        nav_cols[0].button("⬅️ Prev", on_click=lambda: st.session_state.update(slot_page_index=page_index - slots_per_page), disabled=(page_index == 0), use_container_width=True)
+        nav_cols[1].button("Next ➡️", on_click=lambda: st.session_state.update(slot_page_index=page_index + slots_per_page), disabled=(page_index + slots_per_page >= total_slots), use_container_width=True)
+        if total_slots > 0: nav_cols[3].write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_")
+        st.markdown("---")
 
-def format_time_for_display(time_obj):
-    """Formats a time object for display, e.g., 8:00 AM."""
-    if not isinstance(time_obj, datetime.time):
-        return "InvalidTime"
-    # Use '%-I' on Linux/macOS or '%#I' on Windows to remove leading zero
-    # A more portable way is to use lstrip
-    return time_obj.strftime('%I:%M %p').lstrip('0')
-
-def get_all_tide_times_for_ramp_and_date(ramp_obj, date_obj):
-    """
-    Fetches all high and low tide times for a given ramp and date
-    using the new range-based NOAA API call.
-    """
-    if not ramp_obj or not ramp_obj.noaa_station_id:
-        print(f"[ERROR] Ramp '{ramp_obj.ramp_name if ramp_obj else 'Unknown'}' missing NOAA station ID.")
-        return {'H': [], 'L': []}
-
-    # Call the new function for a single-day range
-    tides_for_range = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, date_obj, date_obj)
-    
-    # Get the specific day's data from the returned dictionary
-    tide_data_for_day = tides_for_range.get(date_obj, [])
-
-    all_tides = {'H': [], 'L': []}
-    for tide_entry in tide_data_for_day:
-        tide_type = tide_entry.get('type')
-        if tide_type in ['H', 'L']:
-            all_tides[tide_type].append(tide_entry)
-            
-    return all_tides
-
-def get_concise_tide_rule(ramp, boat):
-    if ramp.tide_calculation_method == "AnyTide":
-        return "Any Tide"
-    if ramp.tide_calculation_method == "AnyTideWithDraftRule":
-        if boat.draft_ft is not None and boat.draft_ft < 5.0:
-            return "Any Tide (<5' Draft)"
-        return "3 hrs +/- High Tide (≥5' Draft)"
-    if ramp.tide_offset_hours1:
-        return f"{float(ramp.tide_offset_hours1):g} hrs +/- HT"
-    return "Tide Rule N/A"
-
-def calculate_ramp_windows(ramp, boat, tide_data, date):
-    """
-    Calculates the valid time windows for a given ramp and boat based on tide rules.
-    This corrected version uses an if/elif/else structure to prevent logical fall-through.
-    """
-    # Case 1: Ramps with no tide restrictions.
-    if ramp.tide_calculation_method == "AnyTide":
-        return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
-
-    # Case 2: Ramps that have a tide rule based on boat draft.
-    elif ramp.tide_calculation_method == "AnyTideWithDraftRule":
-        # Shallow draft (< 5ft) boats have no restrictions.
-        if boat.draft_ft is not None and boat.draft_ft < 5.0:
-            return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
-        # DEEP DRAFT (>= 5ft) boats get the restricted window.
-        else:
-            if not tide_data:
-                return []
-            offset = datetime.timedelta(hours=3) # Hardcoded 3-hour window
-            return [{'start_time': (datetime.datetime.combine(date, t['time']) - offset).time(),
-                     'end_time': (datetime.datetime.combine(date, t['time']) + offset).time()}
-                    for t in tide_data if t['type'] == 'H']
-
-    # Case 3: All other tide rules that use a specific offset (e.g., "HoursAroundHighTide").
-    else:
-        if not tide_data:
-            return []
-        # Use the ramp's specific offset value.
-        offset = datetime.timedelta(hours=float(ramp.tide_offset_hours1 or 0))
-        return [{'start_time': (datetime.datetime.combine(date,t['time'])-offset).time(),
-                 'end_time': (datetime.datetime.combine(date,t['time'])+offset).time()}
-                for t in tide_data if t['type']=='H']
-
-def is_j17_at_ramp(check_date, ramp_id):
-    if not ramp_id: return False
-    return ramp_id in crane_daily_status.get(check_date.strftime('%Y-%m-%d'), {}).get('ramps_visited', set())
-
-def load_crane_day_candidates(tide_data):
-    for ramp_name in CANDIDATE_CRANE_DAYS.keys():
-        candidate_days = []
-        for date_obj, high_tide_time in tide_data.get(ramp_name, []):
-            if time(10,30) <= high_tide_time <= time(14,30):
-                candidate_days.append(date_obj)
-        CANDIDATE_CRANE_DAYS[ramp_name] = candidate_days
-        
-
-def is_powerboat_blocked_for_crane_day(ramp_name, check_date, job_start_time):
-    if ramp_name not in CANDIDATE_CRANE_DAYS:
-        return False
-    if check_date not in CANDIDATE_CRANE_DAYS[ramp_name]:
-        return False
-
-    # Get high tide time for that ramp/date
-    high_tide_time = ecm.get_high_tide_time_for_ramp_and_date(ramp_name, check_date)
-    if not high_tide_time:
-        return False
-
-    window_start = (datetime.combine(check_date, high_tide_time) - timedelta(hours=3)).time()
-    window_end = (datetime.combine(check_date, high_tide_time) + timedelta(hours=3)).time()
-
-    return window_start <= job_start_time <= window_end
-
-def load_candidate_days_from_file(filename="candidate_days.csv"):
-    """
-    Reads the pre-calculated candidate days from a local CSV file
-    at startup. This is much faster than scanning live.
-    """
-    global CANDIDATE_CRANE_DAYS
-    print("Loading Candidate Crane Days from local file...")
-    try:
-        with open(filename, mode='r') as infile:
-            reader = csv.DictReader(infile)
-            for row in reader:
-                ramp_id = row['ramp_id']
-                if ramp_id in CANDIDATE_CRANE_DAYS:
-                    CANDIDATE_CRANE_DAYS[ramp_id].append({
-                        "date": datetime.datetime.strptime(row['date'], "%Y-%m-%d").date(),
-                        "high_tide_time": datetime.datetime.strptime(row['high_tide_time'], "%H:%M:%S").time()
-                    })
-        print("Successfully loaded Candidate Crane Days.")
-    except FileNotFoundError:
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print("!!! CRITICAL ERROR: `candidate_days.csv` not found.  !!!")
-        print("!!! The app cannot run without this file. Please      !!!")
-        print("!!! run `one_time_scanner.py` and upload the CSV.     !!!")
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
-def _get_crane_job_count_for_day(check_date, ramp_id):
-    """Counts active crane jobs for a given ramp on a specific date."""
-    count = 0
-    for job in SCHEDULED_JOBS:
-        if (job.job_status == "Scheduled" and 
-            getattr(job, 'assigned_crane_truck_id', None) == "J17" and
-            job.scheduled_start_datetime.date() == check_date):
-            job_ramp_id = getattr(job, 'pickup_ramp_id', None) or getattr(job, 'dropoff_ramp_id', None)
-            if job_ramp_id == ramp_id:
-                count += 1
-    return count
-
-# --- Configuration & Data Models ---
-
-TODAY_FOR_SIMULATION = datetime.date.today()
-JOB_ID_COUNTER = 3000
-SCHEDULED_JOBS = []
-BOOKING_RULES = {'Powerboat': {'truck_mins': 90, 'crane_mins': 0},'Sailboat DT': {'truck_mins': 180, 'crane_mins': 60},'Sailboat MT': {'truck_mins': 180, 'crane_mins': 90}}
-crane_daily_status = {}
-class Truck:
-    def __init__(self, t_id, name, max_len): self.truck_id=t_id; self.truck_name=name; self.max_boat_length=max_len; self.is_crane="Crane" in name
-class Ramp:
-    def __init__(self, r_id, name, station, tide_method="AnyTide", offset=None, boats=None):
-        self.ramp_id=r_id; self.ramp_name=name; self.noaa_station_id=station; self.tide_calculation_method=tide_method
-        self.tide_offset_hours1=offset; self.allowed_boat_types=boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
-class Customer:
-    def __init__(self, c_id, name, street_address, truck_id=None, is_ecm=False, home_line2="", home_citystatezip=""):
-        self.customer_id = c_id
-        self.customer_name = name
-        self.street_address = street_address
-        self.preferred_truck_id = truck_id
-        self.is_ecm_customer = is_ecm
-        self.home_line2 = home_line2
-        self.home_citystatezip = home_citystatezip
-class Boat:
-    def __init__(self, b_id, c_id, b_type, b_len, draft=None): self.boat_id=b_id; self.customer_id=c_id; self.boat_type=b_type; self.boat_length=b_len; self.draft_ft=draft
-class Job:
-    def __init__(self, **kwargs): self.job_status = "Scheduled"; self.__dict__.update(kwargs)
-class OperatingHoursEntry:
-    def __init__(self, season, day, open_t, close_t): self.season=season; self.day_of_week=day; self.open_time=open_t; self.close_time=close_t
-
-# --- Data Initialization ---
-ECM_TRUCKS = { "S20/33": Truck("S20/33", "S20", 60), "S21/77": Truck("S21/77", "S21", 45), "S23/55": Truck("S23/55", "S23", 30), "J17": Truck("J17", "J17 (Crane)", 999)}
-ECM_RAMPS = {
-    # Arguments mapped to: Ramp(r_id, name, station, tide_method, offset, boats)
-    "SandwichBasin": Ramp("SandwichBasin", "Sandwich Basin", "8447180", "AnyTide", None, ["Powerboat"]), # CORRECTED  
-    "PlymouthHarbor": Ramp("PlymouthHarbor", "Plymouth Harbor", "8446493", "HoursAroundHighTide", 3.0), # VERIFIED
-    "CordagePark": Ramp("CordagePark", "Cordage Park (Plymouth)", "8446493", "HoursAroundHighTide", 1.5, ["Powerboat"]), # VERIFIED
-    "DuxburyHarbor": Ramp("DuxburyHarbor", "Duxbury Harbor (Town Pier)", "8446166", "HoursAroundHighTide", 1.0, ["Powerboat"]), # CORRECTED
-    "GreenHarborTaylors": Ramp("GreenHarborTaylors", "Green Harbor (Taylors)", "8446009", "HoursAroundHighTide", 3.0, ["Powerboat"]), # VERIFIED
-    "GreenHarborSafeHarbor": Ramp("GreenHarborSafeHarbor", "Safe Harbor (Green Harbor)", "8446009", "HoursAroundHighTide", 1.0, ["Powerboat"]), # VERIFIED
-    "FerryStreet": Ramp("FerryStreet", "Ferry Street MYC", "8446009", "HoursAroundHighTide", 3.0, ["Powerboat"]), 
-    "SouthRiverYachtYard": Ramp("SouthRiverYachtYard", "SRYY", "8446009", "HoursAroundHighTide", 2.0, ["Powerboat"]),
-    "ScituateHarborJericho": Ramp("ScituateHarborJericho", "Scituate Harbor (Jericho Road)", "8445138", "AnyTideWithDraftRule"), # CORRECTED
-    "CohassetParkerAve": Ramp("CohassetParkerAve", "Cohasset Harbor (Parker Ave)", "8444762", "HoursAroundHighTide", 3.0), # CORRECTED
-    "HullASt": Ramp("HullASt", "Hull (A St, Sunset, Steamboat)", "8444351", "HoursAroundHighTide_WithDraftRule", 3.0), # CORRECTED
-    "HinghamHarbor": Ramp("HinghamHarbor", "Hingham Harbor", "8444662", "HoursAroundHighTide", 3.0), # CORRECTED
-    "WeymouthWessagusset": Ramp("WeymouthWessagusset", "Weymouth Harbor (Wessagusset)", "8444788", "HoursAroundHighTide", 3.0), # CORRECTED
-}
-
-LOADED_CUSTOMERS = {}; LOADED_BOATS = {}
-def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
-    global LOADED_CUSTOMERS, LOADED_BOATS
-    try:
-        with open(filename, mode='r', encoding='utf-8-sig') as infile:
-            reader = csv.DictReader(infile)
-            for i, row in enumerate(reader):
-                cust_id = f"C{1001+i}"
-                boat_id = f"B{5001+i}"
-                home_line2 = row.get('Bill to 2', '').strip()
-                home_citystatezip = row.get('Bill to 3', '').strip()
-
-                LOADED_CUSTOMERS[cust_id] = Customer(
-                    cust_id,
-                    row['customer_name'],
-                    row.get('street_address', ''),
-                    row.get('preferred_truck'),
-                    row.get('is_ecm_boat', '').lower() == 'true',
-                    home_line2,
-                    home_citystatezip
-                )
-
-                try:
-                    boat_length = float(row.get('boat_length', '').strip())
-                    boat_draft = float(row.get('boat_draft', '').strip() or 0)
-                except ValueError:
-                    print(f"Skipping row {i} due to invalid boat_length or boat_draft")
-                    continue
+        cols = st.columns(3)
+        for i, slot in enumerate(st.session_state.found_slots[page_index : page_index + slots_per_page]):
+            with cols[i % 3]:
+                container_style = "position:relative; padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px; height: 260px;" if i == 0 and page_index == 0 else "position:relative; padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px; height: 260px;"
+                card_html = f'<div style="{container_style}">'
+                if slot.get('is_active_crane_day') or slot.get('is_candidate_crane_day'):
+                    tooltip = "Active Crane Day" if slot.get('is_active_crane_day') else "Candidate Crane Day"
+                    card_html += f'<span title="{tooltip}" style="position:absolute; top:8px; right:10px; font-size: 24px; cursor: help;">⛵</span>'
+                if st.session_state.search_requested_date and slot['date'] == st.session_state.search_requested_date:
+                    card_html += "<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>"
                 
-                LOADED_BOATS[boat_id] = Boat(
-                    boat_id,
-                    cust_id,
-                    row['boat_type'],
-                    boat_length,
-                    boat_draft
-                )
-        
-        # --- NEW ---
-        # After loading all other data, scan for candidate days
-        load_candidate_days_from_file()
-        return True
-    except FileNotFoundError:
-        return False
+                ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                card_html += f"""
+                    <p><b>Date:</b> {slot['date'].strftime('%a, %b %d, %Y')}</p>
+                    <p><b>Time:</b> {ecm.format_time_for_display(slot.get('time'))}</p>
+                    <p><b>Truck:</b> {slot.get('truck_id', 'N/A')}</p>
+                    <p><b>Ramp:</b> {ramp_details.ramp_name if ramp_details else "N/A"}</p>
+                    <p><b>Tide Rule:</b> {slot.get('tide_rule_concise', 'N/A')}</p>
+                    <p>{format_tides_for_display(slot, st.session_state.truck_operating_hours)}</p>
+                </div>"""
+                st.html(card_html)
+                st.button("Select this slot", key=f"select_slot_{page_index + i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
 
-# --- Core Logic Functions ---
-get_customer_details = LOADED_CUSTOMERS.get; get_boat_details = LOADED_BOATS.get; get_ramp_details = ECM_RAMPS.get
-
-def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
-    """
-    Calculates scheduling statistics for all boats and ECM boats specifically.
-    A boat is only considered "launched" if its launch date is in the past.
-    """
-    today = datetime.date.today()
-
-    # --- Calculate stats for ALL boats ---
-    total_all_boats = len(all_boats)
-    
-    scheduled_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled"}
-    scheduled_all_boats = len(scheduled_customer_ids)
-
-    # NEW: Only count launches where the scheduled date is before today
-    launched_customer_ids = {
-        j.customer_id for j in scheduled_jobs 
-        if j.job_status == "Scheduled" 
-        and j.service_type == "Launch" 
-        and j.scheduled_start_datetime.date() < today
-    }
-    launched_all_boats = len(launched_customer_ids)
-
-    # --- Calculate stats for ECM boats ONLY ---
-    ecm_customer_ids = {c_id for c_id, cust in all_customers.items() if cust.is_ecm_customer}
-    total_ecm_boats = len(ecm_customer_ids)
-
-    scheduled_ecm_boats = len(scheduled_customer_ids.intersection(ecm_customer_ids))
-    launched_ecm_boats = len(launched_customer_ids.intersection(ecm_customer_ids))
-
-    return {
-        'all_boats': {'total': total_all_boats, 'scheduled': scheduled_all_boats, 'launched': launched_all_boats},
-        'ecm_boats': {'total': total_ecm_boats, 'scheduled': scheduled_ecm_boats, 'launched': launched_ecm_boats}
-    }
-    
-def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tides_in_range, truck_id, truck_hours_schedule):
-    """
-    Calculates the final, schedulable time windows by combining a specific
-    truck's working hours with the ramp's tidal windows for a given day.
-    """
-    # 1. Get the specific truck's working hours for the given day
-    day_of_week = date_to_check.weekday()
-    truck_hours = truck_hours_schedule.get(truck_id, {}).get(day_of_week)
-    if not truck_hours:
-        return [] # This truck is not working on this day
-
-    truck_open_dt = datetime.datetime.combine(date_to_check, truck_hours[0])
-    truck_close_dt = datetime.datetime.combine(date_to_check, truck_hours[1])
-
-    # 2. Handle "Transport" jobs that have no ramp (window is just truck hours)
-    if not ramp_obj:
-        return [{
-            'start_time': truck_hours[0],
-            'end_time': truck_hours[1],
-            'high_tide_times': [],
-            'tide_rule_concise': 'N/A'
-        }]
-
-    # 3. Get the ramp's tidal windows based on its rules
-    tide_data_for_day = all_tides_in_range.get(date_to_check, [])
-    tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
-
-    # 4. Find the overlap between the truck's working hours and the ramp's tidal windows
-    final_windows = []
-    for t_win in tidal_windows:
-        tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'])
-        tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'])
-
-        # Find the intersection of the two windows
-        overlap_start = max(tidal_start_dt, truck_open_dt)
-        overlap_end = min(tidal_end_dt, truck_close_dt)
-
-        if overlap_start < overlap_end:
-            final_windows.append({
-                'start_time': overlap_start.time(),
-                'end_time': overlap_end.time(),
-                'high_tide_times': [t['time'] for t in tide_data_for_day if t['type'] == 'H'],
-                'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
-            })
-
-    return final_windows
-
-def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
-    all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and boat_len <= t.max_boat_length]
-    if force_preferred and pref_truck_id and any(t.truck_id == pref_truck_id for t in all_suitable):
-        return [t for t in all_suitable if t.truck_id == pref_truck_id]
-    return all_suitable
-
-def check_truck_availability(truck_id, start_dt, end_dt):
-    for job in SCHEDULED_JOBS:
-        if job.job_status == "Scheduled" and (
-            getattr(job, 'assigned_hauling_truck_id', None) == truck_id or
-            (getattr(job, 'assigned_crane_truck_id', None) == truck_id and truck_id == "J17")
-        ):
-            job_start = job.scheduled_start_datetime
-            job_end = getattr(job, 'j17_busy_end_datetime', job.scheduled_end_datetime) if truck_id == "J17" else job.scheduled_end_datetime
-            
-            # ⬇️ Log if there's a conflict
-            if start_dt < job_end and end_dt > job_start:
-                print(f"[DEBUG] Conflict for truck {truck_id}:")
-                print(f"    Requested window: {start_dt.strftime('%Y-%m-%d %I:%M %p')} to {end_dt.strftime('%I:%M %p')}")
-                customer = get_customer_details(job.customer_id)
-                customer_name = customer.customer_name if customer else "Unknown"
-                print(f"    Conflicts with: {customer_name}, from {job_start.strftime('%I:%M %p')} to {job_end.strftime('%I:%M %p')} on {job_start.date()}")
-                return False
-
-    return True
-
-def _check_and_create_slot_detail(s_date, p_time, truck, cust, boat, service, ramp, ecm_hours, duration, j17_duration, window_details, is_active_crane_day=False, is_candidate_crane_day=False):
-    start_dt = datetime.datetime.combine(s_date, p_time); hauler_end_dt = start_dt + datetime.timedelta(hours=duration)
-    if hauler_end_dt.time() > ecm_hours['close'] and not (hauler_end_dt.time() == ecm_hours['close'] and hauler_end_dt.date() == s_date): return None
-    if not check_truck_availability(truck.truck_id, start_dt, hauler_end_dt): return None
-    needs_j17 = BOOKING_RULES.get(boat.boat_type, {}).get('crane_mins', 0) > 0
-    if needs_j17 and not check_truck_availability("J17", start_dt, start_dt + datetime.timedelta(hours=j17_duration)): return None
-    return {'date': s_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'type': "Open", 
-            'ramp_id': ramp.ramp_id if ramp else None, 
-            'priority_score': 1 if needs_j17 and ramp and is_j17_at_ramp(s_date, ramp.ramp_id) else 0, 
-            'is_active_crane_day': is_active_crane_day, # NEW
-            'is_candidate_crane_day': is_candidate_crane_day, # NEW
-            **window_details}
-def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date_obj, trucks, duration, j17_duration, service_type):
-    """Searches ±14 forward and -7 back to find dates where J17 is already assigned at same ramp"""
-    grouping_slot = None
-    for offset in list(range(-7, 15)):  # -7 to +14 days
-        check_date = requested_date_obj + timedelta(days=offset)
-        date_str = check_date.strftime('%Y-%m-%d')
-        if date_str in crane_daily_status and ramp_obj.ramp_id in crane_daily_status[date_str].get('ramps_visited', set()):
-            ecm_hours = get_ecm_operating_hours(check_date)
-            if not ecm_hours:
-                continue
-            tide_windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date)
-            for truck in trucks:
-                for window in tide_windows:
-                    p_start_time, p_end_time = window['start_time'], window['end_time']
-                    p_time = p_start_time
-                    while p_time < p_end_time:
-                        temp_dt = datetime.datetime.combine(check_date, p_time)
-                        if temp_dt.minute % 30 != 0:
-                            p_time = (temp_dt + timedelta(minutes=30 - (temp_dt.minute % 30))).time()
-                        if p_time >= p_end_time:
-                            break
-                        slot = _check_and_create_slot_detail(
-                            check_date, p_time, truck, customer, boat, service_type,
-                            ramp_obj, ecm_hours, duration, j17_duration, window
-                        )
-                        if slot:
-                            slot['priority_score'] = 999  # Force it to top of list
-                            return slot
-                        p_time = (datetime.datetime.combine(datetime.date.min, p_time) + timedelta(minutes=30)).time()
-    return grouping_slot
-    
-def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
-                             selected_ramp_id=None,
-                             force_preferred_truck=True,
-                             num_suggestions_to_find=5,
-                             manager_override=False,
-                             crane_look_back_days=7,
-                             crane_look_forward_days=60,
-                             truck_operating_hours=None,
-                             **kwargs):
-    """
-    Finds available job slots using a multi-stage search that dynamically
-    calculates availability based on individual truck hours and tide windows.
-    """
-    try:
-        requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
-    except ValueError:
-        return [], "Error: Invalid date format.", [], False
-
-    customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
-    if not customer or not boat: return [], "Invalid Customer/Boat ID.", [], False
-
-    ramp_obj = get_ramp_details(selected_ramp_id)
-    if service_type in ["Launch", "Haul"] and ramp_obj:
-        if boat.boat_type not in ramp_obj.allowed_boat_types:
-            message = (f"Validation Error: The selected boat type ('{boat.boat_type}') is not "
-                       f"permitted at the selected ramp ('{ramp_obj.ramp_name}').")
-            return [], message, [], False
-
-    # This function now requires the truck operating hours to be passed in
-    if truck_operating_hours is None:
-        return [], "System Error: Truck operating hours not provided.", [], False
-
-
-    rules = BOOKING_RULES.get(boat.boat_type, {})
-    hauler_duration = datetime.timedelta(minutes=rules.get('truck_mins', 90))
-    j17_duration = datetime.timedelta(minutes=rules.get('crane_mins', 0))
-    needs_j17 = j17_duration.total_seconds() > 0
-    suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
-
-    # --- THIS IS THE NEW DYNAMIC SLOT FINDER ---
-    def _find_slots_for_dates(date_list, slot_type_flag):
-        found_slots = []
-        # Pre-fetch all tides for the entire date range for performance
-        all_tides = {}
-        if ramp_obj and date_list:
-            all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, min(date_list), max(date_list))
-
-        for check_date in sorted(list(set(date_list))):
-            slot_found_for_day = False  #<-- CORRECT location
-            if len(found_slots) >= num_suggestions_to_find: break
-            
-            for truck in suitable_trucks:
-                windows = get_final_schedulable_ramp_times(...)
-                
-                for window in windows:
-                    p_time = window['start_time']
-                    end_time = window['end_time']
-
-                    while p_time < end_time:
-                        slot_start_dt = datetime.datetime.combine(check_date, p_time)
-                        
-                        # Check availability of the hauling truck
-                        if not check_truck_availability(truck.truck_id, slot_start_dt, slot_start_dt + hauler_duration):
-                            p_time = (slot_start_dt + datetime.timedelta(minutes=30)).time()
-                            continue
-
-                        # Check availability of the crane if needed
-                        if needs_j17 and not check_truck_availability("J17", slot_start_dt, slot_start_dt + j17_duration):
-                            p_time = (slot_start_dt + datetime.timedelta(minutes=30)).time()
-                            continue
-
-                        # If we get here, the slot is valid
-                        final_slot = {
-                            'date': check_date, 'time': p_time, 'truck_id': truck.truck_id,
-                            'j17_needed': needs_j17, 'type': slot_type_flag, 'ramp_id': selected_ramp_id,
-                            'is_active_crane_day': (slot_type_flag == 'Active Day Grouping'),
-                            'is_candidate_crane_day': (slot_type_flag == 'Candidate Day Activation'),
-                            'tide_rule_concise': window.get('tide_rule_concise'),
-                            'high_tide_times': window.get('high_tide_times', [])
-                        }
-                        found_slots.append(final_slot)
-                        slot_found_for_day = True
-                        break # Found a slot with this truck, move to next day
-                    
-                    if slot_found_for_day:
-                        break # Found a slot for this day, move to next day
-                if slot_found_for_day:
-                    break # Found a slot for this day, move to next day
-        return found_slots
-
-    # --- MAIN LOGIC ---
-    if needs_j17 and not manager_override:
-        search_start_date = requested_date - datetime.timedelta(days=crane_look_back_days)
-        search_end_date = requested_date + datetime.timedelta(days=crane_look_forward_days)
-        
-        # STAGE 1: Search ACTIVE crane days
-        active_days = {datetime.datetime.strptime(d_str, '%Y-%m-%d').date() for d_str, status in crane_daily_status.items() if selected_ramp_id in status.get('ramps_visited', set())}
-        active_days_in_range = [d for d in active_days if search_start_date <= d <= search_end_date]
-        if active_days_in_range:
-            slots = _find_slots_for_dates(active_days_in_range, "Active Day Grouping")
-            if slots:
-                slots.sort(key=lambda s: abs(s['date'] - requested_date))
-                return slots, "Found slots by grouping with an existing crane job.", [], True
-
-        # STAGE 2: Search CANDIDATE crane days
-        candidate_days_info = CANDIDATE_CRANE_DAYS.get(selected_ramp_id, [])
-        candidate_dates = [day['date'] for day in candidate_days_info if search_start_date <= day['date'] <= search_end_date]
-        if candidate_dates:
-            slots = _find_slots_for_dates(candidate_dates, "Candidate Day Activation")
-            if slots:
-                slots.sort(key=lambda s: abs(s['date'] - requested_date))
-                return slots, "Found open slots on ideal tide days, activating a new crane day.", [], True
-
-    # STAGE 3: General search
-    general_search_dates = [requested_date + datetime.timedelta(days=i) for i in range(crane_look_forward_days)]
-    slots = _find_slots_for_dates(general_search_dates, "General Availability")
-    if not slots:
-        return [], "No suitable slots could be found in the specified window.", [], False
-    
-    slots.sort(key=lambda s: abs(s['date'] - requested_date))
-    return slots, f"Found {len(slots)} available slots.", [], False
-
-def confirm_and_schedule_job(original_request, selected_slot):
-    # 1. Get all the required objects
-    customer = get_customer_details(original_request['customer_id'])
-    boat = get_boat_details(original_request['boat_id'])
-    ramp = get_ramp_details(selected_slot.get('ramp_id'))
-    
-    # 2. Validate inputs
-    if not customer or not boat:
-        return None, "Error: Could not find Customer or Boat details."
-    if original_request['service_type'] in ["Launch", "Haul"] and not ramp:
-        return None, "Error: A ramp must be selected for this service type."
-
-    # --- NEW: Fetch all tide data at the moment of booking ---
-    tide_data = get_all_tide_times_for_ramp_and_date(ramp, selected_slot['date'])
-    high_tides = tide_data.get('H', [])
-    low_tides = tide_data.get('L', [])
-    # --- END NEW ---
-
-    # 3. Calculate job details
-    job_id = globals()['JOB_ID_COUNTER'] + 1
-    globals()['JOB_ID_COUNTER'] += 1
-    
-    start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'])
-    rules = BOOKING_RULES.get(boat.boat_type, {})
-    hauler_duration_hours = rules.get('truck_mins', 90) / 60.0
-    hauler_end_dt = start_dt + datetime.timedelta(hours=hauler_duration_hours)
-    
-    j17_end_dt = None
-    if selected_slot.get('j17_needed'):
-        j17_duration_hours = rules.get('crane_mins', 0) / 60.0
-        j17_end_dt = start_dt + datetime.timedelta(hours=j17_duration_hours)
-
-    pickup_addr, dropoff_addr = "", ""
-    pickup_rid, dropoff_rid = None, None
-    service_type = original_request['service_type']
-
-    if service_type == "Launch":
-        pickup_addr = "HOME"
-        dropoff_addr = ramp.ramp_name
-        dropoff_rid = ramp.ramp_id
-    elif service_type == "Haul":
-        pickup_addr = ramp.ramp_name
-        pickup_rid = ramp.ramp_id
-        dropoff_addr = "HOME"
-    
-    # 4. Create the new Job object, now including the tide data
-    new_job = Job(
-        job_id=job_id,
-        customer_id=customer.customer_id,
-        boat_id=boat.boat_id,
-        service_type=service_type,
-        scheduled_start_datetime=start_dt,
-        scheduled_end_datetime=hauler_end_dt,
-        assigned_hauling_truck_id=selected_slot['truck_id'],
-        assigned_crane_truck_id="J17" if selected_slot.get('j17_needed') else None,
-        j17_busy_end_datetime=j17_end_dt,
-        pickup_ramp_id=pickup_rid,
-        dropoff_ramp_id=dropoff_rid,
-        # --- NEW: Add tide data to the saved job record ---
-        high_tides=high_tides,
-        low_tides=low_tides,
-        # --- Note: Other attributes from previous versions are consolidated by **kwargs in Job class ---
-        job_status="Scheduled",
-        notes=f"Booked via type: {selected_slot.get('type', 'N/A')}.",
-        pickup_street_address=pickup_addr,
-        dropoff_street_address=dropoff_addr,
-    )
-
-    # 5. Add the job to the schedule
-    SCHEDULED_JOBS.append(new_job)
-
-    # 6. Update crane status if needed
-    if new_job.assigned_crane_truck_id:
-        date_str = new_job.scheduled_start_datetime.strftime('%Y-%m-%d')
-        if date_str not in crane_daily_status:
-            crane_daily_status[date_str] = {'ramps_visited': set()}
-        if new_job.pickup_ramp_id:
-            crane_daily_status[date_str]['ramps_visited'].add(new_job.pickup_ramp_id)
-        if new_job.dropoff_ramp_id:
-            crane_daily_status[date_str]['ramps_visited'].add(new_job.dropoff_ramp_id)
-            
-    # 7. Return success message
-    return new_job.job_id, f"SUCCESS: Job {new_job.job_id} for {customer.customer_name} scheduled."
-
-def generate_random_jobs(num_to_generate, start_date, end_date, service_type_filter, truck_operating_hours):
-    """
-    Finds and schedules a specified number of random, valid jobs within a given
-    date range and for a specific service type.
-    """
-    if not LOADED_CUSTOMERS or not LOADED_BOATS or not ECM_RAMPS:
-        return "Error: Cannot generate jobs, master data not loaded."
-    if start_date > end_date:
-        return "Error: Start date cannot be after end date."
-
-    print(f"--- Starting Bulk Job Generation for {num_to_generate} jobs ---")
-    success_count = 0
-    fail_count = 0
-
-    customer_ids = list(LOADED_CUSTOMERS.keys())
-    ramp_ids = list(ECM_RAMPS.keys())
-    date_range_days = (end_date - start_date).days
-
-    for i in range(num_to_generate):
-        service_type = random.choice(["Launch", "Haul", "Transport"]) if service_type_filter.lower() == 'all' else service_type_filter
-
-        random_customer_id = random.choice(customer_ids)
-        customer = get_customer_details(random_customer_id)
-        boat = next((b for b in LOADED_BOATS.values() if b.customer_id == random_customer_id), None)
-        if not boat:
-            fail_count += 1
-            continue
-
-        random_ramp_id = random.choice(ramp_ids) if service_type in ["Launch", "Haul"] else None
-        random_date = start_date + datetime.timedelta(days=random.randint(0, date_range_days))
-
-        slots, _, _, _ = find_available_job_slots(
-            customer_id=random_customer_id,
-            boat_id=boat.boat_id,
-            service_type=service_type,
-            requested_date_str=random_date.strftime('%Y-%m-%d'),
-            selected_ramp_id=random_ramp_id,
-            force_preferred_truck=False,
-            truck_operating_hours=truck_operating_hours # Pass the schedule
-        )
-
-        if slots:
-            selected_slot = random.choice(slots)
-            job_request = {'customer_id': random_customer_id, 'boat_id': boat.boat_id, 'service_type': service_type}
-            new_job_id, _ = confirm_and_schedule_job(job_request, selected_slot)
-
+    elif st.session_state.selected_slot:
+        slot = st.session_state.selected_slot
+        st.subheader("Preview & Confirm Selection:")
+        st.success(f"Considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
+        if st.button("CONFIRM THIS JOB"):
+            new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
             if new_job_id:
-                success_count += 1
-            else:
-                fail_count += 1
-        else:
-            fail_count += 1
+                st.session_state.confirmation_message = message
+                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date']:
+                    st.session_state.pop(key, None)
+                st.rerun()
+            else: st.error(f"Failed to confirm job: {message}")
 
-    summary_message = f"Bulk generation complete. Successfully created {success_count} jobs. Failed to find slots for {fail_count} attempts."
-    print(f"--- {summary_message} ---")
-    return summary_message
+# --- REPORTING PAGE ---
+elif app_mode == "Reporting":
+    st.header("Reporting Dashboard")
+    tab1, tab2, tab3, tab4 = st.tabs(["Scheduled Jobs Overview", "Crane Day Calendar", "Scheduling Progress", "PDF Export Tools"])
+    with tab1:
+        st.subheader("All Scheduled Jobs")
+        if ecm.SCHEDULED_JOBS:
+            data = [{'Job ID': j.job_id, 'Date': j.scheduled_start_datetime.strftime("%Y-%m-%d"), 'Time': ecm.format_time_for_display(j.scheduled_start_datetime.time()), 'Service': j.service_type, 'Customer': ecm.get_customer_details(j.customer_id).customer_name, 'Truck': j.assigned_hauling_truck_id, 'Crane': j.assigned_crane_truck_id or ""} for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime)]
+            st.dataframe(pd.DataFrame(data))
+        else: st.write("No jobs scheduled.")
+    with tab2:
+        st.subheader("Crane Day Candidate Calendar")
+        ramp = st.selectbox("Select a ramp:", list(ecm.CANDIDATE_CRANE_DAYS.keys()), key="cal_ramp_sel")
+        if ramp: display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp])
+    with tab3:
+        st.subheader("Scheduling Progress Report")
+        stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
+        st.markdown("#### Overall Progress"); c1,c2=st.columns(2); c1.metric("Boats Scheduled", stats['all_boats']['scheduled'], f"{stats['all_boats']['total']} Total"); c2.metric("Boats Launched", stats['all_boats']['launched'], f"{stats['all_boats']['scheduled']} Scheduled")
+        st.markdown("#### ECM Boats"); c1,c2=st.columns(2); c1.metric("ECM Scheduled", stats['ecm_boats']['scheduled'], f"{stats['ecm_boats']['total']} Total"); c2.metric("ECM Launched", stats['ecm_boats']['launched'], f"{stats['ecm_boats']['scheduled']} Scheduled")
+        st.markdown("---"); st.subheader("Download Detailed Status Report")
+        report_data = []
+        for boat in ecm.LOADED_BOATS.values():
+            cust = ecm.get_customer_details(boat.customer_id)
+            if not cust: continue
+            services = [j.service_type for j in ecm.SCHEDULED_JOBS if j.customer_id == cust.customer_id and j.job_status == "Scheduled"]
+            status = "Launched" if "Launch" in services else (f"Scheduled ({', '.join(services)})" if services else "Not Scheduled")
+            report_data.append({"Customer": cust.customer_name, "Boat": f"{boat.boat_length}' {boat.boat_type}", "ECM": cust.is_ecm_customer, "Status": status})
+        st.download_button("📥 Download Full Report (.csv)", pd.DataFrame(report_data).to_csv(index=False).encode('utf-8'), f"status_report_{datetime.date.today()}.csv", "text/csv")
+    with tab4:
+        st.subheader("PDF Export Tools") # Placeholder for now
 
-def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
-    """
-    Calculates scheduling statistics for all boats and ECM boats specifically.
-    """
-    # --- Calculate stats for ALL boats ---
-    total_all_boats = len(all_boats)
-    
-    # Get unique customer IDs from all scheduled jobs
-    scheduled_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled"}
-    scheduled_all_boats = len(scheduled_customer_ids)
-
-    # Get unique customer IDs from LAUNCH jobs only
-    launched_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled" and j.service_type == "Launch"}
-    launched_all_boats = len(launched_customer_ids)
-
-    # --- Calculate stats for ECM boats ONLY ---
-    ecm_customer_ids = {c_id for c_id, cust in all_customers.items() if cust.is_ecm_customer}
-    total_ecm_boats = len(ecm_customer_ids)
-
-    # Find the intersection of scheduled/launched customers and ECM customers
-    scheduled_ecm_boats = len(scheduled_customer_ids.intersection(ecm_customer_ids))
-    launched_ecm_boats = len(launched_customer_ids.intersection(ecm_customer_ids))
-
-    return {
-        'all_boats': {'total': total_all_boats, 'scheduled': scheduled_all_boats, 'launched': launched_all_boats},
-        'ecm_boats': {'total': total_ecm_boats, 'scheduled': scheduled_ecm_boats, 'launched': launched_ecm_boats}
-    }
+# --- SETTINGS PAGE ---
+elif app_mode == "Settings":
+    st.header("Application Settings")
+    tab1, tab2 = st.tabs(["Scheduling Rules", "Truck Schedules"])
+    with tab1:
+        st.subheader("Scheduling Defaults")
+        st.session_state.num_suggestions = st.number_input("Number of Suggested Dates", min_value=1, max_value=6, value=st.session_state.num_suggestions, step=1)
+        st.markdown("---"); st.subheader("Crane Job Search Window")
+        c1,c2 = st.columns(2)
+        c1.number_input("Days to search in PAST", min_value=0, max_value=30, value=st.session_state.crane_look_back_days, key="crane_look_back_days")
+        c2.number_input("Days to search in FUTURE", min_value=7, max_value=180, value=st.session_state.crane_look_forward_days, key="crane_look_forward_days")
+    with tab2:
+        st.subheader("Truck & Crane Weekly Hours")
+        truck_id = st.selectbox("Select a resource to edit:", list(st.session_state.truck_operating_hours.keys()))
+        if truck_id:
+            if st.button("Copy Schedule From..."): st.session_state.show_copy_dropdown = True
+            if st.session_state.get('show_copy_dropdown'):
+                source_truck = st.selectbox("Select source:", [t for t in st.session_state.truck_operating_hours if t != truck_id])
+                if st.button("Apply Copy"):
+                    st.session_state.truck_operating_hours[truck_id] = st.session_state.truck_operating_hours[source_truck]
+                    st.session_state.show_copy_dropdown = False; st.rerun()
+            st.markdown("---")
+            with st.form(f"form_{truck_id}"):
+                new_hours = {}
+                for i, day in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
+                    current = st.session_state.truck_operating_hours.get(truck_id, {}).get(i)
+                    is_working = current is not None
+                    summary = f"{day}: {ecm.format_time_for_display(current[0])} - {ecm.format_time_for_display(current[1])}" if is_working else f"{day}: Off Duty"
+                    with st.expander(summary):
+                        c1,c2,c3 = st.columns([1,2,2])
+                        working = c1.checkbox("Working", value=is_working, key=f"{truck_id}_{i}_w")
+                        start, end = (current[0], current[1]) if is_working else (time(8,0), time(16,0))
+                        new_start = c2.time_input("Start", value=start, key=f"{truck_id}_{i}_s", disabled=not working)
+                        new_end = c3.time_input("End", value=end, key=f"{truck_id}_{i}_e", disabled=not working)
+                        new_hours[i] = (new_start, new_end) if working else None
+                if st.form_submit_button("Save Hours"):
+                    st.session_state.truck_operating_hours[truck_id] = new_hours
+                    st.success(f"Updated hours for {truck_id}."); st.rerun()
