@@ -512,7 +512,7 @@ elif app_mode == "Reporting":
                 st.download_button(
                     label="📥 Download Report (.pdf)",
                     data=pdf_buffer,
-                    file_name=f"progress_report_{datetime.date.today()}.csv",
+                    file_name=f"progress_report_{datetime.date.today()}.pdf",
                     mime="application/pdf",
                 )
     with tab4:
