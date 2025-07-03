@@ -65,6 +65,29 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
 def format_time_for_display(time_obj):
     return time_obj.strftime('%I:%M %p').lstrip('0') if isinstance(time_obj, datetime.time) else "InvalidTime"
 
+def get_all_tide_times_for_ramp_and_date(ramp_obj, date_obj):
+    """
+    Fetches all high and low tide times for a given ramp and date
+    using the new range-based NOAA API call.
+    """
+    if not ramp_obj or not ramp_obj.noaa_station_id:
+        print(f"[ERROR] Ramp '{ramp_obj.ramp_name if ramp_obj else 'Unknown'}' missing NOAA station ID.")
+        return {'H': [], 'L': []}
+
+    # Call the new function for a single-day range
+    tides_for_range = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, date_obj, date_obj)
+    
+    # Get the specific day's data from the returned dictionary
+    tide_data_for_day = tides_for_range.get(date_obj, [])
+
+    all_tides = {'H': [], 'L': []}
+    for tide_entry in tide_data_for_day:
+        tide_type = tide_entry.get('type')
+        if tide_type in ['H', 'L']:
+            all_tides[tide_type].append(tide_entry)
+            
+    return all_tides
+
 def load_candidate_days_from_file(filename="candidate_days.csv"):
     global CANDIDATE_CRANE_DAYS
     try:
