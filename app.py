@@ -85,9 +85,10 @@ def display_crane_day_calendar(crane_days_for_ramp):
                             """, unsafe_allow_html=True)
 # --- Helper Functions ---
 
-def create_gauge(value, max_value, label, unit='%'):
+def create_gauge(value, max_value, label):
     """
-    Generates an SVG string for a semi-circle gauge chart.
+    Generates an SVG string for a semi-circle gauge chart that displays
+    an absolute value as the main text.
     """
     if max_value == 0:
         percent = 0
@@ -98,31 +99,33 @@ def create_gauge(value, max_value, label, unit='%'):
     rads = math.radians(angle - 90)
     x = 50 + 40 * math.cos(rads)
     y = 50 + 40 * math.sin(rads)
-    
-    # Path for the progress arc
-    large_arc_flag = 1 if angle > 180 else 0 # This will always be 0 for a semi-circle
+
+    large_arc_flag = 1 if angle > 180 else 0
     d = f"M 10 50 A 40 40 0 {large_arc_flag} 1 {x} {y}"
-    
-    # SVG styling
-    track_color = "#e0e0e0"
-    fill_color = "#4CAF50" # Green
-    if percent < 0.4:
+
+    # Color logic remains the same
+    fill_color = "#F44336" # Red
+    if percent >= 0.4:
         fill_color = "#FFC107" # Amber
-    if percent < 0.2:
-        fill_color = "#F44336" # Red
-        
+    if percent >= 0.8:
+        fill_color = "#4CAF50" # Green
+
     font_color = "#333"
 
+    # --- UPDATED TEXT LOGIC ---
+    main_text = str(value)
+    sub_label = f"{label.upper()} OF {max_value}"
+
     svg = f"""
-    <svg viewBox="0 0 100 60" style="width: 150px; height: 90px; overflow: visible;">
-        <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="{track_color}" stroke-width="10" fill="none" />
+    <svg viewBox="0 0 100 65" style="width: 150px; height: 97px; overflow: visible;">
+        <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="#e0e0e0" stroke-width="10" fill="none" />
         <path d="{d}" stroke="{fill_color}" stroke-width="10" fill="none" />
-        <text x="50" y="45" text-anchor="middle" font-size="16" font-weight="bold" fill="{font_color}">{value}</text>
-        <text x="50" y="60" text-anchor="middle" font-size="8" fill="{font_color}">{label}</text>
+        <text x="50" y="45" text-anchor="middle" font-size="20" font-weight="bold" fill="{font_color}">{main_text}</text>
+        <text x="50" y="60" text-anchor="middle" font-size="8" fill="{font_color}">{sub_label}</text>
     </svg>
     """
     return svg
-    
+
 def format_tides_for_display(slot, truck_schedule):
     tide_times = slot.get('high_tide_times', [])
     if not tide_times:
