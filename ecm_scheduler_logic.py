@@ -212,10 +212,8 @@ def confirm_and_schedule_job(original_request, selected_slot):
     
     pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
     service_type = original_request['service_type']
-    if service_type == "Launch":
-        pickup_addr, dropoff_addr, dropoff_rid = "HOME", ramp.ramp_name if ramp else 'N/A', selected_slot.get('ramp_id')
-    elif service_type == "Haul":
-        pickup_addr, dropoff_addr, pickup_rid = ramp.ramp_name if ramp else 'N/A', "HOME", selected_slot.get('ramp_id')
+    if service_type == "Launch": pickup_addr, dropoff_addr, dropoff_rid = "HOME", ramp.ramp_name if ramp else 'N/A', selected_slot.get('ramp_id')
+    elif service_type == "Haul": pickup_addr, dropoff_addr, pickup_rid = ramp.ramp_name if ramp else 'N/A', "HOME", selected_slot.get('ramp_id')
     
     new_job = Job(
         job_id=job_id, customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
