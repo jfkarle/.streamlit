@@ -338,11 +338,12 @@ def generate_progress_report_pdf(stats, analysis):
 # --- Session State Initialization ---
 def initialize_session_state():
     defaults = {
-        'data_loaded': False, 'info_message': "", 'current_job_request': None, 'found_slots': [], 
+        'data_loaded': False, 'info_message': "", 'current_job_request': None, 'found_slots': [],
         'selected_slot': None, 'search_requested_date': None, 'was_forced_search': False,
         'num_suggestions': 3, 'crane_look_back_days': 7, 'crane_look_forward_days': 60,
         'slot_page_index': 0, 'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS,
-        'show_copy_dropdown': False
+        'show_copy_dropdown': False,
+        'failure_reasons': []  # <--- ADD THIS LINE
     }
     for key, default_value in defaults.items():
         if key not in st.session_state: st.session_state[key] = default_value
@@ -380,26 +381,65 @@ app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Setting
 if app_mode == "Schedule New Boat":
     if st.session_state.info_message:
         st.info(st.session_state.info_message); st.session_state.info_message = ""
+        # --- NEW: Display Failure Reasons ---
+    if st.session_state.get('failure_reasons'):
+        with st.container(border=True):
+            st.error("Could not find any suitable slots for the request.")
+            st.markdown("##### Diagnostics:")
+            for reason in st.session_state.failure_reasons:
+                st.markdown(f"- {reason}", unsafe_allow_html=True)
     if st.session_state.get("confirmation_message"):
         st.success(f"✅ {st.session_state.confirmation_message}")
         if st.button("Schedule Another Job"): st.session_state.pop("confirmation_message", None); st.rerun()
 
     st.sidebar.header("New Job Request")
-    customer_name_input = st.sidebar.text_input("Enter Customer Name:", help="e.g., Olivia, James, Tho")
+    customer_name_input = st.sidebar.text_input("Search Customer Name:", help="e.g., Olivia, James, Tho")
     customer, boat = None, None
-
+    
     if customer_name_input:
-        results = [c for c in ecm.LOADED_CUSTOMERS.values() if customer_name_input.lower() in c.customer_name.lower()]
-        if len(results) == 1: customer = results[0]
-        elif len(results) > 1:
-            options = {c.customer_name: c for c in results}
-            customer = options.get(st.sidebar.selectbox("Multiple matches, please select:", options.keys()))
-        else: st.sidebar.warning("No customer found.")
-
-    if customer:
-        st.sidebar.success(f"Selected: {customer.customer_name}")
-        boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
-        if not boat: st.sidebar.error(f"No boat found for {customer.customer_name}."); st.stop()
+        # Find all customers that match the search input
+        customer_matches = [c for c in ecm.LOADED_CUSTOMERS.values() if customer_name_input.lower() in c.customer_name.lower()]
+    
+        # Create a list of valid customer-boat pairs from the matches
+        search_results = []
+        if customer_matches:
+            for cust in customer_matches:
+                boat_match = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == cust.customer_id), None)
+                if boat_match:
+                    search_results.append({'customer': cust, 'boat': boat_match})
+    
+        if not search_results:
+            st.sidebar.warning("No customer/boat combination found.")
+    
+        elif len(search_results) == 1:
+            # If only one result, select it automatically and show success
+            customer = search_results[0]['customer']
+            boat = search_results[0]['boat']
+            st.sidebar.success(f"Selected: {customer.customer_name}")
+    
+        else:
+            # If multiple results, display the new selection "table"
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("**Multiple Matches Found:**")
+    
+            # Create formatted labels for the radio buttons to simulate a table
+            def format_option(result):
+                cust_name = result['customer'].customer_name
+                boat_info = f"{result['boat'].boat_length}' {result['boat'].boat_type}"
+                return f"**{cust_name}** ({boat_info})"
+    
+            # Use st.radio for selection. We pass indices and format the labels.
+            selected_index = st.sidebar.radio(
+                "Please select the correct customer and boat:",
+                options=range(len(search_results)),
+                format_func=lambda i: format_option(search_results[i]),
+                label_visibility="collapsed",
+                key="customer_search_radio"
+            )
+    
+            # Set the customer and boat from the selected radio option
+            customer = search_results[selected_index]['customer']
+            boat = search_results[selected_index]['boat']
 
     if customer and boat:
         st.sidebar.markdown("---"); st.sidebar.subheader("Selected Customer & Boat:")
@@ -422,9 +462,13 @@ if app_mode == "Schedule New Boat":
             st.session_state.current_job_request = {'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'), 'selected_ramp_id': ramp_id}
             st.session_state.search_requested_date = req_date
             st.session_state.slot_page_index = 0
-            
-            slots, msg, _, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override)
-            st.session_state.info_message, st.session_state.found_slots, st.session_state.selected_slot = msg, slots, None
+            st.session_state.failure_reasons = [] # Clear old reasons before new search
+    
+            slots, msg, reasons, was_forced = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override)
+            st.session_state.info_message = msg
+            st.session_state.found_slots = slots
+            st.session_state.failure_reasons = reasons # Store the new reasons
+            st.session_state.selected_slot = None
             st.rerun()
 
     if st.session_state.found_slots and not st.session_state.selected_slot:
