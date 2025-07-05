@@ -343,7 +343,7 @@ def initialize_session_state():
         'num_suggestions': 3, 'crane_look_back_days': 7, 'crane_look_forward_days': 60,
         'slot_page_index': 0, 'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS,
         'show_copy_dropdown': False,
-        'failure_reasons': [],
+        'failure_reasons': [], # Initialize failure reasons list
         # New/Re-added state variables for this refined search
         'customer_search_input': '',
         'selected_customer_id': None,
