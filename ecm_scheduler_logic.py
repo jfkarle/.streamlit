@@ -150,7 +150,6 @@ def check_truck_availability(truck_id, start_dt, end_dt):
             if job_start and job_end and start_dt < job_end and end_dt > job_start: return False
     return True
 
-# --- NEW: Diagnostic function to find specific failure reasons ---
 def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, truck_hours, manager_override):
     """
     Checks a specific date for schedulability and returns a list of human-readable
@@ -158,32 +157,26 @@ def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, 
     """
     reasons = []
     
-    # 1. Check for suitable trucks in general
     suitable_trucks = get_suitable_trucks(boat.boat_length)
     if not suitable_trucks:
         reasons.append(f"**Boat Too Large:** No trucks in the fleet are rated for a boat of {boat.boat_length}ft.")
-        return reasons # This is a critical failure, stop here.
+        return reasons
 
-    # 2. Check if any suitable trucks are working on the requested date
     trucks_working_that_day = [t for t in suitable_trucks if truck_hours.get(t.truck_id, {}).get(req_date.weekday()) is not None]
     if not trucks_working_that_day:
         reasons.append(f"**No Trucks on Duty:** No suitable trucks are scheduled to work on {req_date.strftime('%A, %B %d')}.")
-        return reasons # Also a critical failure for this date.
+        return reasons
         
-    # 3. For crane jobs, check for ramp conflicts
     needs_j17 = BOOKING_RULES.get(boat.boat_type, {}).get('crane_mins', 0) > 0
     if needs_j17 and not manager_override and ramp_obj:
         date_str = req_date.strftime('%Y-%m-%d')
         if date_str in crane_daily_status:
             visited_ramps = crane_daily_status[date_str]['ramps_visited']
-            # If crane has been used and the new request is for a different ramp, this is the reason.
             if visited_ramps and ramp_obj.ramp_id not in visited_ramps:
                 conflicting_ramp_name = list(visited_ramps)[0]
                 reasons.append(f"**Crane Is Busy Elsewhere:** The J17 crane is already committed to **{conflicting_ramp_name}** on this date.")
     
-    # 4. Check for Tide & Work Hour Windows
     if ramp_obj:
-        # Check if ANY suitable truck has ANY valid window.
         all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, req_date, req_date)
         any_window_found = False
         for truck in trucks_working_that_day:
@@ -193,7 +186,6 @@ def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, 
         if not any_window_found:
             reasons.append("**Tide Conditions Not Met:** No valid tide windows overlap with available truck working hours on this date.")
             
-    # 5. If we still have no reasons, it's likely that all available slots are just booked.
     if not reasons:
         reasons.append("**All Slots Booked:** All available time slots for suitable trucks are already taken on this date.")
         
@@ -384,18 +376,15 @@ def analyze_job_distribution(scheduled_jobs, all_boats_map, all_ramps_map):
             'by_ramp': Counter()
         }
 
-    # Analyze distribution by day of the week
     day_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
     day_counter = Counter(day_map[job.scheduled_start_datetime.weekday()] for job in scheduled_jobs)
 
-    # Analyze distribution by boat type
     boat_type_counter = Counter()
     for job in scheduled_jobs:
         boat = all_boats_map.get(job.boat_id)
         if boat:
             boat_type_counter[boat.boat_type] += 1
             
-    # Analyze distribution by ramp
     ramp_counter = Counter()
     for job in scheduled_jobs:
         ramp_id = job.pickup_ramp_id or job.dropoff_ramp_id
