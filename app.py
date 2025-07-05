@@ -343,7 +343,11 @@ def initialize_session_state():
         'num_suggestions': 3, 'crane_look_back_days': 7, 'crane_look_forward_days': 60,
         'slot_page_index': 0, 'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS,
         'show_copy_dropdown': False,
-        'failure_reasons': [] # Initialize failure reasons list
+        'failure_reasons': [],
+        # New/Re-added state variables for this refined search
+        'customer_search_input': '',
+        'selected_customer_id': None,
+        'search_triggered': False # New: to track if search button was pressed
     }
     for key, default_value in defaults.items():
         if key not in st.session_state: st.session_state[key] = default_value
@@ -352,63 +356,107 @@ def initialize_session_state():
             st.session_state.data_loaded = True
         else: st.error("Failed to load customer and boat data.")
 
-initialize_session_state()
+# ... (rest of your initialize_session_state function remains the same) ...
 
-# --- Main App Body ---
-st.title("Marine Transportation")
+# --- PART OF THE MAIN APP BODY: Inside `if app_mode == "Schedule New Boat":` ---
 
-with st.container(border=True):
-    stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Overall Progress")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown(create_gauge(stats['all_boats']['scheduled'], stats['all_boats']['total'], "Scheduled"), unsafe_allow_html=True)
-        with c2:
-            st.markdown(create_gauge(stats['all_boats']['launched'], stats['all_boats']['total'], "Launched"), unsafe_allow_html=True)
-    with col2:
-        st.subheader("ECM Boats")
-        c1, c2 = st.columns(2)
-        with c1: st.metric(label="Scheduled", value=stats['ecm_boats']['scheduled'], delta=f"/ {stats['ecm_boats']['total']} Total", delta_color="off")
-        with c2: st.metric(label="Launched (to date)", value=stats['ecm_boats']['launched'], delta=f"/ {stats['ecm_boats']['scheduled']} Sched.", delta_color="off")
-st.markdown("---")
-
-st.sidebar.title("Navigation")
-app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
-
-# --- PAGE 1: SCHEDULER ---
-if app_mode == "Schedule New Boat":
-    if st.session_state.info_message:
-        st.info(st.session_state.info_message); st.session_state.info_message = ""
-    # --- NEW: Display Failure Reasons ---
-    if st.session_state.get('failure_reasons'):
-        with st.container(border=True):
-            st.error("Could not find any suitable slots for the request.")
-            st.markdown("##### Diagnostics:")
-            for reason in st.session_state.failure_reasons:
-                st.markdown(f"- {reason}", unsafe_allow_html=True)
-    if st.session_state.get("confirmation_message"):
-        st.success(f"✅ {st.session_state.confirmation_message}")
-        if st.button("Schedule Another Job"): st.session_state.pop("confirmation_message", None); st.rerun()
-
+# Replace the existing customer search and selection block with this:
     st.sidebar.header("New Job Request")
-    customer_name_input = st.sidebar.text_input("Enter Customer Name:", help="e.g., Olivia, James, Tho")
-    customer, boat = None, None
 
-    if customer_name_input:
-        results = [c for c in ecm.LOADED_CUSTOMERS.values() if customer_name_input.lower() in c.customer_name.lower()]
-        if len(results) == 1: customer = results[0]
-        elif len(results) > 1:
-            options = {c.customer_name: c for c in results}
-            customer = options.get(st.sidebar.selectbox("Multiple matches, please select:", options.keys()))
-        else: st.sidebar.warning("No customer found.")
+    # The text input where the user types
+    st.session_state.customer_search_input = st.sidebar.text_input(
+        "Enter Customer Name or Boat ID:",
+        value=st.session_state.customer_search_input,
+        help="Type a name or Boat ID, then click 'Search' to find matches."
+    )
 
-    if customer:
-        st.sidebar.success(f"Selected: {customer.customer_name}")
-        boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
-        if not boat: st.sidebar.error(f"No boat found for {customer.customer_name}.");st.stop()
+    # Search button
+    search_button_clicked = st.sidebar.button("Search for Customer/Boat")
 
+    # Reset customer selection if the search input changes or search button is pressed
+    # This prevents an old selection from persisting if the user types something new or starts a fresh search
+    if search_button_clicked:
+        st.session_state.selected_customer_id = None
+        st.session_state.search_triggered = True # Mark that a search was explicitly triggered
+
+    customer = None
+    boat = None
+
+    # Logic to populate customer and boat based on selected_customer_id
+    if st.session_state.selected_customer_id:
+        customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
+        if customer:
+            boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
+            if not boat:
+                st.sidebar.error(f"No boat found for {customer.customer_name}.")
+                st.session_state.selected_customer_id = None # Invalidate selection if boat is missing
+                customer = None # Clear customer
+                st.stop() # Stop execution if critical data is missing
+
+    # Perform search and display selectbox ONLY if search was explicitly triggered
+    if st.session_state.search_triggered and not customer: # Only search if no customer is currently selected
+        search_term = st.session_state.customer_search_input.lower().strip()
+        customer_options_list = [] # List to hold (customer_name, customer_id) tuples
+
+        if search_term:
+            # Search by customer name
+            for cust_obj in ecm.LOADED_CUSTOMERS.values():
+                if search_term in cust_obj.customer_name.lower():
+                    # Ensure customer has an associated boat
+                    if any(b.customer_id == cust_obj.customer_id for b in ecm.LOADED_BOATS.values()):
+                        customer_options_list.append((cust_obj.customer_name, cust_obj.customer_id))
+
+            # Search by boat ID
+            for boat_id, boat_obj in ecm.LOADED_BOATS.items():
+                if search_term == boat_id.lower():
+                    cust_obj = ecm.LOADED_CUSTOMERS.get(boat_obj.customer_id)
+                    if cust_obj:
+                        # Add if not already present from customer name search
+                        if (cust_obj.customer_name, cust_obj.customer_id) not in customer_options_list:
+                            customer_options_list.append((cust_obj.customer_name, cust_obj.customer_id))
+
+            # Sort alphabetically by customer name for display
+            customer_options_list.sort(key=lambda x: x[0])
+
+            if customer_options_list:
+                # Create display labels for the selectbox including boat details
+                display_labels = ["-- Select a Customer --"]
+                customer_id_map = {"-- Select a Customer --": None} # Map labels back to customer IDs
+                
+                for name, cust_id in customer_options_list:
+                    matched_boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == cust_id), None)
+                    if matched_boat:
+                        label = f"{name} ({matched_boat.boat_length}' {matched_boat.boat_type})"
+                        display_labels.append(label)
+                        customer_id_map[label] = cust_id
+                    else:
+                        # This case should ideally not happen if we filter for boats above, but as a fallback
+                        label = f"{name} (No Boat Found)"
+                        display_labels.append(label)
+                        customer_id_map[label] = cust_id
+
+                selected_label = st.sidebar.selectbox(
+                    "Select Customer/Boat from results:",
+                    options=display_labels,
+                    index=0, # Default to the "-- Select a Customer --" option
+                    key="customer_selection_box"
+                )
+
+                if selected_label and selected_label != "-- Select a Customer --":
+                    selected_id = customer_id_map.get(selected_label)
+                    if selected_id:
+                        st.session_state.selected_customer_id = selected_id
+                        st.rerun() # Rerun to update customer/boat details immediately
+
+            else:
+                st.sidebar.warning(f"No customer or boat found matching '{st.session_state.customer_search_input}'.")
+                st.session_state.search_triggered = False # Reset if no results to avoid continuous empty selectbox
+        else:
+            if st.session_state.search_triggered: # Only show warning if search button was clicked with empty input
+                st.sidebar.warning("Please enter a customer name or boat ID to search.")
+                st.session_state.search_triggered = False
+
+    # Display selected customer and boat details (if found)
     if customer and boat:
         st.sidebar.markdown("---"); st.sidebar.subheader("Selected Customer & Boat:")
         st.sidebar.write(f"**Customer:** {customer.customer_name}")
@@ -421,7 +469,10 @@ if app_mode == "Schedule New Boat":
         service_type = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
         req_date = st.sidebar.date_input("Requested Date:", datetime.date.today() + datetime.timedelta(days=7))
       
-        ramp_id = st.sidebar.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys())) if service_type in ["Launch", "Haul"] else None
+        # Conditional ramp selection based on service type
+        ramp_id = None
+        if service_type in ["Launch", "Haul"]:
+            ramp_id = st.sidebar.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys()))
         
         st.sidebar.markdown("---"); st.sidebar.subheader("Search Options")
         relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
@@ -433,8 +484,6 @@ if app_mode == "Schedule New Boat":
             st.session_state.slot_page_index = 0
             st.session_state.failure_reasons = [] # Clear old reasons before new search
         
-            # Pass st.session_state.failure_reasons by reference or update it within find_available_job_slots if needed
-            # The find_available_job_slots function already returns `reasons` as the 3rd element
             slots, msg, reasons, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override)
             st.session_state.info_message = msg
             st.session_state.found_slots = slots
