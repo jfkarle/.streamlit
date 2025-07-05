@@ -31,7 +31,7 @@ def create_gauge(value, max_value, label):
     if percent >= 0.8: fill_color = "#4CAF50"
     main_text, sub_label = str(value), f"{label.upper()} OF {max_value}"
     return f'''
-    <svg viewBox="0 0 100 65" style="width: 150px; height: 97px; overflow: visible;">
+    <svg viewBox="0 0 100 65" style="width: 150px;height: 97px; overflow: visible;">
         <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="#e0e0e0" stroke-width="10" fill="none" />
         <path d="{d}" stroke="{fill_color}" stroke-width="10" fill="none" />
         <text x="50" y="45" text-anchor="middle" font-size="20" font-weight="bold" fill="#333">{main_text}</text>
@@ -43,7 +43,7 @@ def format_tides_for_display(slot, truck_schedule):
     tide_times = slot.get('high_tide_times', [])
     if not tide_times: return ""
     truck_id, slot_date = slot.get('truck_id'), slot.get('date')
-    op_hours = truck_schedule.get(truck_id, {}).get(slot_date.weekday()) if truck_id and slot_date else None
+    op_hours = truck_schedule.get(truck_id, {}).get(slot_date.weekday())
     if not op_hours: return "HT: " + " / ".join([ecm.format_time_for_display(t) for t in tide_times])
     op_open, op_close = op_hours[0], op_hours[1]
     def get_tide_relevance_score(tide_time):
@@ -70,7 +70,7 @@ def display_crane_day_calendar(crane_days_for_ramp):
         st.subheader(f"Calendar for {selected_month_str}")
         header_cols = st.columns(7)
         for col, day_name in zip(header_cols, ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
-            with col: st.markdown(f"<p style='text-align: center; font-weight: bold;'>{day_name}</p>", unsafe_allow_html=True)
+            with col: st.markdown(f"<p style='text-align: center;font-weight: bold;'>{day_name}</p>", unsafe_allow_html=True)
         st.markdown("---")
         for week in calendar.Calendar().monthdatescalendar(selected_month.year, selected_month.month):
             cols = st.columns(7)
@@ -82,7 +82,7 @@ def display_crane_day_calendar(crane_days_for_ramp):
                     bg_color = "#E8F5E9" if is_candidate else "#FFFFFF"
                     border_color = "#1E88E5" if is_today else ("#4CAF50" if is_candidate else "#E0E0E0")
                     font_weight = "bold" if is_candidate or is_today else "normal"
-                    cols[i].markdown(f'<div style="padding:10px; border-radius:5px; border: 2px solid {border_color}; background-color:{bg_color}; height: 60px;"><p style="text-align: right; font-weight: {font_weight}; color: black;">{day.day}</p></div>', unsafe_allow_html=True)
+                    cols[i].markdown(f'<div style="padding:10px; border-radius:5px; border: 2px solid {border_color};background-color:{bg_color}; height: 60px;"><p style="text-align: right; font-weight: {font_weight}; color: black;">{day.day}</p></div>', unsafe_allow_html=True)
 
 def _abbreviate_town(address):
     """
@@ -111,12 +111,12 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     margin, time_col_width = 0.5 * inch, 0.75 * inch
     content_width = width - 2 * margin - time_col_width
     col_width = content_width / len(planner_columns)
-    
+
     start_time_obj = datetime.time(7, 30)
     end_time_obj = datetime.time(17, 30)
     total_minutes = (end_time_obj.hour * 60 + end_time_obj.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
 
-    top_y = height - margin - 0.8 * inch 
+    top_y = height - margin - 0.8 * inch
     bottom_y = margin + 0.5 * inch
     content_height = top_y - bottom_y
 
@@ -135,21 +135,21 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             if high_tides:
                 noon = datetime.datetime.combine(datetime.date.min, datetime.time(12,0))
                 primary_high_tide = min(high_tides, key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - noon))
-            
+
             def round_time(t):
-                mins = t.hour * 60 + t.minute; rounded = int(round(mins / 15.0) * 15)
+                mins = t.hour * 60 + t.minute;rounded = int(round(mins / 15.0) * 15)
                 return datetime.time(min(23, rounded // 60), rounded % 60)
             high_tide_highlights = [round_time(t['time']) for t in all_tides.get('H', [])]
             low_tide_highlights = [round_time(t['time']) for t in all_tides.get('L', [])]
-    
-    c.setFont("Helvetica-Bold", 12); c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
+
+    c.setFont("Helvetica-Bold", 12);c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
     if primary_high_tide:
         tide_time_str = ecm.format_time_for_display(primary_high_tide['time'])
         tide_height_str = f"{float(primary_high_tide.get('height', 0)):.1f}'"
-        c.setFont("Helvetica-Bold", 9); c.drawString(margin, height - 0.6 * inch, f"High Tide: {tide_time_str} ({tide_height_str})")
+        c.setFont("Helvetica-Bold", 9);c.drawString(margin, height - 0.6 * inch, f"High Tide: {tide_time_str} ({tide_height_str})")
 
     for i, name in enumerate(planner_columns):
-        c.setFont("Helvetica-Bold", 14); c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
+        c.setFont("Helvetica-Bold", 14);c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
 
     c.setFont("Helvetica-Bold", 9)
     c.drawString(margin + 3, top_y - 9, "7:30")
@@ -165,29 +165,29 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             elif check_time in low_tide_highlights:
                 hour_highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
                 break
-        
+
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
             if not (start_time_obj <= current_time <= end_time_obj): continue
             y = get_y_for_time(current_time)
-            
+
             c.setStrokeColorRGB(0.7, 0.7, 0.7)
             c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
-            
+
             if minute == 0:
                 if hour_highlight_color:
                     c.setFillColor(hour_highlight_color)
                     c.rect(margin + 1, y - 11, time_col_width - 2, 13, fill=1, stroke=0)
                 display_hour = hour if hour <= 12 else hour - 12
-                c.setFont("Helvetica-Bold", 9); c.setFillColorRGB(0,0,0)
+                c.setFont("Helvetica-Bold", 9);c.setFillColorRGB(0,0,0)
                 c.drawString(margin + 3, y - 9, str(display_hour))
 
     c.setStrokeColorRGB(0,0,0)
     for i in range(len(planner_columns) + 1):
-        x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
-    c.line(margin, top_y, margin, bottom_y); c.line(width - margin, top_y, width - margin, bottom_y)
-    c.line(margin, bottom_y, width - margin, bottom_y); c.line(margin, top_y, width - margin, top_y)
+        x = margin + time_col_width + i * col_width;c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
+    c.line(margin, top_y, margin, bottom_y);c.line(width - margin, top_y, width - margin, bottom_y)
+    c.line(margin, bottom_y, width - margin, bottom_y);c.line(margin, top_y, width - margin, top_y)
 
     for job in jobs_for_day:
         start_time, end_time = job.scheduled_start_datetime.time(), job.scheduled_end_datetime.time()
@@ -197,21 +197,21 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         customer, boat = ecm.get_customer_details(job.customer_id), ecm.get_boat_details(job.boat_id)
         if job.assigned_hauling_truck_id in column_map:
             col_index = column_map[job.assigned_hauling_truck_id]; text_x = margin + time_col_width + (col_index + 0.5) * col_width
-            c.setFillColorRGB(0,0,0); c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_x, line1_y, customer.customer_name)
-            c.setFont("Helvetica", 7); c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
+            c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_x, line1_y, customer.customer_name)
+            c.setFont("Helvetica", 7);c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
             c.drawCentredString(text_x, line3_y, f"{_abbreviate_town(job.pickup_street_address)}-{_abbreviate_town(job.dropoff_street_address)}")
-            c.setLineWidth(2); c.line(text_x, y0 - 45, text_x, y_end); c.line(text_x - 10, y_end, text_x + 10, y_end)
+            c.setLineWidth(2);c.line(text_x, y0 - 45, text_x, y_end); c.line(text_x - 10, y_end, text_x + 10, y_end)
         if job.assigned_crane_truck_id and 'J17' in column_map:
-            crane_col_index = column_map['J17']; crane_text_x = margin + time_col_width + (crane_col_index + 0.5) * col_width
+            crane_col_index = column_map['J17'];crane_text_x = margin + time_col_width + (crane_col_index + 0.5) * col_width
             y_crane_end = get_y_for_time(job.j17_busy_end_datetime.time())
-            c.setFillColorRGB(0,0,0); c.setFont("Helvetica-Bold", 8); c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
-            c.setFont("Helvetica", 7); c.drawCentredString(crane_text_x, line2_y, _abbreviate_town(job.dropoff_street_address))
-            c.setLineWidth(2); c.line(crane_text_x, y0-45, crane_text_x, y_crane_end); c.line(crane_text_x-3, y_crane_end, crane_text_x+3, y_crane_end)
+            c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
+            c.setFont("Helvetica", 7);c.drawCentredString(crane_text_x, line2_y, _abbreviate_town(job.dropoff_street_address))
+            c.setLineWidth(2); c.line(crane_text_x, y0-45, crane_text_x, y_crane_end);c.line(crane_text_x-3, y_crane_end, crane_text_x+3, y_crane_end)
 
     c.save()
     buffer.seek(0)
     return buffer
-    
+
 def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     from PyPDF2 import PdfMerger
     from io import BytesIO
@@ -250,7 +250,7 @@ def generate_progress_report_pdf(stats, analysis):
     launched_boats = stats['all_boats']['launched']
     percent_scheduled = (scheduled_boats / total_boats * 100) if total_boats > 0 else 0
     percent_launched = (launched_boats / total_boats * 100) if total_boats > 0 else 0
-    
+
     summary_data = [
         ['Metric', 'Value'],
         ['Total Boats in Fleet:', f'{total_boats}'],
@@ -271,7 +271,7 @@ def generate_progress_report_pdf(stats, analysis):
     story.append(PageBreak())
     story.append(Paragraph("Scheduling Analytics", styles['h2']))
     story.append(Spacer(1, 12))
-    
+
     # Jobs by Day Chart
     if analysis['by_day']:
         story.append(Paragraph("Jobs by Day of Week", styles['h3']))
@@ -279,7 +279,7 @@ def generate_progress_report_pdf(stats, analysis):
         day_data = [tuple(v for k,v in sorted(analysis['by_day'].items()))]
         day_names = [k for k,v in sorted(analysis['by_day'].items())]
         bc = VerticalBarChart()
-        bc.x = 50; bc.y = 50; bc.height = 125; bc.width = 300
+        bc.x = 50;bc.y = 50; bc.height = 125; bc.width = 300
         bc.data = day_data
         bc.categoryAxis.categoryNames = day_names
         drawing.add(bc)
@@ -293,7 +293,7 @@ def generate_progress_report_pdf(stats, analysis):
         ramp_data = [tuple(v for k,v in sorted(analysis['by_ramp'].items()))]
         ramp_names = [k for k,v in sorted(analysis['by_ramp'].items())]
         bc_ramp = VerticalBarChart()
-        bc_ramp.x = 50; bc_ramp.y = 50; bc_ramp.height = 125; bc_ramp.width = 300
+        bc_ramp.x = 50;bc_ramp.y = 50; bc_ramp.height = 125; bc_ramp.width = 300
         bc_ramp.data = ramp_data
         bc_ramp.categoryAxis.categoryNames = ramp_names
         bc_ramp.categoryAxis.labels.angle = 45 # Angle labels to fit
@@ -304,7 +304,7 @@ def generate_progress_report_pdf(stats, analysis):
     story.append(PageBreak())
     story.append(Paragraph("Detailed Boat Status", styles['h2']))
     story.append(Spacer(1, 12))
-    
+
     table_data = [["Customer Name", "Boat Details", "ECM?", "Scheduling Status"]]
     for boat in ecm.LOADED_BOATS.values():
         cust = ecm.get_customer_details(boat.customer_id)
@@ -317,7 +317,7 @@ def generate_progress_report_pdf(stats, analysis):
             "Yes" if cust.is_ecm_customer else "No",
             status
         ])
-    
+
     detail_table = Table(table_data, colWidths=[150, 150, 50, 150])
     detail_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.grey),
@@ -329,11 +329,11 @@ def generate_progress_report_pdf(stats, analysis):
         ('GRID', (0,0), (-1,-1), 1, colors.black)
     ]))
     story.append(detail_table)
-    
+
     doc.build(story)
     buffer.seek(0)
     return buffer
-    
+
 
 # --- Session State Initialization ---
 def initialize_session_state():
@@ -343,11 +343,9 @@ def initialize_session_state():
         'num_suggestions': 3, 'crane_look_back_days': 7, 'crane_look_forward_days': 60,
         'slot_page_index': 0, 'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS,
         'show_copy_dropdown': False,
-        'failure_reasons': [], # Initialize failure reasons list
-        # New/Re-added state variables for this refined search
+        # New state variables for autocomplete
         'customer_search_input': '',
-        'selected_customer_id': None,
-        'search_triggered': False # New: to track if search button was pressed
+        'selected_customer_id': None
     }
     for key, default_value in defaults.items():
         if key not in st.session_state: st.session_state[key] = default_value
@@ -356,109 +354,129 @@ def initialize_session_state():
             st.session_state.data_loaded = True
         else: st.error("Failed to load customer and boat data.")
 
-# ... (rest of your initialize_session_state function remains the same) ...
+initialize_session_state()
 
-# --- PART OF THE MAIN APP BODY: Inside `if app_mode == "Schedule New Boat":` ---
+# --- Main App Body ---
+st.title("Marine Transportation")
 
-# Replace the existing customer search and selection block with this:
+with st.container(border=True):
+    stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Overall Progress")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(create_gauge(stats['all_boats']['scheduled'], stats['all_boats']['total'], "Scheduled"), unsafe_allow_html=True)
+        with c2:
+            st.markdown(create_gauge(stats['all_boats']['launched'], stats['all_boats']['total'], "Launched"), unsafe_allow_html=True)
+    with col2:
+        st.subheader("ECM Boats")
+        c1, c2 = st.columns(2)
+        with c1: st.metric(label="Scheduled", value=stats['ecm_boats']['scheduled'], delta=f"/ {stats['ecm_boats']['total']} Total", delta_color="off")
+        with c2: st.metric(label="Launched (to date)", value=stats['ecm_boats']['launched'], delta=f"/ {stats['ecm_boats']['scheduled']} Sched.", delta_color="off")
+st.markdown("---")
+
+st.sidebar.title("Navigation")
+app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
+
+# --- PAGE 1: SCHEDULER ---
+if app_mode == "Schedule New Boat":
+    if st.session_state.info_message:
+        st.info(st.session_state.info_message); st.session_state.info_message = ""
+    if st.session_state.get("confirmation_message"):
+        st.success(f"✅ {st.session_state.confirmation_message}")
+        if st.button("Schedule Another Job"): st.session_state.pop("confirmation_message", None);st.rerun()
+
     st.sidebar.header("New Job Request")
 
-    # The text input where the user types
+    # --- AUTOCOMPLETE CUSTOMER SEARCH ---
+    # Store the input in session state to maintain it across reruns
     st.session_state.customer_search_input = st.sidebar.text_input(
         "Enter Customer Name or Boat ID:",
         value=st.session_state.customer_search_input,
-        help="Type a name or Boat ID, then click 'Search' to find matches."
+        help="Type to search for customer name or boat ID. Example: 'Olivia' or 'B5001'"
     )
-
-    # Search button
-    search_button_clicked = st.sidebar.button("Search for Customer/Boat")
-
-    # Reset customer selection if the search input changes or search button is pressed
-    # This prevents an old selection from persisting if the user types something new or starts a fresh search
-    if search_button_clicked:
-        st.session_state.selected_customer_id = None
-        st.session_state.search_triggered = True # Mark that a search was explicitly triggered
 
     customer = None
     boat = None
 
-    # Logic to populate customer and boat based on selected_customer_id
+    # Reset selected customer if the search input changes substantially
+    # This prevents an old selection from persisting if the user types something new
+    if st.session_state.customer_search_input and st.session_state.selected_customer_id:
+        current_selected_customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
+        if not current_selected_customer or st.session_state.customer_search_input.lower() not in current_selected_customer.customer_name.lower():
+            st.session_state.selected_customer_id = None # Invalidate old selection
+
+    search_term = st.session_state.customer_search_input.lower().strip()
+    customer_options = []
+    # If a customer has already been selected via the selectbox, we use that directly
     if st.session_state.selected_customer_id:
         customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
         if customer:
-            boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
-            if not boat:
-                st.sidebar.error(f"No boat found for {customer.customer_name}.")
-                st.session_state.selected_customer_id = None # Invalidate selection if boat is missing
-                customer = None # Clear customer
-                st.stop() # Stop execution if critical data is missing
-
-    # Perform search and display selectbox ONLY if search was explicitly triggered
-    if st.session_state.search_triggered and not customer: # Only search if no customer is currently selected
-        search_term = st.session_state.customer_search_input.lower().strip()
-        customer_options_list = [] # List to hold (customer_name, customer_id) tuples
-
-        if search_term:
-            # Search by customer name
-            for cust_obj in ecm.LOADED_CUSTOMERS.values():
-                if search_term in cust_obj.customer_name.lower():
-                    # Ensure customer has an associated boat
-                    if any(b.customer_id == cust_obj.customer_id for b in ecm.LOADED_BOATS.values()):
-                        customer_options_list.append((cust_obj.customer_name, cust_obj.customer_id))
-
-            # Search by boat ID
-            for boat_id, boat_obj in ecm.LOADED_BOATS.items():
-                if search_term == boat_id.lower():
-                    cust_obj = ecm.LOADED_CUSTOMERS.get(boat_obj.customer_id)
-                    if cust_obj:
-                        # Add if not already present from customer name search
-                        if (cust_obj.customer_name, cust_obj.customer_id) not in customer_options_list:
-                            customer_options_list.append((cust_obj.customer_name, cust_obj.customer_id))
-
-            # Sort alphabetically by customer name for display
-            customer_options_list.sort(key=lambda x: x[0])
-
-            if customer_options_list:
-                # Create display labels for the selectbox including boat details
-                display_labels = ["-- Select a Customer --"]
-                customer_id_map = {"-- Select a Customer --": None} # Map labels back to customer IDs
-                
-                for name, cust_id in customer_options_list:
-                    matched_boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == cust_id), None)
-                    if matched_boat:
-                        label = f"{name} ({matched_boat.boat_length}' {matched_boat.boat_type})"
-                        display_labels.append(label)
-                        customer_id_map[label] = cust_id
-                    else:
-                        # This case should ideally not happen if we filter for boats above, but as a fallback
-                        label = f"{name} (No Boat Found)"
-                        display_labels.append(label)
-                        customer_id_map[label] = cust_id
-
-                selected_label = st.sidebar.selectbox(
-                    "Select Customer/Boat from results:",
-                    options=display_labels,
-                    index=0, # Default to the "-- Select a Customer --" option
-                    key="customer_selection_box"
-                )
-
-                if selected_label and selected_label != "-- Select a Customer --":
-                    selected_id = customer_id_map.get(selected_label)
-                    if selected_id:
-                        st.session_state.selected_customer_id = selected_id
-                        st.rerun() # Rerun to update customer/boat details immediately
-
+            # If the search input now matches the selected customer, keep it stable
+            if search_term == customer.customer_name.lower():
+                # No need to populate options if already perfectly matched and selected
+                pass
             else:
-                st.sidebar.warning(f"No customer or boat found matching '{st.session_state.customer_search_input}'.")
-                st.session_state.search_triggered = False # Reset if no results to avoid continuous empty selectbox
-        else:
-            if st.session_state.search_triggered: # Only show warning if search button was clicked with empty input
-                st.sidebar.warning("Please enter a customer name or boat ID to search.")
-                st.session_state.search_triggered = False
+                # If search input changed, invalidate and re-search
+                st.session_state.selected_customer_id = None
+                customer = None # Clear customer for re-selection
 
-    # Display selected customer and boat details (if found)
+    # If no customer selected yet, or old selection invalidated, search
+    if not customer and search_term:
+        # Search by customer name
+        customer_results = [
+            c for c in ecm.LOADED_CUSTOMERS.values()
+            if search_term in c.customer_name.lower()
+        ]
+        # Search by boat ID
+        boat_results_by_id = [
+            ecm.LOADED_BOATS.get(b_id) for b_id in ecm.LOADED_BOATS.keys()
+            if search_term == b_id.lower()
+        ]
+
+        # Combine and deduplicate customer results
+        combined_customer_ids = set()
+        for c in customer_results:
+            if c.customer_id not in combined_customer_ids:
+                customer_options.append(c.customer_name)
+                combined_customer_ids.add(c.customer_id)
+
+        for b in boat_results_by_id:
+            if b and b.customer_id not in combined_customer_ids:
+                customer_options.append(ecm.LOADED_CUSTOMERS.get(b.customer_id).customer_name)
+                combined_customer_ids.add(b.customer_id)
+
+        customer_options.sort() # Alphabetical sort for selectbox
+
+        if customer_options:
+            # Add an empty string at the beginning to allow unselecting
+            display_options = [""] + customer_options
+            selected_name = st.sidebar.selectbox(
+                "Select Customer:",
+                display_options,
+                index=0, # Default to empty string
+                key="customer_selection_box"
+            )
+            if selected_name:
+                # Find the actual customer object based on the selected name
+                customer = next((c for c in ecm.LOADED_CUSTOMERS.values() if c.customer_name == selected_name), None)
+                if customer:
+                    st.session_state.selected_customer_id = customer.customer_id
+        elif search_term:
+            st.sidebar.warning("No customer or boat found matching your search.")
+
+    # Retrieve customer if one was previously selected and is still valid
+    if st.session_state.selected_customer_id and not customer:
+         customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
+
+    if customer:
+        st.sidebar.success(f"Selected: {customer.customer_name}")
+        boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
+        if not boat: st.sidebar.error(f"No boat found for {customer.customer_name}.");st.stop()
+
     if customer and boat:
-        st.sidebar.markdown("---"); st.sidebar.subheader("Selected Customer & Boat:")
+        st.sidebar.markdown("---");st.sidebar.subheader("Selected Customer & Boat:")
         st.sidebar.write(f"**Customer:** {customer.customer_name}")
         st.sidebar.write(f"**ECM Boat:** {'Yes' if customer.is_ecm_customer else 'No'}")
         st.sidebar.write(f"**Boat Type:** {boat.boat_type}")
@@ -468,13 +486,10 @@ def initialize_session_state():
 
         service_type = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
         req_date = st.sidebar.date_input("Requested Date:", datetime.date.today() + datetime.timedelta(days=7))
-      
-        # Conditional ramp selection based on service type
-        ramp_id = None
-        if service_type in ["Launch", "Haul"]:
-            ramp_id = st.sidebar.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys()))
-        
-        st.sidebar.markdown("---"); st.sidebar.subheader("Search Options")
+
+        ramp_id = st.sidebar.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys())) if service_type in ["Launch", "Haul"] else None
+
+        st.sidebar.markdown("---");st.sidebar.subheader("Search Options")
         relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
         manager_override = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
 
@@ -482,37 +497,35 @@ def initialize_session_state():
             st.session_state.current_job_request = {'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'), 'selected_ramp_id': ramp_id}
             st.session_state.search_requested_date = req_date
             st.session_state.slot_page_index = 0
-            st.session_state.failure_reasons = [] # Clear old reasons before new search
-        
-            slots, msg, reasons, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override)
-            st.session_state.info_message = msg
-            st.session_state.found_slots = slots
-            st.session_state.failure_reasons = reasons # Store the new reasons
-            st.session_state.selected_slot = None
+
+            slots, msg, _, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override)
+            st.session_state.info_message, st.session_state.found_slots, st.session_state.selected_slot = msg, slots, None
             st.rerun()
 
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
         total_slots, page_index, slots_per_page = len(st.session_state.found_slots), st.session_state.slot_page_index, 3
-        
+
         nav_cols = st.columns([1, 1, 5, 1, 1])
-        nav_cols[0].button("⬅️ Prev", on_click=lambda: st.session_state.update(slot_page_index=page_index - slots_per_page), disabled=(page_index == 0), use_container_width=True) # FIXED TYPO HERE
-        nav_cols[1].button("Next ➡️", on_click=lambda: st.session_state.update(slot_page_index=page_index + slots_per_page), disabled=(page_page + slots_per_page >= total_slots), use_container_width=True) # FIXED TYPO HERE - page_page
+        # --- REPAIRED LINE ---
+        nav_cols[0].button("⬅️ Prev", on_click=lambda: st.session_state.update(slot_page_index=page_index - slots_per_page), disabled=(page_index == 0), use_container_width=True)
+        nav_cols[1].button("Next ➡️", on_click=lambda: st.session_state.update(slot_page_index=page_index + slots_per_page), disabled=(page_index + slots_per_page >= total_slots), use_container_width=True)
         if total_slots > 0: nav_cols[3].write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_")
         st.markdown("---")
 
         cols = st.columns(3)
         for i, slot in enumerate(st.session_state.found_slots[page_index : page_index + slots_per_page]):
             with cols[i % 3]:
-                container_style = "position:relative; padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px; height: 260px;" if i == 0 and page_index == 0 else "position:relative; padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF; margin-bottom: 15px; height: 260px;"
+                container_style = "position:relative;padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;height: 260px;" if i == 0 and page_index == 0 else "position:relative; padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF;margin-bottom: 15px; height: 260px;"
                 card_html = f'<div style="{container_style}">'
                 if slot.get('is_active_crane_day') or slot.get('is_candidate_crane_day'):
                     tooltip = "Active Crane Day" if slot.get('is_active_crane_day') else "Candidate Crane Day"
-                    card_html += f'<span title="{tooltip}" style="position:absolute; top:8px; right:10px; font-size: 24px; cursor: help;">⛵</span>'
+                    card_html += f'<span title="{tooltip}" style="position:absolute;top:8px; right:10px; font-size: 24px; cursor: help;">⛵</span>'
                 if st.session_state.search_requested_date and slot['date'] == st.session_state.search_requested_date:
                     card_html += "<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>"
-                
+
                 ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+
                 card_html += f"""
                     <p><b>Date:</b> {slot['date'].strftime('%a, %b %d, %Y')}</p>
                     <p><b>Time:</b> {ecm.format_time_for_display(slot.get('time'))}</p>
@@ -554,25 +567,26 @@ elif app_mode == "Reporting":
     with tab3:
         st.subheader("Scheduling Progress Report")
         stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
-        
+
         st.markdown("#### Overall Progress")
         c1, c2 = st.columns(2)
         c1.metric("Boats Scheduled", f"{stats['all_boats']['scheduled']} / {stats['all_boats']['total']}")
         c2.metric("Boats Launched (to date)", f"{stats['all_boats']['launched']} / {stats['all_boats']['total']}")
-        
+
         st.markdown("#### ECM Boats")
         c1, c2 = st.columns(2)
         c1.metric("ECM Scheduled", f"{stats['ecm_boats']['scheduled']} / {stats['ecm_boats']['total']}")
         c2.metric("ECM Launched (to date)", f"{stats['ecm_boats']['launched']} / {stats['ecm_boats']['total']}")
-        
+
         st.markdown("---")
         st.subheader("Download Formatted PDF Report")
+
 
         if st.button("📊 Generate PDF Report"):
             with st.spinner("Generating your report..."):
                 analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
                 pdf_buffer = generate_progress_report_pdf(stats, analysis)
-                
+
                 st.download_button(
                     label="📥 Download Report (.pdf)",
                     data=pdf_buffer,
@@ -641,16 +655,19 @@ elif app_mode == "Settings":
                 source_truck = st.selectbox("Select source:", [t for t in schedule_to_edit if t != truck_id])
                 if st.button("Apply Copy"):
                     st.session_state.truck_operating_hours[truck_id] = st.session_state.truck_operating_hours[source_truck]
+
                     st.session_state.show_copy_dropdown = False
                     st.rerun()
             st.markdown("---")
             with st.form(f"form_{truck_id}"):
                 st.write(f"**Editing hours for {truck_id}**")
                 new_hours = {}
+
                 for i, day in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
                     current = schedule_to_edit.get(truck_id, {}).get(i)
                     is_working = current is not None
                     start, end = (current[0], current[1]) if is_working else (datetime.time(8,0), datetime.time(16,0))
+
                     summary = f"{day}: {ecm.format_time_for_display(start)} - {ecm.format_time_for_display(end)}" if is_working else f"{day}: Off Duty"
                     with st.expander(summary):
                         c1,c2,c3 = st.columns([1,2,2])
@@ -658,6 +675,7 @@ elif app_mode == "Settings":
                         new_start = c2.time_input("Start", value=start, key=f"{truck_id}_{i}_s", disabled=not working)
                         new_end = c3.time_input("End", value=end, key=f"{truck_id}_{i}_e", disabled=not working)
                         new_hours[i] = (new_start, new_end) if working else None
+
                 if st.form_submit_button("Save Hours"):
                     st.session_state.truck_operating_hours[truck_id] = new_hours
                     st.success(f"Updated hours for {truck_id}.")
@@ -666,10 +684,10 @@ elif app_mode == "Settings":
     with tab3:
         st.subheader("QA & Data Generation Tools")
         st.write("This tool creates random, valid jobs to populate the calendar for testing.")
-        
+
         num_jobs_to_gen = st.number_input("Number of jobs to generate:", min_value=1, max_value=100, value=25, step=1)
         service_type_input = st.selectbox("Type of jobs to create:", ["All", "Launch", "Haul", "Transport"])
-        
+
         dcol1, dcol2 = st.columns(2)
         start_date_input = dcol1.date_input("Start of date range:", datetime.date(2025, 4, 15))
         end_date_input = dcol2.date_input("End of date range:", datetime.date(2025, 7, 1))
@@ -679,11 +697,11 @@ elif app_mode == "Settings":
                 st.error("Start date cannot be after end date.")
             else:
                 with st.spinner(f"Generating {num_jobs_to_gen} jobs..."):
-                    summary = ecm.generate_random_jobs(
-                        num_jobs_to_gen, 
-                        start_date_input, 
-                        end_date_input, 
-                        service_type_input, 
+                   summary = ecm.generate_random_jobs(
+                        num_jobs_to_gen,
+                        start_date_input,
+                        end_date_input,
+                        service_type_input,
                         st.session_state.truck_operating_hours
                     )
                 st.success(summary)
