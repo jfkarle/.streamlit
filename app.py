@@ -385,95 +385,83 @@ if app_mode == "Schedule New Boat":
         st.info(st.session_state.info_message); st.session_state.info_message = ""
     if st.session_state.get("confirmation_message"):
         st.success(f"✅ {st.session_state.confirmation_message}")
-        if st.button("Schedule Another Job"): st.session_state.pop("confirmation_message", None);st.rerun()
+        if st.button("Schedule Another Job"):
+            st.session_state.pop("confirmation_message", None)
+            st.rerun()
 
     st.sidebar.header("New Job Request")
 
-    # --- AUTOCOMPLETE CUSTOMER SEARCH ---
-    # Store the input in session state to maintain it across reruns
-    st.session_state.customer_search_input = st.sidebar.text_input(
-        "Enter Customer Name or Boat ID:",
-        value=st.session_state.customer_search_input,
-        help="Type to search for customer name or boat ID. Example: 'Olivia' or 'B5001'"
-    )
+    # --- ENHANCED CUSTOMER SEARCH ---
+    def select_customer(cust_id):
+        """Callback to set the selected customer ID in session state."""
+        st.session_state.selected_customer_id = cust_id
+        st.session_state.customer_search_input = ecm.LOADED_CUSTOMERS.get(cust_id).customer_name
 
+    def clear_selection():
+        """Callback to clear the customer selection and search input."""
+        st.session_state.selected_customer_id = None
+        st.session_state.customer_search_input = ""
+
+    # Check if a customer is already selected
+    if st.session_state.get('selected_customer_id'):
+        customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
+        # Display the selected customer and a button to clear the selection
+        st.sidebar.text_input(
+            "Selected Customer:",
+            value=customer.customer_name,
+            disabled=True
+        )
+        st.sidebar.button("Clear Selection", on_click=clear_selection, use_container_width=True)
+    else:
+        # If no customer is selected, show the search box and results
+        st.session_state.customer_search_input = st.sidebar.text_input(
+            "Search for Customer or Boat ID:",
+            value=st.session_state.get('customer_search_input', ''),
+            placeholder="e.g., 'Olivia' or 'B5001'"
+        )
+        search_term = st.session_state.customer_search_input.lower().strip()
+
+        if search_term:
+            # Search by customer name
+            customer_results = [c for c in ecm.LOADED_CUSTOMERS.values() if search_term in c.customer_name.lower()]
+            
+            # Search by boat ID and get the corresponding customer
+            boat_results = [b for b in ecm.LOADED_BOATS.values() if search_term in b.boat_id.lower()]
+            customers_from_boat_search = [ecm.LOADED_CUSTOMERS.get(b.customer_id) for b in boat_results if b and ecm.LOADED_CUSTOMERS.get(b.customer_id)]
+            
+            # Combine and deduplicate results using a dictionary
+            combined_customers = {c.customer_id: c for c in customer_results}
+            for c in customers_from_boat_search:
+                if c:
+                    combined_customers[c.customer_id] = c
+            
+            # Sort and display results as clickable buttons
+            sorted_customers = sorted(combined_customers.values(), key=lambda c: c.customer_name)
+            
+            if sorted_customers:
+                st.sidebar.write("---")
+                # Use a container with a specific height for long lists of results
+                with st.sidebar.container(height=250):
+                    for cust in sorted_customers:
+                        boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == cust.customer_id), None)
+                        boat_info = f" ({boat.boat_length}' {boat.boat_type}, ID: {boat.boat_id})" if boat else ""
+                        button_label = f"{cust.customer_name}{boat_info}"
+                        if st.button(button_label, key=f"select_{cust.customer_id}", on_click=select_customer, args=(cust.customer_id,), use_container_width=True):
+                            st.rerun()
+            else:
+                st.sidebar.warning("No matches found.")
+
+    # --- RETRIEVE CUSTOMER AND BOAT FROM STATE ---
     customer = None
     boat = None
-
-    # Reset selected customer if the search input changes substantially
-    # This prevents an old selection from persisting if the user types something new
-    if st.session_state.customer_search_input and st.session_state.selected_customer_id:
-        current_selected_customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
-        if not current_selected_customer or st.session_state.customer_search_input.lower() not in current_selected_customer.customer_name.lower():
-            st.session_state.selected_customer_id = None # Invalidate old selection
-
-    search_term = st.session_state.customer_search_input.lower().strip()
-    customer_options = []
-    # If a customer has already been selected via the selectbox, we use that directly
-    if st.session_state.selected_customer_id:
+    if st.session_state.get('selected_customer_id'):
         customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
         if customer:
-            # If the search input now matches the selected customer, keep it stable
-            if search_term == customer.customer_name.lower():
-                # No need to populate options if already perfectly matched and selected
-                pass
-            else:
-                # If search input changed, invalidate and re-search
-                st.session_state.selected_customer_id = None
-                customer = None # Clear customer for re-selection
-
-    # If no customer selected yet, or old selection invalidated, search
-    if not customer and search_term:
-        # Search by customer name
-        customer_results = [
-            c for c in ecm.LOADED_CUSTOMERS.values()
-            if search_term in c.customer_name.lower()
-        ]
-        # Search by boat ID
-        boat_results_by_id = [
-            ecm.LOADED_BOATS.get(b_id) for b_id in ecm.LOADED_BOATS.keys()
-            if search_term == b_id.lower()
-        ]
-
-        # Combine and deduplicate customer results
-        combined_customer_ids = set()
-        for c in customer_results:
-            if c.customer_id not in combined_customer_ids:
-                customer_options.append(c.customer_name)
-                combined_customer_ids.add(c.customer_id)
-
-        for b in boat_results_by_id:
-            if b and b.customer_id not in combined_customer_ids:
-                customer_options.append(ecm.LOADED_CUSTOMERS.get(b.customer_id).customer_name)
-                combined_customer_ids.add(b.customer_id)
-
-        customer_options.sort() # Alphabetical sort for selectbox
-
-        if customer_options:
-            # Add an empty string at the beginning to allow unselecting
-            display_options = [""] + customer_options
-            selected_name = st.sidebar.selectbox(
-                "Select Customer:",
-                display_options,
-                index=0, # Default to empty string
-                key="customer_selection_box"
-            )
-            if selected_name:
-                # Find the actual customer object based on the selected name
-                customer = next((c for c in ecm.LOADED_CUSTOMERS.values() if c.customer_name == selected_name), None)
-                if customer:
-                    st.session_state.selected_customer_id = customer.customer_id
-        elif search_term:
-            st.sidebar.warning("No customer or boat found matching your search.")
-
-    # Retrieve customer if one was previously selected and is still valid
-    if st.session_state.selected_customer_id and not customer:
-         customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
-
-    if customer:
-        st.sidebar.success(f"Selected: {customer.customer_name}")
-        boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
-        if not boat: st.sidebar.error(f"No boat found for {customer.customer_name}.");st.stop()
+            boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
+            if not boat:
+                st.sidebar.error(f"No boat found for {customer.customer_name}.")
+                clear_selection() # Clear the bad state
+                st.stop()
 
     if customer and boat:
         st.sidebar.markdown("---");st.sidebar.subheader("Selected Customer & Boat:")
@@ -507,7 +495,6 @@ if app_mode == "Schedule New Boat":
         total_slots, page_index, slots_per_page = len(st.session_state.found_slots), st.session_state.slot_page_index, 3
 
         nav_cols = st.columns([1, 1, 5, 1, 1])
-        # --- REPAIRED LINE ---
         nav_cols[0].button("⬅️ Prev", on_click=lambda: st.session_state.update(slot_page_index=page_index - slots_per_page), disabled=(page_index == 0), use_container_width=True)
         nav_cols[1].button("Next ➡️", on_click=lambda: st.session_state.update(slot_page_index=page_index + slots_per_page), disabled=(page_index + slots_per_page >= total_slots), use_container_width=True)
         if total_slots > 0: nav_cols[3].write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_")
@@ -545,7 +532,7 @@ if app_mode == "Schedule New Boat":
             new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
             if new_job_id:
                 st.session_state.confirmation_message = message
-                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date']:
+                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'selected_customer_id', 'customer_search_input']:
                     st.session_state.pop(key, None)
                 st.rerun()
             else: st.error(f"Failed to confirm job: {message}")
