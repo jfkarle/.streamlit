@@ -66,26 +66,16 @@ def format_time_for_display(time_obj):
     return time_obj.strftime('%I:%M %p').lstrip('0') if isinstance(time_obj, datetime.time) else "InvalidTime"
 
 def get_all_tide_times_for_ramp_and_date(ramp_obj, date_obj):
-    """
-    Fetches all high and low tide times for a given ramp and date
-    using the new range-based NOAA API call.
-    """
     if not ramp_obj or not ramp_obj.noaa_station_id:
         print(f"[ERROR] Ramp '{ramp_obj.ramp_name if ramp_obj else 'Unknown'}' missing NOAA station ID.")
         return {'H': [], 'L': []}
-
-    # Call the new function for a single-day range
     tides_for_range = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, date_obj, date_obj)
-    
-    # Get the specific day's data from the returned dictionary
     tide_data_for_day = tides_for_range.get(date_obj, [])
-
     all_tides = {'H': [], 'L': []}
     for tide_entry in tide_data_for_day:
         tide_type = tide_entry.get('type')
         if tide_type in ['H', 'L']:
             all_tides[tide_type].append(tide_entry)
-            
     return all_tides
 
 def load_candidate_days_from_file(filename="candidate_days.csv"):
@@ -224,8 +214,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     
     ramp_obj = get_ramp_details(selected_ramp_id)
     if service_type in ["Launch", "Haul"] and ramp_obj and boat.boat_type not in ramp_obj.allowed_boat_types:
-    reason = f"The boat type '{boat.boat_type}' is not permitted at the selected ramp '{ramp_obj.ramp_name}'."
-    return [], f"Validation Error: {reason}", [reason], False
+        reason = f"The boat type '{boat.boat_type}' is not permitted at the selected ramp '{ramp_obj.ramp_name}'."
+        return [], f"Validation Error: {reason}", [reason], False
     
     if truck_operating_hours is None:
         return [], "System Error: Truck operating hours not provided.", ["Truck operating hours are missing."], False
@@ -236,16 +226,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     needs_j17 = j17_duration.total_seconds() > 0
     suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
 
-    # --- NEW: Prevent crane from being booked at a second ramp on the same day ---
     if needs_j17 and not manager_override:
         date_str = requested_date.strftime('%Y-%m-%d')
         if date_str in crane_daily_status:
             visited_ramps = crane_daily_status[date_str]['ramps_visited']
-            # If crane has been used and the new request is for a different ramp, block it.
             if visited_ramps and selected_ramp_id not in visited_ramps:
                 reason = f"Crane is already scheduled at {list(visited_ramps)[0]} on this day."
                 return [], f"Validation Error: {reason}", [reason], False
-    # --- END NEW RULE ---
 
     def _find_slots_for_dates(date_list, slot_type_flag):
         found_slots = []
@@ -300,16 +287,17 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 slots.sort(key=lambda s: abs(s['date'] - requested_date))
                 return slots, "Found open slots on ideal tide days.", [], True
     
-        if not slots:
-            # --- Call the diagnostic function to get specific reasons ---
-            failure_reasons = _diagnose_failure_reasons(
-                requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override
-            )
-            return [], "No suitable slots could be found.", failure_reasons, False
-        else:
-            # --- This block now correctly handles the success case ---
-            slots.sort(key=lambda s: abs(s['date'] - requested_date))
-            return slots, f"Found {len(slots)} available slots.", [], False
+    general_search_dates = [requested_date + timedelta(days=i) for i in range(crane_look_forward_days)]
+    slots = _find_slots_for_dates(general_search_dates, "General Availability")
+
+    if not slots:
+        failure_reasons = _diagnose_failure_reasons(
+            requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override
+        )
+        return [], "No suitable slots could be found.", failure_reasons, False
+    else:
+        slots.sort(key=lambda s: abs(s['date'] - requested_date))
+        return slots, f"Found {len(slots)} available slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot):
     customer, boat, ramp = get_customer_details(original_request['customer_id']), get_boat_details(original_request['boat_id']), get_ramp_details(selected_slot.get('ramp_id'))
