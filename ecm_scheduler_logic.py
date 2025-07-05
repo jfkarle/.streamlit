@@ -225,7 +225,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     ramp_obj = get_ramp_details(selected_ramp_id)
     if service_type in ["Launch", "Haul"] and ramp_obj and boat.boat_type not in ramp_obj.allowed_boat_types:
     reason = f"The boat type '{boat.boat_type}' is not permitted at the selected ramp '{ramp_obj.ramp_name}'."
-        return [], f"Validation Error: {reason}", [reason], False
+    return [], f"Validation Error: {reason}", [reason], False
     
     if truck_operating_hours is None:
         return [], "System Error: Truck operating hours not provided.", ["Truck operating hours are missing."], False
@@ -300,16 +300,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 slots.sort(key=lambda s: abs(s['date'] - requested_date))
                 return slots, "Found open slots on ideal tide days.", [], True
     
-    general_search_dates = [requested_date + timedelta(days=i) for i in range(crane_look_forward_days)]
-    slots = _find_slots_for_dates(general_search_dates, "General Availability")
-    if not slots:
-    # --- NEW: Call the diagnostic function to get specific reasons ---
-    failure_reasons = _diagnose_failure_reasons(
-        requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override
-    )
-    return [], "No suitable slots could be found.", failure_reasons, False
-    slots.sort(key=lambda s: abs(s['date'] - requested_date))
-    return slots, f"Found {len(slots)} available slots.", [], False
+        if not slots:
+            # --- Call the diagnostic function to get specific reasons ---
+            failure_reasons = _diagnose_failure_reasons(
+                requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override
+            )
+            return [], "No suitable slots could be found.", failure_reasons, False
+        else:
+            # --- This block now correctly handles the success case ---
+            slots.sort(key=lambda s: abs(s['date'] - requested_date))
+            return slots, f"Found {len(slots)} available slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot):
     customer, boat, ramp = get_customer_details(original_request['customer_id']), get_boat_details(original_request['boat_id']), get_ramp_details(selected_slot.get('ramp_id'))
