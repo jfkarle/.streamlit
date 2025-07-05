@@ -43,7 +43,7 @@ def format_tides_for_display(slot, truck_schedule):
     tide_times = slot.get('high_tide_times', [])
     if not tide_times: return ""
     truck_id, slot_date = slot.get('truck_id'), slot.get('date')
-    op_hours = truck_schedule.get(truck_id, {}).get(slot_date.weekday()) if truck_id and slot_date else None
+    op_hours = truck_schedule.get(truck_id, {}).get(slot_date.weekday())
     if not op_hours: return "HT: " + " / ".join([ecm.format_time_for_display(t) for t in tide_times])
     op_open, op_close = op_hours[0], op_hours[1]
     def get_tide_relevance_score(tide_time):
@@ -350,7 +350,7 @@ def initialize_session_state():
     for key, default_value in defaults.items():
         if key not in st.session_state: st.session_state[key] = default_value
     if not st.session_state.data_loaded:
-        [cite_start]if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"): # [cite: 15]
+        if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"):
             st.session_state.data_loaded = True
         else: st.error("Failed to load customer and boat data.")
 
@@ -360,7 +360,7 @@ initialize_session_state()
 st.title("Marine Transportation")
 
 with st.container(border=True):
-    [cite_start]stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS) # [cite: 48]
+    stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Overall Progress")
@@ -403,7 +403,7 @@ if app_mode == "Schedule New Boat":
     # Reset selected customer if the search input changes substantially
     # This prevents an old selection from persisting if the user types something new
     if st.session_state.customer_search_input and st.session_state.selected_customer_id:
-        [cite_start]current_selected_customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id) # [cite: 3]
+        current_selected_customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
         if not current_selected_customer or st.session_state.customer_search_input.lower() not in current_selected_customer.customer_name.lower():
             st.session_state.selected_customer_id = None # Invalidate old selection
 
@@ -411,7 +411,7 @@ if app_mode == "Schedule New Boat":
     customer_options = []
     # If a customer has already been selected via the selectbox, we use that directly
     if st.session_state.selected_customer_id:
-        [cite_start]customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id) # [cite: 3]
+        customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
         if customer:
             # If the search input now matches the selected customer, keep it stable
             if search_term == customer.customer_name.lower():
@@ -426,12 +426,12 @@ if app_mode == "Schedule New Boat":
     if not customer and search_term:
         # Search by customer name
         customer_results = [
-            [cite_start]c for c in ecm.LOADED_CUSTOMERS.values() # [cite: 3]
-            [cite_start]if search_term in c.customer_name.lower() # [cite: 14]
+            c for c in ecm.LOADED_CUSTOMERS.values()
+            if search_term in c.customer_name.lower()
         ]
         # Search by boat ID
         boat_results_by_id = [
-            [cite_start]ecm.LOADED_BOATS.get(b_id) for b_id in ecm.LOADED_BOATS.keys() # [cite: 3, 15]
+            ecm.LOADED_BOATS.get(b_id) for b_id in ecm.LOADED_BOATS.keys()
             if search_term == b_id.lower()
         ]
         
@@ -444,7 +444,7 @@ if app_mode == "Schedule New Boat":
         
         for b in boat_results_by_id:
             if b and b.customer_id not in combined_customer_ids:
-                [cite_start]customer_options.append(ecm.LOADED_CUSTOMERS.get(b.customer_id).customer_name) # [cite: 3]
+                customer_options.append(ecm.LOADED_CUSTOMERS.get(b.customer_id).customer_name)
                 combined_customer_ids.add(b.customer_id)
 
         customer_options.sort() # Alphabetical sort for selectbox
@@ -460,7 +460,7 @@ if app_mode == "Schedule New Boat":
             )
             if selected_name:
                 # Find the actual customer object based on the selected name
-                [cite_start]customer = next((c for c in ecm.LOADED_CUSTOMERS.values() if c.customer_name == selected_name), None) # [cite: 3]
+                customer = next((c for c in ecm.LOADED_CUSTOMERS.values() if c.customer_name == selected_name), None)
                 if customer:
                     st.session_state.selected_customer_id = customer.customer_id
         elif search_term:
@@ -468,63 +468,62 @@ if app_mode == "Schedule New Boat":
 
     # Retrieve customer if one was previously selected and is still valid
     if st.session_state.selected_customer_id and not customer:
-         [cite_start]customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id) # [cite: 3]
+         customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
 
     if customer:
         st.sidebar.success(f"Selected: {customer.customer_name}")
-        [cite_start]boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None) # [cite: 3, 15]
-        [cite_start]if not boat: st.sidebar.error(f"No boat found for {customer.customer_name}.");st.stop() # [cite: 104]
+        boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
+        if not boat: st.sidebar.error(f"No boat found for {customer.customer_name}.");st.stop()
 
     if customer and boat:
-        [cite_start]st.sidebar.markdown("---");st.sidebar.subheader("Selected Customer & Boat:") # [cite: 105, 106]
-        [cite_start]st.sidebar.write(f"**Customer:** {customer.customer_name}") # [cite: 106]
-        [cite_start]st.sidebar.write(f"**ECM Boat:** {'Yes' if customer.is_ecm_customer else 'No'}") # [cite: 106, 14]
-        [cite_start]st.sidebar.write(f"**Boat Type:** {boat.boat_type}") # [cite: 106, 4]
-        [cite_start]st.sidebar.write(f"**Boat Length:** {boat.boat_length}ft") # [cite: 106, 4]
-        [cite_start]# [cite: 5]
-        [cite_start]st.sidebar.write(f"**Preferred Truck:** {ecm.ECM_TRUCKS.get(customer.preferred_truck_id, type('',(object,),{'truck_name':'N/A'})()).truck_name}") # [cite: 5, 106]
-        [cite_start]st.sidebar.markdown("---") # [cite: 106]
+        st.sidebar.markdown("---");st.sidebar.subheader("Selected Customer & Boat:")
+        st.sidebar.write(f"**Customer:** {customer.customer_name}")
+        st.sidebar.write(f"**ECM Boat:** {'Yes' if customer.is_ecm_customer else 'No'}")
+        st.sidebar.write(f"**Boat Type:** {boat.boat_type}")
+        st.sidebar.write(f"**Boat Length:** {boat.boat_length}ft")
+        st.sidebar.write(f"**Preferred Truck:** {ecm.ECM_TRUCKS.get(customer.preferred_truck_id, type('',(object,),{'truck_name':'N/A'})()).truck_name}")
+        st.sidebar.markdown("---")
 
-        [cite_start]service_type = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"]) # [cite: 107]
-        [cite_start]req_date = st.sidebar.date_input("Requested Date:", datetime.date.today() + datetime.timedelta(days=7)) # [cite: 107]
+        service_type = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
+        req_date = st.sidebar.date_input("Requested Date:", datetime.date.today() + datetime.timedelta(days=7))
       
-        [cite_start]ramp_id = st.sidebar.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys())) if service_type in ["Launch", "Haul"] else None # [cite: 5, 107]
+        ramp_id = st.sidebar.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys())) if service_type in ["Launch", "Haul"] else None
         
-        [cite_start]st.sidebar.markdown("---");st.sidebar.subheader("Search Options") # [cite: 108]
-        [cite_start]relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)") # [cite: 108]
-        [cite_start]manager_override = st.sidebar.checkbox("MANAGER: Override Crane Day Block") # [cite: 108]
+        st.sidebar.markdown("---");st.sidebar.subheader("Search Options")
+        relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
+        manager_override = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
 
-        [cite_start]if st.sidebar.button("Find Best Slot"): # [cite: 108]
-            [cite_start]st.session_state.current_job_request = {'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'), 'selected_ramp_id': ramp_id} # [cite: 108]
-            [cite_start]st.session_state.search_requested_date = req_date # [cite: 108]
-            [cite_start]st.session_state.slot_page_index = 0 # [cite: 108]
+        if st.sidebar.button("Find Best Slot"):
+            st.session_state.current_job_request = {'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'), 'selected_ramp_id': ramp_id}
+            st.session_state.search_requested_date = req_date
+            st.session_state.slot_page_index = 0
         
-            [cite_start]slots, msg, _, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override) # [cite: 21, 109]
-            [cite_start]st.session_state.info_message, st.session_state.found_slots, st.session_state.selected_slot = msg, slots, None # [cite: 109]
-            [cite_start]st.rerun() # [cite: 103]
+            slots, msg, _, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override)
+            st.session_state.info_message, st.session_state.found_slots, st.session_state.selected_slot = msg, slots, None
+            st.rerun()
 
-    [cite_start]if st.session_state.found_slots and not st.session_state.selected_slot: # [cite: 109]
-        [cite_start]st.subheader("Please select your preferred slot:") # [cite: 109]
-        [cite_start]total_slots, page_index, slots_per_page = len(st.session_state.found_slots), st.session_state.slot_page_index, 3 # [cite: 109]
+    if st.session_state.found_slots and not st.session_state.selected_slot:
+        st.subheader("Please select your preferred slot:")
+        total_slots, page_index, slots_per_page = len(st.session_state.found_slots), st.session_state.slot_page_index, 3
         
-        [cite_start]nav_cols = st.columns([1, 1, 5, 1, 1]) # [cite: 110]
-        [cite_start]nav_cols[0].button("⬅️ Prev", on_click=lambda: st.session_state.update(slot_page_index=page_index - slots_per_page), disabled=(page_index == 0), use_container_width=True) # [cite: 110]
-        [cite_start]nav_cols[1].button("Next ➡️", on_click=lambda: st.session_state.update(slot_page_index=page_index + slots_per_page), disabled=(page_index + slots_per_page >= total_slots), use_container_width=True) # [cite: 110]
-        [cite_start]if total_slots > 0: nav_cols[3].write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_") # [cite: 110]
-        [cite_start]st.markdown("---") # [cite: 110]
+        nav_cols = st.columns([1, 1, 5, 1, 1])
+        nav_cols[0].button("⬅️ Prev", on_click=lambda: st.session_state.update(slot_page_index=page_index - slots_per_per_page), disabled=(page_index == 0), use_container_width=True)
+        nav_cols[1].button("Next ➡️", on_click=lambda: st.session_state.update(slot_page_index=page_index + slots_per_page), disabled=(page_index + slots_per_page >= total_slots), use_container_width=True)
+        if total_slots > 0: nav_cols[3].write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_")
+        st.markdown("---")
 
-        [cite_start]cols = st.columns(3) # [cite: 111]
-        [cite_start]for i, slot in enumerate(st.session_state.found_slots[page_index : page_index + slots_per_page]): # [cite: 111]
+        cols = st.columns(3)
+        for i, slot in enumerate(st.session_state.found_slots[page_index : page_index + slots_per_page]):
             with cols[i % 3]:
-                container_style = "position:relative;padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;height: 260px;" if i == 0 and page_index == 0 else "position:relative; padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF;margin-bottom: 15px; height: 260px;" [cite_start]# [cite: 112, 113, 114]
-                [cite_start]card_html = f'<div style="{container_style}">' # [cite: 114]
-                [cite_start]if slot.get('is_active_crane_day') or slot.get('is_candidate_crane_day'): # [cite: 114]
-                    [cite_start]tooltip = "Active Crane Day" if slot.get('is_active_crane_day') else "Candidate Crane Day" # [cite: 114]
-                    [cite_start]card_html += f'<span title="{tooltip}" style="position:absolute;top:8px; right:10px; font-size: 24px; cursor: help;">⛵</span>' # [cite: 115]
-                [cite_start]if st.session_state.search_requested_date and slot['date'] == st.session_state.search_requested_date: # [cite: 115]
-                    [cite_start]card_html += "<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>" # [cite: 115]
+                container_style = "position:relative;padding:10px; border-radius:8px; border: 3px solid #FF8C00; background-color:#FFF8DC; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px;height: 260px;" if i == 0 and page_index == 0 else "position:relative; padding:10px; border-radius:5px; border: 2px solid #E0E0E0; background-color:#FFFFFF;margin-bottom: 15px; height: 260px;"
+                card_html = f'<div style="{container_style}">'
+                if slot.get('is_active_crane_day') or slot.get('is_candidate_crane_day'):
+                    tooltip = "Active Crane Day" if slot.get('is_active_crane_day') else "Candidate Crane Day"
+                    card_html += f'<span title="{tooltip}" style="position:absolute;top:8px; right:10px; font-size: 24px; cursor: help;">⛵</span>'
+                if st.session_state.search_requested_date and slot['date'] == st.session_state.search_requested_date:
+                    card_html += "<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>"
                 
-                [cite_start]ramp_details = ecm.get_ramp_details(slot.get('ramp_id')) # [cite: 7, 116]
+                ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
             
                 card_html += f"""
                     <p><b>Date:</b> {slot['date'].strftime('%a, %b %d, %Y')}</p>
@@ -533,176 +532,176 @@ if app_mode == "Schedule New Boat":
                     <p><b>Ramp:</b> {ramp_details.ramp_name if ramp_details else "N/A"}</p>
                     <p><b>Tide Rule:</b> {slot.get('tide_rule_concise', 'N/A')}</p>
                     <p>{format_tides_for_display(slot, st.session_state.truck_operating_hours)}</p>
-                [cite_start]</div>""" # [cite: 55, 116, 117]
-                [cite_start]st.html(card_html) # [cite: 117]
-                [cite_start]st.button("Select this slot", key=f"select_slot_{page_index + i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True) # [cite: 117]
+                </div>"""
+                st.html(card_html)
+                st.button("Select this slot", key=f"select_slot_{page_index + i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
 
-    [cite_start]elif st.session_state.selected_slot: # [cite: 118]
-        [cite_start]slot = st.session_state.selected_slot # [cite: 118]
-        [cite_start]st.subheader("Preview & Confirm Selection:") # [cite: 118]
-        [cite_start]st.success(f"Considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.") # [cite: 118]
-        [cite_start]if st.button("CONFIRM THIS JOB"): # [cite: 118]
-            [cite_start]new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot) # [cite: 37, 118]
-            [cite_start]if new_job_id: # [cite: 118]
-                [cite_start]st.session_state.confirmation_message = message # [cite: 119]
-                [cite_start]for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date']: # [cite: 119]
-                    [cite_start]st.session_state.pop(key, None) # [cite: 119]
-                [cite_start]st.rerun() # [cite: 103]
-            [cite_start]else: st.error(f"Failed to confirm job: {message}") # [cite: 119]
+    elif st.session_state.selected_slot:
+        slot = st.session_state.selected_slot
+        st.subheader("Preview & Confirm Selection:")
+        st.success(f"Considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
+        if st.button("CONFIRM THIS JOB"):
+            new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
+            if new_job_id:
+                st.session_state.confirmation_message = message
+                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date']:
+                    st.session_state.pop(key, None)
+                st.rerun()
+            else: st.error(f"Failed to confirm job: {message}")
 
 # --- REPORTING PAGE ---
 elif app_mode == "Reporting":
-    [cite_start]st.header("Reporting Dashboard") # [cite: 119]
-    [cite_start]tab1, tab2, tab3, tab4 = st.tabs(["Scheduled Jobs Overview", "Crane Day Calendar", "Scheduling Progress", "PDF Export Tools"]) # [cite: 119, 120]
+    st.header("Reporting Dashboard")
+    tab1, tab2, tab3, tab4 = st.tabs(["Scheduled Jobs Overview", "Crane Day Calendar", "Scheduling Progress", "PDF Export Tools"])
     with tab1:
-        [cite_start]st.subheader("All Scheduled Jobs") # [cite: 120]
-        [cite_start]if ecm.SCHEDULED_JOBS: # [cite: 2]
-            [cite_start]data = [{'Job ID': j.job_id, 'Date': j.scheduled_start_datetime.strftime("%Y-%m-%d"), 'Time': ecm.format_time_for_display(j.scheduled_start_datetime.time()), 'Service': j.service_type, 'Customer': ecm.get_customer_details(j.customer_id).customer_name, 'Truck': j.assigned_hauling_truck_id, 'Crane': j.assigned_crane_truck_id or ""} for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime)] # [cite: 7, 4]
-            [cite_start]st.dataframe(pd.DataFrame(data)) # [cite: 120]
-        [cite_start]else: st.write("No jobs scheduled.") # [cite: 120]
+        st.subheader("All Scheduled Jobs")
+        if ecm.SCHEDULED_JOBS:
+            data = [{'Job ID': j.job_id, 'Date': j.scheduled_start_datetime.strftime("%Y-%m-%d"), 'Time': ecm.format_time_for_display(j.scheduled_start_datetime.time()), 'Service': j.service_type, 'Customer': ecm.get_customer_details(j.customer_id).customer_name, 'Truck': j.assigned_hauling_truck_id, 'Crane': j.assigned_crane_truck_id or ""} for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime)]
+            st.dataframe(pd.DataFrame(data))
+        else: st.write("No jobs scheduled.")
     with tab2:
-        [cite_start]st.subheader("Crane Day Candidate Calendar") # [cite: 121]
-        [cite_start]ramp = st.selectbox("Select a ramp:", list(ecm.CANDIDATE_CRANE_DAYS.keys()), key="cal_ramp_sel") # [cite: 2, 121]
-        [cite_start]if ramp: display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp]) # [cite: 2, 121]
+        st.subheader("Crane Day Candidate Calendar")
+        ramp = st.selectbox("Select a ramp:", list(ecm.CANDIDATE_CRANE_DAYS.keys()), key="cal_ramp_sel")
+        if ramp: display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp])
     with tab3:
-        [cite_start]st.subheader("Scheduling Progress Report") # [cite: 121]
-        [cite_start]stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS) # [cite: 48, 121]
+        st.subheader("Scheduling Progress Report")
+        stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
         
-        [cite_start]st.markdown("#### Overall Progress") # [cite: 122]
-        [cite_start]c1, c2 = st.columns(2) # [cite: 122]
-        [cite_start]c1.metric("Boats Scheduled", f"{stats['all_boats']['scheduled']} / {stats['all_boats']['total']}") # [cite: 122, 48]
-        [cite_start]c2.metric("Boats Launched (to date)", f"{stats['all_boats']['launched']} / {stats['all_boats']['total']}") # [cite: 122, 48]
+        st.markdown("#### Overall Progress")
+        c1, c2 = st.columns(2)
+        c1.metric("Boats Scheduled", f"{stats['all_boats']['scheduled']} / {stats['all_boats']['total']}")
+        c2.metric("Boats Launched (to date)", f"{stats['all_boats']['launched']} / {stats['all_boats']['total']}")
         
-        [cite_start]st.markdown("#### ECM Boats") # [cite: 122]
-        [cite_start]c1, c2 = st.columns(2) # [cite: 122]
-        [cite_start]c1.metric("ECM Scheduled", f"{stats['ecm_boats']['scheduled']} / {stats['ecm_boats']['total']}") # [cite: 122, 49]
-        [cite_start]c2.metric("ECM Launched (to date)", f"{stats['ecm_boats']['launched']} / {stats['ecm_boats']['total']}") # [cite: 122, 49]
+        st.markdown("#### ECM Boats")
+        c1, c2 = st.columns(2)
+        c1.metric("ECM Scheduled", f"{stats['ecm_boats']['scheduled']} / {stats['ecm_boats']['total']}")
+        c2.metric("ECM Launched (to date)", f"{stats['ecm_boats']['launched']} / {stats['ecm_boats']['total']}")
         
-        [cite_start]st.markdown("---") # [cite: 122]
-        [cite_start]st.subheader("Download Formatted PDF Report") # [cite: 122]
+        st.markdown("---")
+        st.subheader("Download Formatted PDF Report")
 
         
-        [cite_start]if st.button("📊 Generate PDF Report"): # [cite: 123]
-            [cite_start]with st.spinner("Generating your report..."): # [cite: 123]
-                [cite_start]analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS) # [cite: 5, 50, 52, 123]
-                [cite_start]pdf_buffer = generate_progress_report_pdf(stats, analysis) # [cite: 123]
+        if st.button("📊 Generate PDF Report"):
+            with st.spinner("Generating your report..."):
+                analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
+                pdf_buffer = generate_progress_report_pdf(stats, analysis)
                 
-                [cite_start]st.download_button( # [cite: 124]
-                    [cite_start]label="📥 Download Report (.pdf)", # [cite: 124]
-                    [cite_start]data=pdf_buffer, # [cite: 124]
-                    [cite_start]file_name=f"progress_report_{datetime.date.today()}.pdf", # [cite: 124]
-                    [cite_start]mime="application/pdf", # [cite: 124]
+                st.download_button(
+                    label="📥 Download Report (.pdf)",
+                    data=pdf_buffer,
+                    file_name=f"progress_report_{datetime.date.today()}.pdf",
+                    mime="application/pdf",
                 )
     with tab4:
-        [cite_start]st.subheader("Generate Daily Planner PDF") # [cite: 125]
-        [cite_start]selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input") # [cite: 125]
-        [cite_start]if st.button("📤 Generate PDF", key="generate_daily_pdf_button"): # [cite: 125]
-            [cite_start]jobs_today = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime.date() == selected_date] # [cite: 2, 4, 125]
-            [cite_start]if not jobs_today: # [cite: 125]
-                [cite_start]st.warning("No jobs scheduled for that date.") # [cite: 125]
-            [cite_start]else: # [cite: 126]
-                [cite_start]pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today) # [cite: 64, 126]
-                [cite_start]st.download_button( # [cite: 126]
-                    [cite_start]label="📥 Download Planner", data=pdf_buffer.getvalue(), # [cite: 127]
-                    [cite_start]file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf", # [cite: 127]
-                    [cite_start]key="download_daily_planner_button" # [cite: 127]
+        st.subheader("Generate Daily Planner PDF")
+        selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
+        if st.button("📤 Generate PDF", key="generate_daily_pdf_button"):
+            jobs_today = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime.date() == selected_date]
+            if not jobs_today:
+                st.warning("No jobs scheduled for that date.")
+            else:
+                pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
+                st.download_button(
+                    label="📥 Download Planner", data=pdf_buffer.getvalue(),
+                    file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf",
+                    key="download_daily_planner_button"
                 )
 
-        [cite_start]st.markdown("---") # [cite: 127]
-        [cite_start]st.subheader("Export Multi-Day Planner") # [cite: 127]
-        [cite_start]dcol1, dcol2 = st.columns(2) # [cite: 127]
-        [cite_start]with dcol1: # [cite: 127]
-            [cite_start]start_date = st.date_input("Start Date", value=datetime.date.today(), key="multi_start_date") # [cite: 127]
-        [cite_start]with dcol2: # [cite: 127]
-            [cite_start]end_date = st.date_input("End Date", value=datetime.date.today() + datetime.timedelta(days=5), key="multi_end_date") # [cite: 128]
+        st.markdown("---")
+        st.subheader("Export Multi-Day Planner")
+        dcol1, dcol2 = st.columns(2)
+        with dcol1:
+            start_date = st.date_input("Start Date", value=datetime.date.today(), key="multi_start_date")
+        with dcol2:
+            end_date = st.date_input("End Date", value=datetime.date.today() + datetime.timedelta(days=5), key="multi_end_date")
 
-        [cite_start]if st.button("📤 Generate Multi-Day Planner PDF", key="generate_multi_pdf_button"): # [cite: 128]
-            [cite_start]if start_date > end_date: # [cite: 128]
-                [cite_start]st.error("Start date must be before or equal to end date.") # [cite: 128]
-            [cite_start]else: # [cite: 129]
-                [cite_start]jobs_in_range = [j for j in ecm.SCHEDULED_JOBS if start_date <= j.scheduled_start_datetime.date() <= end_date] # [cite: 2, 4, 129]
-                [cite_start]if not jobs_in_range: # [cite: 129]
-                    [cite_start]st.warning("No jobs scheduled in this date range.") # [cite: 129]
-                [cite_start]else: # [cite: 130]
-                    [cite_start]merged_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range) # [cite: 88, 130]
-                    [cite_start]st.download_button( # [cite: 130]
-                        [cite_start]label="📥 Download Multi-Day Planner", data=merged_pdf, # [cite: 130]
-                        [cite_start]file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf", # [cite: 130]
-                        [cite_start]key="download_multi_planner_button" # [cite: 130]
+        if st.button("📤 Generate Multi-Day Planner PDF", key="generate_multi_pdf_button"):
+            if start_date > end_date:
+                st.error("Start date must be before or equal to end date.")
+            else:
+                jobs_in_range = [j for j in ecm.SCHEDULED_JOBS if start_date <= j.scheduled_start_datetime.date() <= end_date]
+                if not jobs_in_range:
+                    st.warning("No jobs scheduled in this date range.")
+                else:
+                    merged_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
+                    st.download_button(
+                        label="📥 Download Multi-Day Planner", data=merged_pdf,
+                        file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf",
+                        key="download_multi_planner_button"
                     )
 # --- PAGE 3: SETTINGS ---
-[cite_start]elif app_mode == "Settings": # [cite: 131]
-    [cite_start]st.header("Application Settings") # [cite: 131]
-    [cite_start]tab1, tab2, tab3 = st.tabs(["Scheduling Rules", "Truck Schedules", "Developer Tools"]) # [cite: 131]
+elif app_mode == "Settings":
+    st.header("Application Settings")
+    tab1, tab2, tab3 = st.tabs(["Scheduling Rules", "Truck Schedules", "Developer Tools"])
 
     with tab1:
-        [cite_start]st.subheader("Scheduling Defaults") # [cite: 132]
-        [cite_start]st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=6, value=st.session_state.get('num_suggestions', 3), step=1) # [cite: 132]
-        [cite_start]st.markdown("---") # [cite: 132]
-        [cite_start]st.subheader("Crane Job Search Window") # [cite: 132]
-        [cite_start]c1,c2 = st.columns(2) # [cite: 132]
-        [cite_start]c1.number_input("Days to search in PAST", min_value=0, max_value=30, value=st.session_state.get('crane_look_back_days', 7), key="crane_look_back_days") # [cite: 132]
-        [cite_start]c2.number_input("Days to search in FUTURE", min_value=7, max_value=180, value=st.session_state.get('crane_look_forward_days', 60), key="crane_look_forward_days") # [cite: 132]
+        st.subheader("Scheduling Defaults")
+        st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=6, value=st.session_state.get('num_suggestions', 3), step=1)
+        st.markdown("---")
+        st.subheader("Crane Job Search Window")
+        c1,c2 = st.columns(2)
+        c1.number_input("Days to search in PAST", min_value=0, max_value=30, value=st.session_state.get('crane_look_back_days', 7), key="crane_look_back_days")
+        c2.number_input("Days to search in FUTURE", min_value=7, max_value=180, value=st.session_state.get('crane_look_forward_days', 60), key="crane_look_forward_days")
 
     with tab2:
-        [cite_start]st.subheader("Truck & Crane Weekly Hours") # [cite: 132]
-        [cite_start]st.info("NOTE: Changes made here are for the current session only.") # [cite: 132]
-        [cite_start]schedule_to_edit = st.session_state.truck_operating_hours # [cite: 133]
-        [cite_start]truck_id = st.selectbox("Select a resource to edit:", list(schedule_to_edit.keys())) # [cite: 133]
-        [cite_start]if truck_id: # [cite: 133]
-            [cite_start]if st.button("Copy Schedule From..."): st.session_state.show_copy_dropdown = True # [cite: 133]
-            [cite_start]if st.session_state.get('show_copy_dropdown'): # [cite: 133]
-                [cite_start]source_truck = st.selectbox("Select source:", [t for t in schedule_to_edit if t != truck_id]) # [cite: 134]
-                [cite_start]if st.button("Apply Copy"): # [cite: 134]
-                    [cite_start]st.session_state.truck_operating_hours[truck_id] = st.session_state.truck_operating_hours[source_truck] # [cite: 134]
+        st.subheader("Truck & Crane Weekly Hours")
+        st.info("NOTE: Changes made here are for the current session only.")
+        schedule_to_edit = st.session_state.truck_operating_hours
+        truck_id = st.selectbox("Select a resource to edit:", list(schedule_to_edit.keys()))
+        if truck_id:
+            if st.button("Copy Schedule From..."): st.session_state.show_copy_dropdown = True
+            if st.session_state.get('show_copy_dropdown'):
+                source_truck = st.selectbox("Select source:", [t for t in schedule_to_edit if t != truck_id])
+                if st.button("Apply Copy"):
+                    st.session_state.truck_operating_hours[truck_id] = st.session_state.truck_operating_hours[source_truck]
                 
-                    [cite_start]st.session_state.show_copy_dropdown = False # [cite: 134]
-                    [cite_start]st.rerun() # [cite: 103]
-            [cite_start]st.markdown("---") # [cite: 134]
-            [cite_start]with st.form(f"form_{truck_id}"): # [cite: 134]
-                [cite_start]st.write(f"**Editing hours for {truck_id}**") # [cite: 135]
-                [cite_start]new_hours = {} # [cite: 135]
+                    st.session_state.show_copy_dropdown = False
+                    st.rerun()
+            st.markdown("---")
+            with st.form(f"form_{truck_id}"):
+                st.write(f"**Editing hours for {truck_id}**")
+                new_hours = {}
             
-                [cite_start]for i, day in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]): # [cite: 135]
-                    [cite_start]current = schedule_to_edit.get(truck_id, {}).get(i) # [cite: 135]
-                    [cite_start]is_working = current is not None # [cite: 135]
-                    [cite_start]start, end = (current[0], current[1]) if is_working else (datetime.time(8,0), datetime.time(16,0)) # [cite: 135]
+                for i, day in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
+                    current = schedule_to_edit.get(truck_id, {}).get(i)
+                    is_working = current is not None
+                    start, end = (current[0], current[1]) if is_working else (datetime.time(8,0), datetime.time(16,0))
          
-                    [cite_start]summary = f"{day}: {ecm.format_time_for_display(start)} - {ecm.format_time_for_display(end)}" if is_working else f"{day}: Off Duty" # [cite: 136, 10]
-                    [cite_start]with st.expander(summary): # [cite: 136]
-                        [cite_start]c1,c2,c3 = st.columns([1,2,2]) # [cite: 136]
-                        [cite_start]working = c1.checkbox("Working", value=is_working, key=f"{truck_id}_{i}_w") # [cite: 137]
-                        [cite_start]new_start = c2.time_input("Start", value=start, key=f"{truck_id}_{i}_s", disabled=not working) # [cite: 137]
-                        [cite_start]new_end = c3.time_input("End", value=end, key=f"{truck_id}_{i}_e", disabled=not working) # [cite: 137]
-                        [cite_start]new_hours[i] = (new_start, new_end) if working else None # [cite: 137]
+                    summary = f"{day}: {ecm.format_time_for_display(start)} - {ecm.format_time_for_display(end)}" if is_working else f"{day}: Off Duty"
+                    with st.expander(summary):
+                        c1,c2,c3 = st.columns([1,2,2])
+                        working = c1.checkbox("Working", value=is_working, key=f"{truck_id}_{i}_w")
+                        new_start = c2.time_input("Start", value=start, key=f"{truck_id}_{i}_s", disabled=not working)
+                        new_end = c3.time_input("End", value=end, key=f"{truck_id}_{i}_e", disabled=not working)
+                        new_hours[i] = (new_start, new_end) if working else None
             
-                [cite_start]if st.form_submit_button("Save Hours"): # [cite: 138]
-                    [cite_start]st.session_state.truck_operating_hours[truck_id] = new_hours # [cite: 138]
-                    [cite_start]st.success(f"Updated hours for {truck_id}.") # [cite: 138]
-                    [cite_start]st.rerun() # [cite: 103]
+                if st.form_submit_button("Save Hours"):
+                    st.session_state.truck_operating_hours[truck_id] = new_hours
+                    st.success(f"Updated hours for {truck_id}.")
+                    st.rerun()
 
     with tab3:
-        [cite_start]st.subheader("QA & Data Generation Tools") # [cite: 138]
-        [cite_start]st.write("This tool creates random, valid jobs to populate the calendar for testing.") # [cite: 139]
+        st.subheader("QA & Data Generation Tools")
+        st.write("This tool creates random, valid jobs to populate the calendar for testing.")
         
-        [cite_start]num_jobs_to_gen = st.number_input("Number of jobs to generate:", min_value=1, max_value=100, value=25, step=1) # [cite: 139]
-        [cite_start]service_type_input = st.selectbox("Type of jobs to create:", ["All", "Launch", "Haul", "Transport"]) # [cite: 139]
+        num_jobs_to_gen = st.number_input("Number of jobs to generate:", min_value=1, max_value=100, value=25, step=1)
+        service_type_input = st.selectbox("Type of jobs to create:", ["All", "Launch", "Haul", "Transport"])
         
-        [cite_start]dcol1, dcol2 = st.columns(2) # [cite: 139]
-        [cite_start]start_date_input = dcol1.date_input("Start of date range:", datetime.date(2025, 4, 15)) # [cite: 139]
-        [cite_start]end_date_input = dcol2.date_input("End of date range:", datetime.date(2025, 7, 1)) # [cite: 140]
+        dcol1, dcol2 = st.columns(2)
+        start_date_input = dcol1.date_input("Start of date range:", datetime.date(2025, 4, 15))
+        end_date_input = dcol2.date_input("End of date range:", datetime.date(2025, 7, 1))
 
-        [cite_start]if st.button("Generate Random Jobs"): # [cite: 140]
-            [cite_start]if start_date_input > end_date_input: # [cite: 140]
-                [cite_start]st.error("Start date cannot be after end date.") # [cite: 141]
-            [cite_start]else: # [cite: 141]
-                [cite_start]with st.spinner(f"Generating {num_jobs_to_gen} jobs..."): # [cite: 141]
-                   [cite_start]summary = ecm.generate_random_jobs( # [cite: 43]
-                        [cite_start]num_jobs_to_gen, # [cite: 141]
-                        [cite_start]start_date_input, # [cite: 142]
-                        [cite_start]end_date_input, # [cite: 142]
-                        [cite_start]service_type_input, # [cite: 142]
-                        [cite_start]st.session_state.truck_operating_hours # [cite: 142]
+        if st.button("Generate Random Jobs"):
+            if start_date_input > end_date_input:
+                st.error("Start date cannot be after end date.")
+            else:
+                with st.spinner(f"Generating {num_jobs_to_gen} jobs..."):
+                   summary = ecm.generate_random_jobs(
+                        num_jobs_to_gen, 
+                        start_date_input, 
+                        end_date_input, 
+                        service_type_input, 
+                        st.session_state.truck_operating_hours
                     )
-                [cite_start]st.success(summary) # [cite: 142]
-                [cite_start]st.info("Navigate to the 'Reporting' page to see the newly generated jobs.") # [cite: 142]
+                st.success(summary)
+                st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
