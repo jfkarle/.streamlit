@@ -85,10 +85,6 @@ def display_crane_day_calendar(crane_days_for_ramp):
                     cols[i].markdown(f'<div style="padding:10px; border-radius:5px; border: 2px solid {border_color}; background-color:{bg_color}; height: 60px;"><p style="text-align: right; font-weight: {font_weight}; color: black;">{day.day}</p></div>', unsafe_allow_html=True)
 
 def _abbreviate_town(address):
-    """
-    Takes a full address string or a special keyword ('HOME') and returns
-    a standardized three-letter abbreviation for the town.
-    """
     if not address: return ""
     abbr_map = { "pembroke": "Pem", "scituate": "Sci", "green harbor": "GrH", "marshfield": "Mar", "cohasset": "Coh", "weymouth": "Wey", "plymouth": "Ply", "sandwich": "San", "duxbury": "Dux", "humarock": "Hum", "hingham": "Hin", "hull": "Hul" }
     if 'HOME' in address.upper(): return "Pem"
@@ -155,7 +151,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.drawString(margin + 3, top_y - 9, "7:30")
 
     for hour in range(start_time_obj.hour + 1, end_time_obj.hour + 1):
-        # --- UPDATED HIGHLIGHT LOGIC ---
         hour_highlight_color = None
         for m_check in [0, 15, 30, 45]:
             check_time = datetime.time(hour, m_check)
@@ -227,16 +222,12 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     output.seek(0)
     return output
 
-#### Detailed report generation
-
 def generate_progress_report_pdf(stats, analysis):
-    """Generates a multi-page PDF progress report with stats, charts, and tables."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     story = []
     styles = getSampleStyleSheet()
 
-    # --- Page 1: Title and Executive Summary ---
     story.append(Paragraph("ECM Season Progress Report", styles['h1']))
     story.append(Paragraph(f"Generated on: {datetime.date.today().strftime('%B %d, %Y')}", styles['Normal']))
     story.append(Spacer(1, 24))
@@ -244,35 +235,22 @@ def generate_progress_report_pdf(stats, analysis):
     story.append(Paragraph("Executive Summary", styles['h2']))
     story.append(Spacer(1, 12))
 
-    # Overall Stats
     total_boats = stats['all_boats']['total']
     scheduled_boats = stats['all_boats']['scheduled']
     launched_boats = stats['all_boats']['launched']
     percent_scheduled = (scheduled_boats / total_boats * 100) if total_boats > 0 else 0
     percent_launched = (launched_boats / total_boats * 100) if total_boats > 0 else 0
     
-    summary_data = [
-        ['Metric', 'Value'],
-        ['Total Boats in Fleet:', f'{total_boats}'],
-        ['Boats Scheduled:', f'{scheduled_boats} ({percent_scheduled:.0f}%)'],
-        ['Boats Launched (to date):', f'{launched_boats} ({percent_launched:.0f}%)'],
-        ['Boats Remaining to Schedule:', f'{total_boats - scheduled_boats}'],
-    ]
+    summary_data = [['Metric', 'Value'], ['Total Boats in Fleet:', f'{total_boats}'], ['Boats Scheduled:', f'{scheduled_boats} ({percent_scheduled:.0f}%)'], ['Boats Launched (to date):', f'{launched_boats} ({percent_launched:.0f}%)'], ['Boats Remaining to Schedule:', f'{total_boats - scheduled_boats}']]
     summary_table = Table(summary_data, colWidths=[200, 100])
-    summary_table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
-    ]))
+    summary_table.setStyle(TableStyle([('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('ALIGN', (1,1), (-1,-1), 'RIGHT'), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
     story.append(summary_table)
     story.append(Spacer(1, 24))
 
-    # --- Page 2: Analytics ---
     story.append(PageBreak())
     story.append(Paragraph("Scheduling Analytics", styles['h2']))
     story.append(Spacer(1, 12))
     
-    # Jobs by Day Chart
     if analysis['by_day']:
         story.append(Paragraph("Jobs by Day of Week", styles['h3']))
         drawing = Drawing(400, 200)
@@ -286,7 +264,6 @@ def generate_progress_report_pdf(stats, analysis):
         story.append(drawing)
         story.append(Spacer(1, 12))
 
-    # Jobs by Ramp Chart
     if analysis['by_ramp']:
         story.append(Paragraph("Jobs by Ramp", styles['h3']))
         drawing = Drawing(400, 200)
@@ -296,11 +273,10 @@ def generate_progress_report_pdf(stats, analysis):
         bc_ramp.x = 50; bc_ramp.y = 50; bc_ramp.height = 125; bc_ramp.width = 300
         bc_ramp.data = ramp_data
         bc_ramp.categoryAxis.categoryNames = ramp_names
-        bc_ramp.categoryAxis.labels.angle = 45 # Angle labels to fit
+        bc_ramp.categoryAxis.labels.angle = 45
         drawing.add(bc_ramp)
         story.append(drawing)
 
-    # --- Page 3+: Detailed List ---
     story.append(PageBreak())
     story.append(Paragraph("Detailed Boat Status", styles['h2']))
     story.append(Spacer(1, 12))
@@ -311,31 +287,16 @@ def generate_progress_report_pdf(stats, analysis):
         if not cust: continue
         services = [j.service_type for j in ecm.SCHEDULED_JOBS if j.customer_id == cust.customer_id and j.job_status == "Scheduled"]
         status = "Launched" if "Launch" in services else (f"Scheduled ({', '.join(services)})" if services else "Not Scheduled")
-        table_data.append([
-            Paragraph(cust.customer_name, styles['Normal']),
-            Paragraph(f"{boat.boat_length}' {boat.boat_type}", styles['Normal']),
-            "Yes" if cust.is_ecm_customer else "No",
-            status
-        ])
+        table_data.append([Paragraph(cust.customer_name, styles['Normal']), Paragraph(f"{boat.boat_length}' {boat.boat_type}", styles['Normal']), "Yes" if cust.is_ecm_customer else "No", status])
     
     detail_table = Table(table_data, colWidths=[150, 150, 50, 150])
-    detail_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.grey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0,0), (-1,0), 12),
-        ('BACKGROUND', (0,1), (-1,-1), colors.beige),
-        ('GRID', (0,0), (-1,-1), 1, colors.black)
-    ]))
+    detail_table.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke), ('ALIGN', (0,0), (-1,-1), 'LEFT'), ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('BOTTOMPADDING', (0,0), (-1,0), 12), ('BACKGROUND', (0,1), (-1,-1), colors.beige), ('GRID', (0,0), (-1,-1), 1, colors.black)]))
     story.append(detail_table)
     
     doc.build(story)
     buffer.seek(0)
     return buffer
     
-
-# --- Session State Initialization ---
 def initialize_session_state():
     defaults = {
         'data_loaded': False, 'info_message': "", 'current_job_request': None, 'found_slots': [],
@@ -343,7 +304,7 @@ def initialize_session_state():
         'num_suggestions': 3, 'crane_look_back_days': 7, 'crane_look_forward_days': 60,
         'slot_page_index': 0, 'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS,
         'show_copy_dropdown': False,
-        'failure_reasons': []  # <--- ADD THIS LINE
+        'failure_reasons': []
     }
     for key, default_value in defaults.items():
         if key not in st.session_state: st.session_state[key] = default_value
@@ -354,7 +315,6 @@ def initialize_session_state():
 
 initialize_session_state()
 
-# --- Main App Body ---
 st.title("Marine Transportation")
 
 with st.container(border=True):
@@ -377,30 +337,30 @@ st.markdown("---")
 st.sidebar.title("Navigation")
 app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
 
-# --- PAGE 1: SCHEDULER ---
 if app_mode == "Schedule New Boat":
     if st.session_state.info_message:
-        st.info(st.session_state.info_message); st.session_state.info_message = ""
-        # --- NEW: Display Failure Reasons ---
+        st.info(st.session_state.info_message)
+        st.session_state.info_message = ""
+        
     if st.session_state.get('failure_reasons'):
         with st.container(border=True):
             st.error("Could not find any suitable slots for the request.")
             st.markdown("##### Diagnostics:")
             for reason in st.session_state.failure_reasons:
                 st.markdown(f"- {reason}", unsafe_allow_html=True)
+
     if st.session_state.get("confirmation_message"):
         st.success(f"✅ {st.session_state.confirmation_message}")
-        if st.button("Schedule Another Job"): st.session_state.pop("confirmation_message", None); st.rerun()
+        if st.button("Schedule Another Job"): 
+            st.session_state.pop("confirmation_message", None)
+            st.rerun()
 
     st.sidebar.header("New Job Request")
     customer_name_input = st.sidebar.text_input("Search Customer Name:", help="e.g., Olivia, James, Tho")
     customer, boat = None, None
     
     if customer_name_input:
-        # Find all customers that match the search input
         customer_matches = [c for c in ecm.LOADED_CUSTOMERS.values() if customer_name_input.lower() in c.customer_name.lower()]
-    
-        # Create a list of valid customer-boat pairs from the matches
         search_results = []
         if customer_matches:
             for cust in customer_matches:
@@ -410,34 +370,19 @@ if app_mode == "Schedule New Boat":
     
         if not search_results:
             st.sidebar.warning("No customer/boat combination found.")
-    
         elif len(search_results) == 1:
-            # If only one result, select it automatically and show success
             customer = search_results[0]['customer']
             boat = search_results[0]['boat']
             st.sidebar.success(f"Selected: {customer.customer_name}")
-    
         else:
-            # If multiple results, display the new selection "table"
             st.sidebar.markdown("---")
             st.sidebar.markdown("**Multiple Matches Found:**")
-    
-            # Create formatted labels for the radio buttons to simulate a table
             def format_option(result):
                 cust_name = result['customer'].customer_name
                 boat_info = f"{result['boat'].boat_length}' {result['boat'].boat_type}"
                 return f"**{cust_name}** ({boat_info})"
     
-            # Use st.radio for selection. We pass indices and format the labels.
-            selected_index = st.sidebar.radio(
-                "Please select the correct customer and boat:",
-                options=range(len(search_results)),
-                format_func=lambda i: format_option(search_results[i]),
-                label_visibility="collapsed",
-                key="customer_search_radio"
-            )
-    
-            # Set the customer and boat from the selected radio option
+            selected_index = st.sidebar.radio("Please select the correct customer and boat:", options=range(len(search_results)), format_func=lambda i: format_option(search_results[i]), label_visibility="collapsed", key="customer_search_radio")
             customer = search_results[selected_index]['customer']
             boat = search_results[selected_index]['boat']
 
@@ -462,12 +407,12 @@ if app_mode == "Schedule New Boat":
             st.session_state.current_job_request = {'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'), 'selected_ramp_id': ramp_id}
             st.session_state.search_requested_date = req_date
             st.session_state.slot_page_index = 0
-            st.session_state.failure_reasons = [] # Clear old reasons before new search
-    
+            st.session_state.failure_reasons = []
+            
             slots, msg, reasons, was_forced = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override)
             st.session_state.info_message = msg
             st.session_state.found_slots = slots
-            st.session_state.failure_reasons = reasons # Store the new reasons
+            st.session_state.failure_reasons = reasons
             st.session_state.selected_slot = None
             st.rerun()
 
@@ -517,7 +462,6 @@ if app_mode == "Schedule New Boat":
                 st.rerun()
             else: st.error(f"Failed to confirm job: {message}")
 
-# --- REPORTING PAGE ---
 elif app_mode == "Reporting":
     st.header("Reporting Dashboard")
     tab1, tab2, tab3, tab4 = st.tabs(["Scheduled Jobs Overview", "Crane Day Calendar", "Scheduling Progress", "PDF Export Tools"])
@@ -596,7 +540,6 @@ elif app_mode == "Reporting":
                         file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf",
                         key="download_multi_planner_button"
                     )
-# --- PAGE 3: SETTINGS ---
 elif app_mode == "Settings":
     st.header("Application Settings")
     tab1, tab2, tab3 = st.tabs(["Scheduling Rules", "Truck Schedules", "Developer Tools"])
