@@ -536,12 +536,12 @@ def show_scheduler_page():
 
 def show_reporting_page():
     """
-    Displays the entire Reporting dashboard, including all original tabs and
-    interactive job management with a confirmation step for cancellation.
+    Displays the Reporting dashboard, now with a "Route" column in the
+    Scheduled Jobs table to visualize job locations.
     """
     st.header("Reporting Dashboard")
 
-    # --- Action Callbacks ---
+    # --- Action Callbacks (These remain the same) ---
     def move_job(job_id):
         job = ecm.get_job_details(job_id)
         if not job: return
@@ -589,24 +589,30 @@ def show_reporting_page():
     with tab1:
         st.subheader("Scheduled Jobs Overview")
         if ecm.SCHEDULED_JOBS:
-            # Header for the jobs list
-            cols = st.columns((2, 1, 2, 1, 1, 3))
-            fields = ["Date/Time", "Service", "Customer", "Haul Truck", "Crane", "Actions"]
+            # --- NEW: Added "Route" column ---
+            fields = ["Date/Time", "Service", "Customer", "Route", "Haul Truck", "Crane", "Actions"]
+            cols = st.columns((2, 1, 2, 1.5, 1, 1, 3))
             for col, field in zip(cols, fields):
                 col.markdown(f"**{field}**")
             st.markdown("---")
 
-            # Display a row for each scheduled job
             for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime):
-                cols = st.columns((2, 1, 2, 1, 1, 3))
+                # Match the new column layout
+                cols = st.columns((2, 1, 2, 1.5, 1, 1, 3))
                 cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p"))
                 cols[1].write(j.service_type)
                 cols[2].write(ecm.get_customer_details(j.customer_id).customer_name)
-                cols[3].write(j.assigned_hauling_truck_id)
-                cols[4].write(j.assigned_crane_truck_id or "—")
+                
+                # --- NEW: Get and display the route ---
+                p_town = _abbreviate_town(j.pickup_street_address)
+                d_town = _abbreviate_town(j.dropoff_street_address)
+                route_str = f"{p_town} → {d_town}"
+                cols[3].write(route_str)
 
-                # Actions column with cancel confirmation logic
-                with cols[5]:
+                # Adjust indices for subsequent columns
+                cols[4].write(j.assigned_hauling_truck_id)
+                cols[5].write(j.assigned_crane_truck_id or "—")
+                with cols[6]:
                     if st.session_state.get('job_to_cancel') == j.job_id:
                         st.warning("Are you sure?")
                         btn_cols = st.columns(2)
