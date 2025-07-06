@@ -350,9 +350,7 @@ def show_scheduler_page():
 
     if st.session_state.get("confirmation_message"):
         st.success(f"✅ {st.session_state.confirmation_message}")
-        if st.button("Schedule Another Job"):
-            st.session_state.pop("confirmation_message", None)
-            st.rerun()
+        st.button("Schedule Another Job", on_click=schedule_another)
 
     st.sidebar.header("New Job Request")
 
@@ -417,8 +415,7 @@ def show_scheduler_page():
                         boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == cust.customer_id), None)
                         boat_info = f" ({boat.boat_length}' {boat.boat_type}, ID: {boat.boat_id})" if boat else ""
                         button_label = f"{cust.customer_name}{boat_info}"
-                        if st.button(button_label, key=f"select_{cust.customer_id}", on_click=select_customer, args=(cust.customer_id,), use_container_width=True):
-                            st.rerun()
+                        st.button(button_label, key=f"select_{cust.customer_id}", on_click=select_customer, args=(cust.customer_id,), use_container_width=True)
             else:
                 st.sidebar.warning("No matches found.")
 
@@ -557,7 +554,6 @@ def show_reporting_page():
         
         # Set a flag to trigger the page switch in the main script
         st.session_state.app_mode_switch = "Schedule New Boat"
-        st.rerun()
 
     def cancel_job(job_id):
         """Callback to cancel a job."""
@@ -583,7 +579,6 @@ def show_reporting_page():
         }
         st.session_state.info_message = f"Rescheduling parked job for {ecm.get_customer_details(job.customer_id).customer_name}. Please select a new slot."
         st.session_state.app_mode_switch = "Schedule New Boat"
-        st.rerun()
 
     # --- UI Layout ---
     tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
