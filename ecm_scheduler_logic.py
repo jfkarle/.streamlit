@@ -323,10 +323,10 @@ def calculate_tide_efficiency_score(date_obj, ramp_obj, truck_operating_hours, a
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
                              selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5,
                              manager_override=False, crane_look_back_days=7, crane_look_forward_days=60,
-                             truck_operating_hours=None, **kwargs):
+                             truck_operating_hours=None, strict_start_date=None, strict_end_date=None, **kwargs):
     """
-    Finds and ranks available job slots with all three efficiency rules:
-    1. Morning Preference 2. Tide Efficiency 3. Day Capacity
+    Finds and ranks available job slots. Can now operate in a "strict" mode
+    where it does not search outside the provided date range.
     """
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
@@ -343,8 +343,17 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
 
     all_found_slots = []
-    search_start_date = requested_date - timedelta(days=crane_look_back_days)
-    search_end_date = requested_date + timedelta(days=crane_look_forward_days)
+    
+    # --- THIS IS THE NEW LOGIC ---
+    # If a strict date range is provided (from the bulk scheduler), use it.
+    if strict_start_date and strict_end_date:
+        search_start_date = strict_start_date
+        search_end_date = strict_end_date
+    else:
+        # Otherwise, use the normal "smart search" window for the UI.
+        search_start_date = requested_date - timedelta(days=crane_look_back_days)
+        search_end_date = requested_date + timedelta(days=crane_look_forward_days)
+    # --- END OF NEW LOGIC ---
 
     all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, search_start_date, search_end_date) if ramp_obj else {}
     compiled_schedule = _compile_truck_schedules(SCHEDULED_JOBS)
@@ -360,7 +369,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
         tide_score = calculate_tide_efficiency_score(check_date, ramp_obj, truck_operating_hours, all_tides)
         
-        # --- NEW: Day Capacity Logic ---
         total_window_minutes = 0
         for truck in suitable_trucks:
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
@@ -368,9 +376,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 start_dt = datetime.datetime.combine(check_date, w['start_time'])
                 end_dt = datetime.datetime.combine(check_date, w['end_time'])
                 total_window_minutes += (end_dt - start_dt).total_seconds() / 60
-        # Penalize days with less than 3 hours of total available work time
         day_capacity_score = 10 if total_window_minutes < 180 else 0
-        # --- End of New Logic ---
         
         for truck in suitable_trucks:
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
@@ -384,10 +390,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     if needs_j17 and not check_truck_availability_optimized("J17", slot_start_dt, slot_start_dt + j17_duration, compiled_schedule):
                         p_time = (slot_start_dt + timedelta(minutes=30)).time(); continue
                     
-                    # Combine all scores for the final ranking
                     time_of_day_score = 0 if p_time.hour < 12 else 1
                     final_score = tide_score + day_capacity_score + time_of_day_score
-
                     all_found_slots.append({
                         'date': check_date, 'time': p_time, 'truck_id': truck.truck_id,
                         'j17_needed': needs_j17, 'ramp_id': selected_ramp_id, 'score': final_score, 'priority': priority,
@@ -407,7 +411,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             if len(final_slots) >= num_suggestions_to_find:
                 break
         return final_slots, f"Found {len(final_slots)} best available slots.", [], False
-
 
 
 
@@ -483,28 +486,49 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
         return None, f"An error occurred: {e}"
 
 def generate_random_jobs(num_to_generate, start_date, end_date, service_type_filter, truck_operating_hours):
-    if not all((LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS)): return "Error: Master data not loaded."
-    if start_date > end_date: return "Error: Start date cannot be after end date."
-    success_count, fail_count, customer_ids, ramp_ids, date_range_days = 0, 0, list(LOADED_CUSTOMERS.keys()), list(ECM_RAMPS.keys()), (end_date - start_date).days
+    if not all((LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS)):
+        return "Error: Master data not loaded."
+    if start_date > end_date:
+        return "Error: Start date cannot be after end date."
+
+    success_count, fail_count = 0, 0
+    customer_ids, ramp_ids = list(LOADED_CUSTOMERS.keys()), list(ECM_RAMPS.keys())
+    
     for _ in range(num_to_generate):
         service_type = random.choice(["Launch", "Haul", "Transport"]) if service_type_filter.lower() == 'all' else service_type_filter
         random_customer_id = random.choice(customer_ids)
         boat = next((b for b in LOADED_BOATS.values() if b.customer_id == random_customer_id), None)
-        if not boat: fail_count += 1; continue
+        if not boat:
+            fail_count += 1
+            continue
+
         random_ramp_id = random.choice(ramp_ids) if service_type != "Transport" else None
-        random_date = start_date + timedelta(days=random.randint(0, date_range_days))
+        
+        # Find slots ONLY within the strict date range provided
         slots, _, _, _ = find_available_job_slots(
-            customer_id=random_customer_id, boat_id=boat.boat_id, service_type=service_type,
-            requested_date_str=random_date.strftime('%Y-%m-%d'), selected_ramp_id=random_ramp_id,
-            force_preferred_truck=False, truck_operating_hours=truck_operating_hours
+            customer_id=random_customer_id,
+            boat_id=boat.boat_id,
+            service_type=service_type,
+            requested_date_str=start_date.strftime('%Y-%m-%d'), # Use start_date as the initial seed
+            selected_ramp_id=random_ramp_id,
+            force_preferred_truck=False,
+            truck_operating_hours=truck_operating_hours,
+            # Pass the strict date range to constrain the search
+            strict_start_date=start_date,
+            strict_end_date=end_date
         )
+
         if slots:
             selected_slot = random.choice(slots)
             job_request = {'customer_id': random_customer_id, 'boat_id': boat.boat_id, 'service_type': service_type}
             new_job_id, _ = confirm_and_schedule_job(job_request, selected_slot)
-            if new_job_id: success_count += 1
-            else: fail_count += 1
-        else: fail_count += 1
+            if new_job_id:
+                success_count += 1
+            else:
+                fail_count += 1
+        else:
+            fail_count += 1
+            
     return f"Bulk generation complete. Success: {success_count}. Failures: {fail_count}."
 
 def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
