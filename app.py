@@ -847,76 +847,8 @@ if app_mode == "Schedule New Boat":
 elif app_mode == "Reporting":
     show_reporting_page()
 elif app_mode == "Settings":
+    # Just call the function. That's it.
     show_settings_page()
 
-    with tab1:
-        st.subheader("Scheduling Defaults")
-        st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=10, value=st.session_state.get('num_suggestions', 3), step=1)
-        st.markdown("---")
-        st.subheader("Crane Job Search Window")
-        c1,c2 = st.columns(2)
-        c1.number_input("Days to search in PAST", min_value=0, max_value=30, value=st.session_state.get('crane_look_back_days', 7), key="crane_look_back_days")
-        c2.number_input("Days to search in FUTURE", min_value=7, max_value=180, value=st.session_state.get('crane_look_forward_days', 60), key="crane_look_forward_days")
 
-    with tab2:
-        st.subheader("Truck & Crane Weekly Hours")
-        st.info("NOTE: Changes made here are for the current session only.")
-        schedule_to_edit = st.session_state.truck_operating_hours
-        truck_id = st.selectbox("Select a resource to edit:", list(schedule_to_edit.keys()))
-        if truck_id:
-            if st.button("Copy Schedule From..."): st.session_state.show_copy_dropdown = True
-            if st.session_state.get('show_copy_dropdown'):
-                source_truck = st.selectbox("Select source:", [t for t in schedule_to_edit if t != truck_id])
-                if st.button("Apply Copy"):
-                    st.session_state.truck_operating_hours[truck_id] = st.session_state.truck_operating_hours[source_truck]
-                
-                    st.session_state.show_copy_dropdown = False
-                    st.rerun()
-            st.markdown("---")
-            with st.form(f"form_{truck_id}"):
-                st.write(f"**Editing hours for {truck_id}**")
-                new_hours = {}
-            
-                for i, day in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
-                    current = schedule_to_edit.get(truck_id, {}).get(i)
-                    is_working = current is not None
-                    start, end = (current[0], current[1]) if is_working else (datetime.time(8,0), datetime.time(16,0))
-         
-                    summary = f"{day}: {ecm.format_time_for_display(start)} - {ecm.format_time_for_display(end)}" if is_working else f"{day}: Off Duty"
-                    with st.expander(summary):
-                        c1,c2,c3 = st.columns([1,2,2])
-                        working = c1.checkbox("Working", value=is_working, key=f"{truck_id}_{i}_w")
-                        new_start = c2.time_input("Start", value=start, key=f"{truck_id}_{i}_s", disabled=not working)
-                        new_end = c3.time_input("End", value=end, key=f"{truck_id}_{i}_e", disabled=not working)
-                        new_hours[i] = (new_start, new_end) if working else None
-            
-                if st.form_submit_button("Save Hours"):
-                    st.session_state.truck_operating_hours[truck_id] = new_hours
-                    st.success(f"Updated hours for {truck_id}.")
-                    st.rerun()
 
-    with tab3:
-        st.subheader("QA & Data Generation Tools")
-        st.write("This tool creates random, valid jobs to populate the calendar for testing.")
-        
-        num_jobs_to_gen = st.number_input("Number of jobs to generate:", min_value=1, max_value=100, value=25, step=1)
-        service_type_input = st.selectbox("Type of jobs to create:", ["All", "Launch", "Haul", "Transport"])
-        
-        dcol1, dcol2 = st.columns(2)
-        start_date_input = dcol1.date_input("Start of date range:", datetime.date(2025, 4, 15))
-        end_date_input = dcol2.date_input("End of date range:", datetime.date(2025, 7, 1))
-
-        if st.button("Generate Random Jobs"):
-            if start_date_input > end_date_input:
-                st.error("Start date cannot be after end date.")
-            else:
-                with st.spinner(f"Generating {num_jobs_to_gen} jobs..."):
-                   summary = ecm.generate_random_jobs(
-                        num_jobs_to_gen, 
-                        start_date_input, 
-                        end_date_input, 
-                        service_type_input, 
-                        st.session_state.truck_operating_hours
-                    )
-                st.success(summary)
-                st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
