@@ -587,11 +587,38 @@ def show_reporting_page():
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
 
     with tab1:
-        st.subheader("Scheduled Jobs Overview")
-        if ecm.SCHEDULED_JOBS:
-            # ... (code for this tab is correct) ...
-        else:
-            st.write("No jobs scheduled.")
+    st.subheader("Scheduled Jobs Overview")
+    if ecm.SCHEDULED_JOBS:
+        # Header for the jobs list
+        cols = st.columns((2, 1, 2, 1, 1, 3))
+        fields = ["Date/Time", "Service", "Customer", "Haul Truck", "Crane", "Actions"]
+        for col, field in zip(cols, fields):
+            col.markdown(f"**{field}**")
+        st.markdown("---")
+
+        # Display a row for each scheduled job
+        for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime):
+            cols = st.columns((2, 1, 2, 1, 1, 3))
+            cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p"))
+            cols[1].write(j.service_type)
+            cols[2].write(ecm.get_customer_details(j.customer_id).customer_name)
+            cols[3].write(j.assigned_hauling_truck_id)
+            cols[4].write(j.assigned_crane_truck_id or "—")
+
+            # Actions column with cancel confirmation logic
+            with cols[5]:
+                if st.session_state.get('job_to_cancel') == j.job_id:
+                    st.warning("Are you sure?")
+                    btn_cols = st.columns(2)
+                    btn_cols[0].button("✅ Yes, Cancel", key=f"confirm_cancel_{j.job_id}", on_click=cancel_job_confirmed, use_container_width=True, type="primary")
+                    btn_cols[1].button("❌ No", key=f"deny_cancel_{j.job_id}", on_click=clear_cancel_prompt, use_container_width=True)
+                else:
+                    btn_cols = st.columns(3)
+                    btn_cols[0].button("Move", key=f"move_{j.job_id}", on_click=move_job, args=(j.job_id,), use_container_width=True)
+                    btn_cols[1].button("Park", key=f"park_{j.job_id}", on_click=park_job, args=(j.job_id,), use_container_width=True)
+                    btn_cols[2].button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
+    else:
+        st.write("No jobs scheduled.")
     
     with tab2:
         st.subheader("Crane Day Candidate Calendar")
