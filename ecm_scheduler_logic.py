@@ -1,5 +1,6 @@
 import csv
 import datetime
+import calendar
 import requests
 import random
 from datetime import timedelta, time
@@ -46,6 +47,26 @@ ECM_RAMPS = {
     "WeymouthWessagusset": Ramp("WeymouthWessagusset", "Weymouth Harbor (Wessagusset)", "8444788", "HoursAroundHighTide", 3.0),
 }
 get_customer_details = LOADED_CUSTOMERS.get; get_boat_details = LOADED_BOATS.get; get_ramp_details = ECM_RAMPS.get
+
+def get_monthly_tides_for_scituate(year, month):
+    """
+    Fetches all high and low tides for a given month for Scituate Harbor.
+    Returns a dictionary of tide data keyed by date.
+    """
+    # The NOAA Station ID for Scituate Harbor, MA is "8445138"
+    scituate_station_id = "8445138"
+    try:
+        # Determine the first and last day of the requested month
+        start_date = datetime.date(year, month, 1)
+        _, num_days = calendar.monthrange(year, month)
+        end_date = datetime.date(year, month, num_days)
+
+        # Use the existing function to fetch data for the whole month at once
+        monthly_tides = fetch_noaa_tides_for_range(scituate_station_id, start_date, end_date)
+        return monthly_tides
+    except Exception as e:
+        print(f"Error fetching monthly tides: {e}")
+        return None
 
 def fetch_noaa_tides_for_range(station_id, start_date, end_date):
     start_str, end_str = start_date.strftime("%Y%m%d"), end_date.strftime("%Y%m%d")
