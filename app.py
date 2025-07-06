@@ -334,55 +334,20 @@ def generate_progress_report_pdf(stats, analysis):
     buffer.seek(0)
     return buffer
 
+#### NEW CANCEL, REBOOK, PARK FUNCTINOALITY
 
-# --- Session State Initialization ---
-def initialize_session_state():
-    defaults = {
-        'data_loaded': False, 'info_message': "", 'current_job_request': None, 'found_slots': [],
-        'selected_slot': None, 'search_requested_date': None, 'was_forced_search': False,
-        'num_suggestions': 3, 'crane_look_back_days': 7, 'crane_look_forward_days': 60,
-        'slot_page_index': 0, 'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS,
-        'show_copy_dropdown': False,
-        # New state variables for autocomplete
-        'customer_search_input': '',
-        'selected_customer_id': None
-    }
-    for key, default_value in defaults.items():
-        if key not in st.session_state: st.session_state[key] = default_value
-    if not st.session_state.data_loaded:
-        if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"):
-            st.session_state.data_loaded = True
-        else: st.error("Failed to load customer and boat data.")
+# PASTE THE FOLLOWING TWO FUNCTIONS HERE
 
-initialize_session_state()
+def show_scheduler_page():
+    """
+    Displays the entire Schedule New Boat page and handles new, moved, or rescheduled jobs.
+    """
+    # --- Message Handling ---
+    # Check for info messages from other pages (like the reporting page)
+    if st.session_state.get('info_message'):
+        st.info(st.session_state.info_message)
+        st.session_state.info_message = "" # Clear after displaying
 
-# --- Main App Body ---
-st.title("Marine Transportation")
-
-with st.container(border=True):
-    stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Overall Progress")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown(create_gauge(stats['all_boats']['scheduled'], stats['all_boats']['total'], "Scheduled"), unsafe_allow_html=True)
-        with c2:
-            st.markdown(create_gauge(stats['all_boats']['launched'], stats['all_boats']['total'], "Launched"), unsafe_allow_html=True)
-    with col2:
-        st.subheader("ECM Boats")
-        c1, c2 = st.columns(2)
-        with c1: st.metric(label="Scheduled", value=stats['ecm_boats']['scheduled'], delta=f"/ {stats['ecm_boats']['total']} Total", delta_color="off")
-        with c2: st.metric(label="Launched (to date)", value=stats['ecm_boats']['launched'], delta=f"/ {stats['ecm_boats']['scheduled']} Sched.", delta_color="off")
-st.markdown("---")
-
-st.sidebar.title("Navigation")
-app_mode = st.sidebar.radio("Go to", ["Schedule New Boat", "Reporting", "Settings"])
-
-# --- PAGE 1: SCHEDULER ---
-if app_mode == "Schedule New Boat":
-    if st.session_state.info_message:
-        st.info(st.session_state.info_message); st.session_state.info_message = ""
     if st.session_state.get("confirmation_message"):
         st.success(f"✅ {st.session_state.confirmation_message}")
         if st.button("Schedule Another Job"):
@@ -390,6 +355,12 @@ if app_mode == "Schedule New Boat":
             st.rerun()
 
     st.sidebar.header("New Job Request")
+
+    # --- Check for Rebooking State ---
+    rebooking_details = st.session_state.get('rebooking_details')
+    if rebooking_details:
+        # Pre-select customer automatically when rebooking
+        st.session_state.selected_customer_id = ecm.get_parked_job_details(rebooking_details['parked_job_id']).customer_id
 
     # --- ENHANCED CUSTOMER SEARCH ---
     def select_customer(cust_id):
@@ -462,7 +433,8 @@ if app_mode == "Schedule New Boat":
                 st.sidebar.error(f"No boat found for {customer.customer_name}.")
                 clear_selection() # Clear the bad state
                 st.stop()
-
+    
+    # --- Job Details Form ---
     if customer and boat:
         st.sidebar.markdown("---");st.sidebar.subheader("Selected Customer & Boat:")
         st.sidebar.write(f"**Customer:** {customer.customer_name}")
@@ -472,11 +444,20 @@ if app_mode == "Schedule New Boat":
         st.sidebar.write(f"**Preferred Truck:** {ecm.ECM_TRUCKS.get(customer.preferred_truck_id, type('',(object,),{'truck_name':'N/A'})()).truck_name}")
         st.sidebar.markdown("---")
 
-        service_type = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
+        # Set defaults for the selectboxes based on rebooking_details
+        service_type_options = ["Launch", "Haul", "Transport"]
+        service_index = service_type_options.index(rebooking_details['service_type']) if rebooking_details and rebooking_details.get('service_type') in service_type_options else 0
+        service_type = st.sidebar.selectbox("Select Service Type:", service_type_options, index=service_index)
+        
         req_date = st.sidebar.date_input("Requested Date:", datetime.date.today() + datetime.timedelta(days=7))
 
-        ramp_id = st.sidebar.selectbox("Select Ramp:", list(ecm.ECM_RAMPS.keys())) if service_type in ["Launch", "Haul"] else None
-
+        if service_type in ["Launch", "Haul"]:
+            ramp_options = list(ecm.ECM_RAMPS.keys())
+            ramp_index = ramp_options.index(rebooking_details['ramp_id']) if rebooking_details and rebooking_details.get('ramp_id') in ramp_options else 0
+            ramp_id = st.sidebar.selectbox("Select Ramp:", ramp_options, index=ramp_index)
+        else:
+            ramp_id = None
+        
         st.sidebar.markdown("---");st.sidebar.subheader("Search Options")
         relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
         manager_override = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
@@ -490,6 +471,7 @@ if app_mode == "Schedule New Boat":
             st.session_state.info_message, st.session_state.found_slots, st.session_state.selected_slot = msg, slots, None
             st.rerun()
 
+    # --- Slot Display Logic ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
         total_slots, page_index, slots_per_page = len(st.session_state.found_slots), st.session_state.slot_page_index, 3
@@ -524,56 +506,148 @@ if app_mode == "Schedule New Boat":
                 st.html(card_html)
                 st.button("Select this slot", key=f"select_slot_{page_index + i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
 
+    # --- Confirmation Logic (Updated) ---
     elif st.session_state.selected_slot:
         slot = st.session_state.selected_slot
         st.subheader("Preview & Confirm Selection:")
         st.success(f"Considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
+        
         if st.button("CONFIRM THIS JOB"):
-            new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot)
+            parked_job_id_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
+            
+            # This function call now includes a keyword to handle removing the old job
+            new_job_id, message = ecm.confirm_and_schedule_job(
+                st.session_state.current_job_request, 
+                slot, 
+                parked_job_to_remove=parked_job_id_to_remove # Pass the parked ID
+            )
+            
             if new_job_id:
                 st.session_state.confirmation_message = message
-                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'selected_customer_id', 'customer_search_input']:
+                # Clear all transient states, including rebooking
+                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'selected_customer_id', 'customer_search_input', 'rebooking_details']:
                     st.session_state.pop(key, None)
                 st.rerun()
-            else: st.error(f"Failed to confirm job: {message}")
+            else: 
+                st.error(f"Failed to confirm job: {message}")
 
-# --- REPORTING PAGE ---
-elif app_mode == "Reporting":
+def show_reporting_page():
+    """
+    Displays the entire Reporting dashboard, including interactive job management.
+    """
     st.header("Reporting Dashboard")
-    tab1, tab2, tab3, tab4 = st.tabs(["Scheduled Jobs Overview", "Crane Day Calendar", "Scheduling Progress", "PDF Export Tools"])
+
+    # --- Action Callbacks ---
+    def move_job(job_id):
+        """Parks a job and redirects to the scheduler to rebook it."""
+        job = ecm.get_job_details(job_id) # Assumes ecm.get_job_details exists
+        if not job: return
+        
+        ecm.park_job(job_id) # Assumes ecm.park_job exists
+        
+        # Set session state to pre-populate the scheduler
+        st.session_state.selected_customer_id = job.customer_id
+        st.session_state.rebooking_details = {
+            'parked_job_id': job.job_id,
+            'customer_id': job.customer_id, # Add customer_id for rebooking
+            'service_type': job.service_type,
+            'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
+        }
+        st.session_state.info_message = f"Rebooking job for {ecm.get_customer_details(job.customer_id).customer_name}. Please find a new slot."
+        
+        # Set a flag to trigger the page switch in the main script
+        st.session_state.app_mode_switch = "Schedule New Boat"
+        st.rerun()
+
+    def cancel_job(job_id):
+        """Callback to cancel a job."""
+        ecm.cancel_job(job_id) # Assumes ecm.cancel_job exists
+        st.toast(f"Job #{job_id} has been cancelled.", icon="🗑️")
+
+    def park_job(job_id):
+        """Callback to park a job."""
+        ecm.park_job(job_id) # Assumes ecm.park_job exists
+        st.toast(f"Job #{job_id} has been parked.", icon="🅿️")
+
+    def reschedule_parked_job(parked_job_id):
+        """Callback to take a parked job and re-book it."""
+        job = ecm.get_parked_job_details(parked_job_id) # Assumes ecm.get_parked_job_details exists
+        if not job: return
+
+        st.session_state.selected_customer_id = job.customer_id
+        st.session_state.rebooking_details = {
+            'parked_job_id': job.job_id,
+            'customer_id': job.customer_id, # Add customer_id for rebooking
+            'service_type': job.service_type,
+            'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
+        }
+        st.session_state.info_message = f"Rescheduling parked job for {ecm.get_customer_details(job.customer_id).customer_name}. Please select a new slot."
+        st.session_state.app_mode_switch = "Schedule New Boat"
+        st.rerun()
+
+    # --- UI Layout ---
+    tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
+
     with tab1:
-        st.subheader("All Scheduled Jobs")
+        st.subheader("Scheduled Jobs Overview")
         if ecm.SCHEDULED_JOBS:
-            data = [{'Job ID': j.job_id, 'Date': j.scheduled_start_datetime.strftime("%Y-%m-%d"), 'Time': ecm.format_time_for_display(j.scheduled_start_datetime.time()), 'Service': j.service_type, 'Customer': ecm.get_customer_details(j.customer_id).customer_name, 'Truck': j.assigned_hauling_truck_id, 'Crane': j.assigned_crane_truck_id or ""} for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime)]
-            st.dataframe(pd.DataFrame(data))
-        else: st.write("No jobs scheduled.")
+            # Header
+            cols = st.columns((2, 1, 2, 1, 1, 3))
+            fields = ["Date/Time", "Service", "Customer", "Haul Truck", "Crane", "Actions"]
+            for col, field in zip(cols, fields):
+                col.markdown(f"**{field}**")
+            st.markdown("---")
+
+            # Job Rows
+            for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime):
+                cols = st.columns((2, 1, 2, 1, 1, 3))
+                cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p"))
+                cols[1].write(j.service_type)
+                cols[2].write(ecm.get_customer_details(j.customer_id).customer_name)
+                cols[3].write(j.assigned_hauling_truck_id)
+                cols[4].write(j.assigned_crane_truck_id or "—")
+                
+                with cols[5]: # Action buttons
+                    btn_cols = st.columns(3)
+                    btn_cols[0].button("Move", key=f"move_{j.job_id}", on_click=move_job, args=(j.job_id,), use_container_width=True)
+                    btn_cols[1].button("Park", key=f"park_{j.job_id}", on_click=park_job, args=(j.job_id,), use_container_width=True)
+                    btn_cols[2].button("Cancel", key=f"cancel_{j.job_id}", on_click=cancel_job, args=(j.job_id,), type="primary", use_container_width=True)
+        else:
+            st.write("No jobs scheduled.")
+    
     with tab2:
         st.subheader("Crane Day Candidate Calendar")
-        ramp = st.selectbox("Select a ramp:", list(ecm.CANDIDATE_CRANE_DAYS.keys()), key="cal_ramp_sel")
-        if ramp: display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp])
+        ramp_options = list(ecm.CANDIDATE_CRANE_DAYS.keys())
+        if ramp_options:
+            ramp = st.selectbox("Select a ramp:", ramp_options, key="cal_ramp_sel")
+            if ramp: display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp])
+        else:
+            st.warning("No crane day data available.")
+
+    
     with tab3:
         st.subheader("Scheduling Progress Report")
         stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
-
+        
         st.markdown("#### Overall Progress")
         c1, c2 = st.columns(2)
         c1.metric("Boats Scheduled", f"{stats['all_boats']['scheduled']} / {stats['all_boats']['total']}")
         c2.metric("Boats Launched (to date)", f"{stats['all_boats']['launched']} / {stats['all_boats']['total']}")
-
+        
         st.markdown("#### ECM Boats")
         c1, c2 = st.columns(2)
         c1.metric("ECM Scheduled", f"{stats['ecm_boats']['scheduled']} / {stats['ecm_boats']['total']}")
         c2.metric("ECM Launched (to date)", f"{stats['ecm_boats']['launched']} / {stats['ecm_boats']['total']}")
-
+        
         st.markdown("---")
         st.subheader("Download Formatted PDF Report")
-
-
+        
         if st.button("📊 Generate PDF Report"):
             with st.spinner("Generating your report..."):
                 analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
                 pdf_buffer = generate_progress_report_pdf(stats, analysis)
-
+                
                 st.download_button(
                     label="📥 Download Report (.pdf)",
                     data=pdf_buffer,
@@ -617,14 +691,106 @@ elif app_mode == "Reporting":
                         file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf",
                         key="download_multi_planner_button"
                     )
-# --- PAGE 3: SETTINGS ---
+
+    with tab5:
+        st.subheader("🅿️ Parked Jobs")
+        st.info("These jobs have been removed from the schedule and are waiting to be re-booked. Reschedule them from here.")
+        if ecm.PARKED_JOBS: # Assumes ecm.PARKED_JOBS exists
+            # Header
+            cols = st.columns((2, 2, 1, 2))
+            fields = ["Customer", "Boat", "Service", "Actions"]
+            for col, field in zip(cols, fields):
+                col.markdown(f"**{field}**")
+            st.markdown("---")
+
+            # Parked Job Rows
+            for job_id, job in ecm.PARKED_JOBS.items():
+                customer = ecm.get_customer_details(job.customer_id)
+                boat = ecm.get_boat_details(job.boat_id)
+                cols = st.columns((2, 2, 1, 2))
+                cols[0].write(customer.customer_name)
+                cols[1].write(f"{boat.boat_length}' {boat.boat_type}")
+                cols[2].write(job.service_type)
+                with cols[3]:
+                    st.button("Reschedule", key=f"reschedule_{job.job_id}", on_click=reschedule_parked_job, args=(job.job_id,), use_container_width=True)
+        else:
+            st.write("No jobs are currently parked.")
+
+
+#### END NEW CANCEL, REBOOK< PARK FUNCTIONALITY
+
+
+# --- Session State Initialization ---
+def initialize_session_state():
+    defaults = {
+        'data_loaded': False, 'info_message': "", 'current_job_request': None, 'found_slots': [],
+        'selected_slot': None, 'search_requested_date': None, 'was_forced_search': False,
+        'num_suggestions': 3, 'crane_look_back_days': 7, 'crane_look_forward_days': 60,
+        'slot_page_index': 0, 'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS,
+        'show_copy_dropdown': False,
+        # New state variables for autocomplete
+        'customer_search_input': '',
+        'selected_customer_id': None
+    }
+    for key, default_value in defaults.items():
+        if key not in st.session_state: st.session_state[key] = default_value
+    if not st.session_state.data_loaded:
+        if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"):
+            st.session_state.data_loaded = True
+        else: st.error("Failed to load customer and boat data.")
+
+initialize_session_state()
+
+# --- Main App Body ---
+st.title("Marine Transportation")
+
+with st.container(border=True):
+    stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Overall Progress")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(create_gauge(stats['all_boats']['scheduled'], stats['all_boats']['total'], "Scheduled"), unsafe_allow_html=True)
+        with c2:
+            st.markdown(create_gauge(stats['all_boats']['launched'], stats['all_boats']['total'], "Launched"), unsafe_allow_html=True)
+    with col2:
+        st.subheader("ECM Boats")
+        c1, c2 = st.columns(2)
+        with c1: st.metric(label="Scheduled", value=stats['ecm_boats']['scheduled'], delta=f"/ {stats['ecm_boats']['total']} Total", delta_color="off")
+        with c2: st.metric(label="Launched (to date)", value=stats['ecm_boats']['launched'], delta=f"/ {stats['ecm_boats']['scheduled']} Sched.", delta_color="off")
+st.markdown("---")
+
+# PASTE THIS REPLACEMENT BLOCK AT THE END OF YOUR FILE
+
+st.sidebar.title("Navigation")
+
+# This new logic handles switching pages automatically (e.g., for "Move Job")
+page_options = ["Schedule New Boat", "Reporting", "Settings"]
+index = 0 # Default to the first page
+if st.session_state.get('app_mode_switch'):
+    try:
+        # Find the index for the page we want to switch to
+        index = page_options.index(st.session_state.get('app_mode_switch'))
+    except ValueError:
+        index = 0 # Default if page name is wrong
+    # Clear the switch flag so it doesn't trigger again
+    st.session_state.pop('app_mode_switch')
+
+app_mode = st.sidebar.radio("Go to", page_options, index=index, key="app_mode_radio")
+
+# Call the new functions based on the selected mode
+if app_mode == "Schedule New Boat":
+    show_scheduler_page()
+elif app_mode == "Reporting":
+    show_reporting_page()
 elif app_mode == "Settings":
     st.header("Application Settings")
     tab1, tab2, tab3 = st.tabs(["Scheduling Rules", "Truck Schedules", "Developer Tools"])
 
     with tab1:
         st.subheader("Scheduling Defaults")
-        st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=6, value=st.session_state.get('num_suggestions', 3), step=1)
+        st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=10, value=st.session_state.get('num_suggestions', 3), step=1)
         st.markdown("---")
         st.subheader("Crane Job Search Window")
         c1,c2 = st.columns(2)
@@ -642,19 +808,19 @@ elif app_mode == "Settings":
                 source_truck = st.selectbox("Select source:", [t for t in schedule_to_edit if t != truck_id])
                 if st.button("Apply Copy"):
                     st.session_state.truck_operating_hours[truck_id] = st.session_state.truck_operating_hours[source_truck]
-
+                
                     st.session_state.show_copy_dropdown = False
                     st.rerun()
             st.markdown("---")
             with st.form(f"form_{truck_id}"):
                 st.write(f"**Editing hours for {truck_id}**")
                 new_hours = {}
-
+            
                 for i, day in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
                     current = schedule_to_edit.get(truck_id, {}).get(i)
                     is_working = current is not None
                     start, end = (current[0], current[1]) if is_working else (datetime.time(8,0), datetime.time(16,0))
-
+         
                     summary = f"{day}: {ecm.format_time_for_display(start)} - {ecm.format_time_for_display(end)}" if is_working else f"{day}: Off Duty"
                     with st.expander(summary):
                         c1,c2,c3 = st.columns([1,2,2])
@@ -662,7 +828,7 @@ elif app_mode == "Settings":
                         new_start = c2.time_input("Start", value=start, key=f"{truck_id}_{i}_s", disabled=not working)
                         new_end = c3.time_input("End", value=end, key=f"{truck_id}_{i}_e", disabled=not working)
                         new_hours[i] = (new_start, new_end) if working else None
-
+            
                 if st.form_submit_button("Save Hours"):
                     st.session_state.truck_operating_hours[truck_id] = new_hours
                     st.success(f"Updated hours for {truck_id}.")
@@ -671,10 +837,10 @@ elif app_mode == "Settings":
     with tab3:
         st.subheader("QA & Data Generation Tools")
         st.write("This tool creates random, valid jobs to populate the calendar for testing.")
-
+        
         num_jobs_to_gen = st.number_input("Number of jobs to generate:", min_value=1, max_value=100, value=25, step=1)
         service_type_input = st.selectbox("Type of jobs to create:", ["All", "Launch", "Haul", "Transport"])
-
+        
         dcol1, dcol2 = st.columns(2)
         start_date_input = dcol1.date_input("Start of date range:", datetime.date(2025, 4, 15))
         end_date_input = dcol2.date_input("End of date range:", datetime.date(2025, 7, 1))
@@ -685,10 +851,10 @@ elif app_mode == "Settings":
             else:
                 with st.spinner(f"Generating {num_jobs_to_gen} jobs..."):
                    summary = ecm.generate_random_jobs(
-                        num_jobs_to_gen,
-                        start_date_input,
-                        end_date_input,
-                        service_type_input,
+                        num_jobs_to_gen, 
+                        start_date_input, 
+                        end_date_input, 
+                        service_type_input, 
                         st.session_state.truck_operating_hours
                     )
                 st.success(summary)
