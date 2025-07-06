@@ -504,22 +504,24 @@ def generate_random_jobs(num_to_generate, start_date, end_date, service_type_fil
 
         random_ramp_id = random.choice(ramp_ids) if service_type != "Transport" else None
         
-        # Find slots ONLY within the strict date range provided
         slots, _, _, _ = find_available_job_slots(
             customer_id=random_customer_id,
             boat_id=boat.boat_id,
             service_type=service_type,
-            requested_date_str=start_date.strftime('%Y-%m-%d'), # Use start_date as the initial seed
+            requested_date_str=start_date.strftime('%Y-%m-%d'),
             selected_ramp_id=random_ramp_id,
             force_preferred_truck=False,
             truck_operating_hours=truck_operating_hours,
-            # Pass the strict date range to constrain the search
             strict_start_date=start_date,
             strict_end_date=end_date
         )
 
         if slots:
-            selected_slot = random.choice(slots)
+            # --- THIS IS THE CHANGE ---
+            # Instead of a random choice, always pick the best-ranked slot.
+            selected_slot = slots[0]
+            # --- END OF CHANGE ---
+            
             job_request = {'customer_id': random_customer_id, 'boat_id': boat.boat_id, 'service_type': service_type}
             new_job_id, _ = confirm_and_schedule_job(job_request, selected_slot)
             if new_job_id:
