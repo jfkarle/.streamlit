@@ -536,55 +536,55 @@ def show_scheduler_page():
 
 def show_reporting_page():
     """
-    Displays the entire Reporting dashboard, including interactive job management.
+    Displays the entire Reporting dashboard, including interactive job management
+    with a confirmation step for cancellation.
     """
     st.header("Reporting Dashboard")
 
     # --- Action Callbacks ---
     def move_job(job_id):
-        """Parks a job and redirects to the scheduler to rebook it."""
-        job = ecm.get_job_details(job_id) # Assumes ecm.get_job_details exists
+        job = ecm.get_job_details(job_id)
         if not job: return
-        
-        ecm.park_job(job_id) # Assumes ecm.park_job exists
-        
-        # Set session state to pre-populate the scheduler
+        ecm.park_job(job_id)
         st.session_state.selected_customer_id = job.customer_id
         st.session_state.rebooking_details = {
-            'parked_job_id': job.job_id,
-            'customer_id': job.customer_id, # Add customer_id for rebooking
-            'service_type': job.service_type,
-            'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
+            'parked_job_id': job.job_id, 'customer_id': job.customer_id,
+            'service_type': job.service_type, 'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
         }
         st.session_state.info_message = f"Rebooking job for {ecm.get_customer_details(job.customer_id).customer_name}. Please find a new slot."
-        
-        # Set a flag to trigger the page switch in the main script
         st.session_state.app_mode_switch = "Schedule New Boat"
 
-    def cancel_job(job_id):
-        """Callback to cancel a job."""
-        ecm.cancel_job(job_id) # Assumes ecm.cancel_job exists
-        st.toast(f"Job #{job_id} has been cancelled.", icon="🗑️")
-
     def park_job(job_id):
-        """Callback to park a job."""
-        ecm.park_job(job_id) # Assumes ecm.park_job exists
-        st.toast(f"Job #{job_id} has been parked.", icon="🅿️")
+        ecm.park_job(job_id)
+        st.toast(f"🅿️ Job #{job_id} has been parked.", icon="🅿️")
 
     def reschedule_parked_job(parked_job_id):
-        """Callback to take a parked job and re-book it."""
-        job = ecm.get_parked_job_details(parked_job_id) # Assumes ecm.get_parked_job_details exists
+        job = ecm.get_parked_job_details(parked_job_id)
         if not job: return
-
         st.session_state.selected_customer_id = job.customer_id
         st.session_state.rebooking_details = {
-            'parked_job_id': job.job_id,
-            'customer_id': job.customer_id, # Add customer_id for rebooking
-            'service_type': job.service_type,
-            'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
+            'parked_job_id': job.job_id, 'customer_id': job.customer_id,
+            'service_type': job.service_type, 'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
         }
         st.session_state.info_message = f"Rescheduling parked job for {ecm.get_customer_details(job.customer_id).customer_name}. Please select a new slot."
         st.session_state.app_mode_switch = "Schedule New Boat"
+
+    # --- NEW Callbacks for Cancel Confirmation ---
+    def prompt_for_cancel(job_id):
+        """Sets the job ID in session state to trigger the confirmation UI."""
+        st.session_state.job_to_cancel = job_id
+
+    def clear_cancel_prompt():
+        """Clears the job ID from session state to hide the confirmation UI."""
+        st.session_state.job_to_cancel = None
+
+    def cancel_job_confirmed():
+        """Performs the actual cancellation and clears the state."""
+        job_id = st.session_state.get('job_to_cancel')
+        if job_id:
+            ecm.cancel_job(job_id)
+            st.toast(f"🗑️ Job #{job_id} has been permanently cancelled.", icon="🗑️")
+            clear_cancel_prompt() # Reset the state after deleting
 
     # --- UI Layout ---
     tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
@@ -593,14 +593,12 @@ def show_reporting_page():
     with tab1:
         st.subheader("Scheduled Jobs Overview")
         if ecm.SCHEDULED_JOBS:
-            # Header
             cols = st.columns((2, 1, 2, 1, 1, 3))
             fields = ["Date/Time", "Service", "Customer", "Haul Truck", "Crane", "Actions"]
             for col, field in zip(cols, fields):
                 col.markdown(f"**{field}**")
             st.markdown("---")
 
-            # Job Rows
             for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime):
                 cols = st.columns((2, 1, 2, 1, 1, 3))
                 cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p"))
@@ -608,15 +606,25 @@ def show_reporting_page():
                 cols[2].write(ecm.get_customer_details(j.customer_id).customer_name)
                 cols[3].write(j.assigned_hauling_truck_id)
                 cols[4].write(j.assigned_crane_truck_id or "—")
-                
-                with cols[5]: # Action buttons
-                    btn_cols = st.columns(3)
-                    btn_cols[0].button("Move", key=f"move_{j.job_id}", on_click=move_job, args=(j.job_id,), use_container_width=True)
-                    btn_cols[1].button("Park", key=f"park_{j.job_id}", on_click=park_job, args=(j.job_id,), use_container_width=True)
-                    btn_cols[2].button("Cancel", key=f"cancel_{j.job_id}", on_click=cancel_job, args=(j.job_id,), type="primary", use_container_width=True)
+
+                # --- THIS IS THE NEW CONFIRMATION LOGIC ---
+                with cols[5]:
+                    if st.session_state.get('job_to_cancel') == j.job_id:
+                        # If this is the job targeted for cancellation, show confirmation buttons
+                        st.warning("Are you sure?")
+                        btn_cols = st.columns(2)
+                        btn_cols[0].button("✅ Yes, Cancel", key=f"confirm_cancel_{j.job_id}", on_click=cancel_job_confirmed, use_container_width=True, type="primary")
+                        btn_cols[1].button("❌ No", key=f"deny_cancel_{j.job_id}", on_click=clear_cancel_prompt, use_container_width=True)
+                    else:
+                        # Otherwise, show the normal action buttons
+                        btn_cols = st.columns(3)
+                        btn_cols[0].button("Move", key=f"move_{j.job_id}", on_click=move_job, args=(j.job_id,), use_container_width=True)
+                        btn_cols[1].button("Park", key=f"park_{j.job_id}", on_click=park_job, args=(j.job_id,), use_container_width=True)
+                        btn_cols[2].button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
         else:
             st.write("No jobs scheduled.")
     
+    # ... (The rest of your tabs: tab2, tab3, tab4, tab5) ...
     with tab2:
         st.subheader("Crane Day Candidate Calendar")
         ramp_options = list(ecm.CANDIDATE_CRANE_DAYS.keys())
@@ -626,35 +634,25 @@ def show_reporting_page():
         else:
             st.warning("No crane day data available.")
 
-    
     with tab3:
         st.subheader("Scheduling Progress Report")
         stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
-        
         st.markdown("#### Overall Progress")
         c1, c2 = st.columns(2)
         c1.metric("Boats Scheduled", f"{stats['all_boats']['scheduled']} / {stats['all_boats']['total']}")
         c2.metric("Boats Launched (to date)", f"{stats['all_boats']['launched']} / {stats['all_boats']['total']}")
-        
         st.markdown("#### ECM Boats")
         c1, c2 = st.columns(2)
         c1.metric("ECM Scheduled", f"{stats['ecm_boats']['scheduled']} / {stats['ecm_boats']['total']}")
         c2.metric("ECM Launched (to date)", f"{stats['ecm_boats']['launched']} / {stats['ecm_boats']['total']}")
-        
         st.markdown("---")
         st.subheader("Download Formatted PDF Report")
-        
         if st.button("📊 Generate PDF Report"):
             with st.spinner("Generating your report..."):
                 analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
                 pdf_buffer = generate_progress_report_pdf(stats, analysis)
-                
-                st.download_button(
-                    label="📥 Download Report (.pdf)",
-                    data=pdf_buffer,
-                    file_name=f"progress_report_{datetime.date.today()}.pdf",
-                    mime="application/pdf",
-                )
+                st.download_button(label="📥 Download Report (.pdf)", data=pdf_buffer, file_name=f"progress_report_{datetime.date.today()}.pdf", mime="application/pdf")
+
     with tab4:
         st.subheader("Generate Daily Planner PDF")
         selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
@@ -664,11 +662,7 @@ def show_reporting_page():
                 st.warning("No jobs scheduled for that date.")
             else:
                 pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
-                st.download_button(
-                    label="📥 Download Planner", data=pdf_buffer.getvalue(),
-                    file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf",
-                    key="download_daily_planner_button"
-                )
+                st.download_button(label="📥 Download Planner", data=pdf_buffer.getvalue(), file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf", key="download_daily_planner_button")
 
         st.markdown("---")
         st.subheader("Export Multi-Day Planner")
@@ -677,7 +671,6 @@ def show_reporting_page():
             start_date = st.date_input("Start Date", value=datetime.date.today(), key="multi_start_date")
         with dcol2:
             end_date = st.date_input("End Date", value=datetime.date.today() + datetime.timedelta(days=5), key="multi_end_date")
-
         if st.button("📤 Generate Multi-Day Planner PDF", key="generate_multi_pdf_button"):
             if start_date > end_date:
                 st.error("Start date must be before or equal to end date.")
@@ -687,24 +680,17 @@ def show_reporting_page():
                     st.warning("No jobs scheduled in this date range.")
                 else:
                     merged_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
-                    st.download_button(
-                        label="📥 Download Multi-Day Planner", data=merged_pdf,
-                        file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf",
-                        key="download_multi_planner_button"
-                    )
+                    st.download_button(label="📥 Download Multi-Day Planner", data=merged_pdf, file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf", key="download_multi_planner_button")
 
     with tab5:
         st.subheader("🅿️ Parked Jobs")
         st.info("These jobs have been removed from the schedule and are waiting to be re-booked. Reschedule them from here.")
-        if ecm.PARKED_JOBS: # Assumes ecm.PARKED_JOBS exists
-            # Header
+        if ecm.PARKED_JOBS:
             cols = st.columns((2, 2, 1, 2))
             fields = ["Customer", "Boat", "Service", "Actions"]
             for col, field in zip(cols, fields):
                 col.markdown(f"**{field}**")
             st.markdown("---")
-
-            # Parked Job Rows
             for job_id, job in ecm.PARKED_JOBS.items():
                 customer = ecm.get_customer_details(job.customer_id)
                 boat = ecm.get_boat_details(job.boat_id)
