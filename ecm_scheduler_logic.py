@@ -101,7 +101,7 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
                     boat_length = float(row.get('boat_length', '0').strip())
                     boat_draft = float(row.get('boat_draft', '0').strip() or 0)
                 except (ValueError, TypeError): continue
-                LOADED_BOATS[boat_id] = Boat(boat_id, c_id, row['boat_type'].strip(), boat_length, boat_draft)
+                LOADED_BOATS[boat_id] = Boat(boat_id, cust_id, row['boat_type'].strip(), boat_length, boat_draft)
         load_candidate_days_from_file()
         return True
     except FileNotFoundError: return False
