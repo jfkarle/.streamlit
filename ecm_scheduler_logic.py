@@ -335,8 +335,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              truck_operating_hours=None, strict_start_date=None, strict_end_date=None, 
                              prioritize_sailboats=True, **kwargs):
     """
-    Finds and ranks available job slots, with a toggleable option to prioritize
-    sailboats on days with favorable tide conditions.
+    Finds and ranks available job slots, including all efficiency rules:
+    Tide Score, Day Capacity, Proximity, Morning Bias, and Sailboat Priority.
     """
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
@@ -376,19 +376,35 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         tide_score = calculate_tide_efficiency_score(check_date, ramp_obj, truck_operating_hours, all_tides)
         if needs_j17 and tide_score > 0: continue
 
-        # --- NEW: Sailboat Priority Bonus ---
         sailboat_bonus = 0
-        # If the priority feature is ON, and it's a sailboat, and the tide day is good...
         if prioritize_sailboats and needs_j17 and tide_score == 0:
-            sailboat_bonus = -10 # Give a large bonus (negative score) to this day
-        # --- END OF NEW LOGIC ---
+            sailboat_bonus = -10
 
-        todays_truck_locations = {} # ... (proximity logic is the same)
+        todays_truck_locations = {}
+        for job in SCHEDULED_JOBS:
+            if job.job_status == "Scheduled" and job.scheduled_start_datetime.date() == check_date:
+                truck_id = job.assigned_hauling_truck_id
+                job_ramp_id = job.pickup_ramp_id or job.dropoff_ramp_id
+                if truck_id and job_ramp_id:
+                    if truck_id not in todays_truck_locations:
+                        todays_truck_locations[truck_id] = set()
+                    todays_truck_locations[truck_id].add(job_ramp_id)
         
-        # ... (Day Capacity logic is the same) ...
+        total_window_minutes = 0
+        for truck in suitable_trucks:
+            windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
+            for w in windows:
+                start_dt = datetime.datetime.combine(check_date, w['start_time'])
+                end_dt = datetime.datetime.combine(check_date, w['end_time'])
+                total_window_minutes += (end_dt - start_dt).total_seconds() / 60
+        day_capacity_score = 10 if total_window_minutes < 180 else 0
         
         for truck in suitable_trucks:
-            # ... (Proximity score calculation is the same) ...
+            proximity_score = 5
+            truck_current_ramps = todays_truck_locations.get(truck.truck_id)
+            if truck_current_ramps:
+                if selected_ramp_id in truck_current_ramps: proximity_score = 0
+                else: proximity_score = 20
 
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
             for window in windows:
@@ -402,7 +418,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         p_time = (slot_start_dt + timedelta(minutes=30)).time(); continue
                     
                     time_of_day_score = 0 if p_time.hour < 12 else 1
-                    # Add the new sailboat bonus to the final score calculation
                     final_score = tide_score + day_capacity_score + time_of_day_score + proximity_score + sailboat_bonus
 
                     all_found_slots.append({
