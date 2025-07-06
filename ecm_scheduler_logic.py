@@ -32,7 +32,11 @@ class Customer:
         self.customer_id, self.customer_name, self.street_address, self.preferred_truck_id = c_id, name, street, truck
         self.is_ecm_customer, self.home_line2, self.home_citystatezip = is_ecm, line2, cityzip
 class Boat:
-    def __init__(self, b_id, c_id, b_type, b_len, draft): self.boat_id, self.customer_id, self.boat_type, self.boat_length, self.draft_ft = b_id, c_id, b_type, b_len, draft
+    def __init__(self, b_id, c_id, b_type, b_len, draft, storage_addr, pref_ramp):
+        self.boat_id, self.customer_id, self.boat_type = b_id, c_id, b_type
+        self.boat_length, self.draft_ft = b_len, draft
+        self.storage_address, self.preferred_ramp_id = storage_addr, pref_ramp
+        
 class Job:
     def __init__(self, **kwargs): self.job_status = "Scheduled"; self.__dict__.update(kwargs)
 
@@ -122,7 +126,12 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
                     boat_length = float(row.get('boat_length', '0').strip())
                     boat_draft = float(row.get('boat_draft', '0').strip() or 0)
                 except (ValueError, TypeError): continue
-                LOADED_BOATS[boat_id] = Boat(boat_id, cust_id, row['boat_type'].strip(), boat_length, boat_draft)
+                
+                # Load the new location fields for the boat
+                storage_addr = row.get('storage_address', '').strip()
+                pref_ramp = row.get('preferred_ramp', '').strip()
+                LOADED_BOATS[boat_id] = Boat(boat_id, cust_id, row['boat_type'].strip(), boat_length, boat_draft, storage_addr, pref_ramp)
+
         load_candidate_days_from_file()
         return True
     except FileNotFoundError: return False
@@ -416,51 +425,52 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
     """
-    Creates and schedules a new job. This version explicitly re-checks if a crane
-    is needed instead of relying on a flag from the selected slot.
+    Creates a new job using the boat's specific storage_address and preferred_ramp.
     """
     try:
         customer = get_customer_details(original_request['customer_id'])
         boat = get_boat_details(original_request['boat_id'])
-        ramp = get_ramp_details(selected_slot.get('ramp_id'))
-
-        if not customer or not boat:
-            return None, "Error: Could not find Customer or Boat details."
-        if original_request['service_type'] in ["Launch", "Haul"] and not ramp:
-            return None, "Error: A ramp must be selected."
-
-        tide_data = get_all_tide_times_for_ramp_and_date(ramp, selected_slot['date']) if ramp else {'H': [], 'L': []}
-
-        # Use a global counter for unique IDs
+        
+        # The selected ramp in the UI is still used, but we now have defaults from the boat data
+        selected_ramp_id = selected_slot.get('ramp_id')
+        
+        # --- NEW LOGIC FOR PICKUP/DROPOFF ---
+        pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
+        service_type = original_request['service_type']
+        
+        if service_type == "Launch":
+            # For a Launch, pickup is from storage, dropoff is at the preferred ramp
+            pickup_addr = boat.storage_address
+            dropoff_rid = selected_ramp_id or boat.preferred_ramp_id
+            dropoff_addr = get_ramp_details(dropoff_rid).ramp_name if dropoff_rid else ""
+        elif service_type == "Haul":
+            # For a Haul, pickup is from the preferred ramp, dropoff is at storage
+            pickup_rid = selected_ramp_id or boat.preferred_ramp_id
+            pickup_addr = get_ramp_details(pickup_rid).ramp_name if pickup_rid else ""
+            dropoff_addr = boat.storage_address
+        elif service_type == "Transport":
+            # Transport logic can be expanded here if needed
+            pickup_rid = selected_ramp_id
+            pickup_addr = get_ramp_details(pickup_rid).ramp_name if pickup_rid else "N/A"
+            dropoff_addr = "N/A" # Placeholder for transport destination
+        
+        # --- (The rest of the function remains largely the same) ---
         global JOB_ID_COUNTER
         job_id = JOB_ID_COUNTER + 1
         JOB_ID_COUNTER += 1
-
         start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'])
-
-        # Explicitly check the boat type against the booking rules here
         rules = BOOKING_RULES.get(boat.boat_type, {})
         crane_is_required = rules.get('crane_mins', 0) > 0
-
         hauler_end_dt = start_dt + timedelta(minutes=rules.get('truck_mins', 90))
         j17_end_dt = start_dt + timedelta(minutes=rules.get('crane_mins', 0)) if crane_is_required else None
-
-        pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
-        service_type = original_request['service_type']
-        if service_type == "Launch":
-            pickup_addr, dropoff_addr, dropoff_rid = "HOME", ramp.ramp_name if ramp else 'N/A', selected_slot.get('ramp_id')
-        elif service_type == "Haul":
-            pickup_addr, dropoff_addr, pickup_rid = ramp.ramp_name if ramp else 'N/A', "HOME", selected_slot.get('ramp_id')
 
         new_job = Job(
             job_id=job_id, customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
             scheduled_start_datetime=start_dt, scheduled_end_datetime=hauler_end_dt,
             assigned_hauling_truck_id=selected_slot['truck_id'],
-            # Assign crane based on our new, reliable check
             assigned_crane_truck_id="J17" if crane_is_required else None,
             j17_busy_end_datetime=j17_end_dt,
             pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
-            high_tides=tide_data.get('H', []), low_tides=tide_data.get('L', []),
             job_status="Scheduled", notes=f"Booked via type: {selected_slot.get('type', 'N/A')}.",
             pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
         )
@@ -472,17 +482,14 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
                 crane_daily_status[date_str] = {'ramps_visited': set()}
             crane_daily_status[date_str]['ramps_visited'].add(new_job.pickup_ramp_id or new_job.dropoff_ramp_id)
 
-        # If this was a "Move" or "Reschedule," remove the old parked job
         if parked_job_to_remove:
             if parked_job_to_remove in PARKED_JOBS:
                 del PARKED_JOBS[parked_job_to_remove]
 
-        # This is the single, corrected return block for a successful operation
         message = f"SUCCESS: Job {new_job.job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
         return new_job.job_id, message
 
     except Exception as e:
-        # If anything goes wrong, return an error message
         return None, f"An error occurred: {e}"
 
 def generate_random_jobs(num_to_generate, start_date, end_date, service_type_filter, truck_operating_hours):
