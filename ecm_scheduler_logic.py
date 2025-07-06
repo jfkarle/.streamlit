@@ -333,75 +333,76 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         slots.sort(key=lambda s: abs(s['date'] - requested_date))
         return slots, f"Found {len(slots)} available slots.", [], False
 
-def confirm_and_schedule_job(job_request, slot, parked_job_to_remove=None):
+def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
     """
-    Creates and schedules a new job. If a parked_job_to_remove ID is provided,
-    it removes that job from the PARKED_JOBS list upon success.
-    
-    (This is an example implementation; yours might be slightly different.)
+    Creates and schedules a new job. This version explicitly re-checks if a crane
+    is needed instead of relying on a flag from the selected slot.
     """
     try:
-        # --- (Your existing logic for creating a job object) ---
-        customer = get_customer_details(job_request['customer_id'])
-        boat = get_boat_details(job_request['boat_id'])
-        
-        # Determine start and end times
-        start_datetime = datetime.datetime.combine(slot['date'], slot['time'])
-        # (This is a simplified duration, your logic might be more complex)
-        duration = datetime.timedelta(hours=2) 
-        end_datetime = start_datetime + duration
+        customer = get_customer_details(original_request['customer_id'])
+        boat = get_boat_details(original_request['boat_id'])
+        ramp = get_ramp_details(selected_slot.get('ramp_id'))
 
-        # Create a new Job object (assuming you have a Job class)
-        new_job_id = f"J{len(SCHEDULED_JOBS) + len(PARKED_JOBS) + 101}"
+        if not customer or not boat:
+            return None, "Error: Could not find Customer or Boat details."
+        if original_request['service_type'] in ["Launch", "Haul"] and not ramp:
+            return None, "Error: A ramp must be selected."
+
+        tide_data = get_all_tide_times_for_ramp_and_date(ramp, selected_slot['date']) if ramp else {'H': [], 'L': []}
+
+        # Use a global counter for unique IDs
+        global JOB_ID_COUNTER
+        job_id = JOB_ID_COUNTER + 1
+        JOB_ID_COUNTER += 1
+
+        start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'])
+
+        # Explicitly check the boat type against the booking rules here
+        rules = BOOKING_RULES.get(boat.boat_type, {})
+        crane_is_required = rules.get('crane_mins', 0) > 0
+
+        hauler_end_dt = start_dt + timedelta(minutes=rules.get('truck_mins', 90))
+        j17_end_dt = start_dt + timedelta(minutes=rules.get('crane_mins', 0)) if crane_is_required else None
+
+        pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
+        service_type = original_request['service_type']
+        if service_type == "Launch":
+            pickup_addr, dropoff_addr, dropoff_rid = "HOME", ramp.ramp_name if ramp else 'N/A', selected_slot.get('ramp_id')
+        elif service_type == "Haul":
+            pickup_addr, dropoff_addr, pickup_rid = ramp.ramp_name if ramp else 'N/A', "HOME", selected_slot.get('ramp_id')
+
         new_job = Job(
-            job_id=new_job_id,
-            customer_id=customer.customer_id,
-            boat_id=boat.boat_id,
-            service_type=job_request['service_type'],
-            scheduled_start_datetime=start_datetime,
-            scheduled_end_datetime=end_datetime,
-            assigned_hauling_truck_id=slot.get('truck_id'),
-            # ... other job attributes ...
-            job_status="Scheduled"
+            job_id=job_id, customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
+            scheduled_start_datetime=start_dt, scheduled_end_datetime=hauler_end_dt,
+            assigned_hauling_truck_id=selected_slot['truck_id'],
+            # Assign crane based on our new, reliable check
+            assigned_crane_truck_id="J17" if crane_is_required else None,
+            j17_busy_end_datetime=j17_end_dt,
+            pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
+            high_tides=tide_data.get('H', []), low_tides=tide_data.get('L', []),
+            job_status="Scheduled", notes=f"Booked via type: {selected_slot.get('type', 'N/A')}.",
+            pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
         )
-        # --- (End of your existing job creation logic) ---
-
-        # Add the newly created job to the main schedule
         SCHEDULED_JOBS.append(new_job)
 
-        # --- THIS IS THE NEW PART ---
-        # If this booking was a "Move" or "Reschedule", remove the original
-        # job from the parked list so it isn't double-counted.
+        if new_job.assigned_crane_truck_id and (new_job.pickup_ramp_id or new_job.dropoff_ramp_id):
+            date_str = new_job.scheduled_start_datetime.strftime('%Y-%m-%d')
+            if date_str not in crane_daily_status:
+                crane_daily_status[date_str] = {'ramps_visited': set()}
+            crane_daily_status[date_str]['ramps_visited'].add(new_job.pickup_ramp_id or new_job.dropoff_ramp_id)
+
+        # If this was a "Move" or "Reschedule," remove the old parked job
         if parked_job_to_remove:
             if parked_job_to_remove in PARKED_JOBS:
                 del PARKED_JOBS[parked_job_to_remove]
-        # --- END OF NEW PART ---
-        
-        message = f"Job {new_job_id} for {customer.customer_name} confirmed for {start_datetime.strftime('%A, %b %d at %I:%M %p')}."
-        return new_job_id, message
+
+        # This is the single, corrected return block for a successful operation
+        message = f"SUCCESS: Job {new_job.job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
+        return new_job.job_id, message
 
     except Exception as e:
         # If anything goes wrong, return an error message
         return None, f"An error occurred: {e}"
-
-# You'll also need a basic Job class if you don't have one.
-# This is just a placeholder to make the example work.
-class Job:
-    def __init__(self, **kwargs):
-        self.job_id = "J000"
-        self.customer_id = ""
-        self.boat_id = ""
-        self.service_type = ""
-        self.scheduled_start_datetime = None
-        self.scheduled_end_datetime = None
-        self.assigned_hauling_truck_id = None
-        self.assigned_crane_truck_id = None
-        self.pickup_ramp_id = None
-        self.dropoff_ramp_id = None
-        self.job_status = "Pending"
-        
-        for key, value in kwargs.items():
-            setattr(self, key, value)
 
 def generate_random_jobs(num_to_generate, start_date, end_date, service_type_filter, truck_operating_hours):
     if not all((LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS)): return "Error: Master data not loaded."
