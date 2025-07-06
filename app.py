@@ -650,9 +650,29 @@ def show_reporting_page():
                     merged_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
                     st.download_button(label="📥 Download Multi-Day Planner", data=merged_pdf, file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf", key="download_multi_planner_button")
 
-    with tab5:
+with tab5:
         st.subheader("🅿️ Parked Jobs")
-        # ... (code for this tab is correct) ...
+        st.info("These jobs have been removed from the schedule and are waiting to be re-booked. Reschedule them from here.")
+        if ecm.PARKED_JOBS:
+            # Header
+            cols = st.columns((2, 2, 1, 2))
+            fields = ["Customer", "Boat", "Service", "Actions"]
+            for col, field in zip(cols, fields):
+                col.markdown(f"**{field}**")
+            st.markdown("---")
+
+            # Parked Job Rows
+            for job_id, job in ecm.PARKED_JOBS.items():
+                customer = ecm.get_customer_details(job.customer_id)
+                boat = ecm.get_boat_details(job.boat_id)
+                cols = st.columns((2, 2, 1, 2))
+                cols[0].write(customer.customer_name)
+                cols[1].write(f"{boat.boat_length}' {boat.boat_type}")
+                cols[2].write(job.service_type)
+                with cols[3]:
+                    st.button("Reschedule", key=f"reschedule_{job.job_id}", on_click=reschedule_parked_job, args=(job.job_id,), use_container_width=True)
+        else:
+            st.write("No jobs are currently parked.")
 
 
 #### END NEW CANCEL, REBOOK< PARK FUNCTIONALITY
