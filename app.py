@@ -712,6 +712,7 @@ def show_settings_page():
     tab1, tab2, tab3, tab4 = st.tabs(tab_list)
 
     with tab1:
+        # --- Your existing Scheduling Rules code ---
         st.subheader("Scheduling Defaults")
         st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=10, value=st.session_state.get('num_suggestions', 3), step=1)
         st.markdown("---")
@@ -721,52 +722,84 @@ def show_settings_page():
         c2.number_input("Days to search in FUTURE", min_value=7, max_value=180, value=st.session_state.get('crane_look_forward_days', 60), key="crane_look_forward_days")
 
     with tab2:
-        # --- Your existing Truck & Crane Weekly Hours code goes here ---
+        # --- Your existing Truck Schedules code ---
         st.subheader("Truck & Crane Weekly Hours")
-        st.info("NOTE: Changes made here are for the current session only.")
-        # ... (rest of the truck schedule code) ...
+        # ... (code for this tab)
 
     with tab3:
-        # --- Your existing QA & Data Generation Tools code goes here ---
+        # --- Your existing Developer Tools code ---
         st.subheader("QA & Data Generation Tools")
-        st.write("This tool creates random, valid jobs to populate the calendar for testing.")
-        # ... (rest of the data generation code) ...
+        # ... (code for this tab)
 
     with tab4:
         st.subheader("Monthly Tide Chart for Scituate Harbor")
 
-        # --- UI for selecting month and year ---
-        current_year = datetime.date.today().year
-        year_options = list(range(current_year - 1, current_year + 4))
-        # Default to September 2025 as requested
-        default_year_index = year_options.index(2025) if 2025 in year_options else 1
-        selected_year = st.selectbox("Select Year:", options=year_options, index=default_year_index)
+        col1, col2 = st.columns(2)
+        with col1:
+            current_year = datetime.date.today().year
+            year_options = list(range(current_year - 1, current_year + 4))
+            default_year_index = year_options.index(2025) if 2025 in year_options else 2
+            selected_year = st.selectbox("Select Year:", options=year_options, index=default_year_index)
+        with col2:
+            month_names = list(calendar.month_name)[1:]
+            selected_month_name = st.selectbox("Select Month:", options=month_names, index=8)
 
-        month_names = list(calendar.month_name)[1:]
-        selected_month_name = st.selectbox("Select Month:", options=month_names, index=8) # Default to September
-        
-        if st.button("Get Tide Chart"):
-            month_index = month_names.index(selected_month_name) + 1
-            with st.spinner(f"Fetching tides for {selected_month_name} {selected_year}..."):
-                tide_data = ecm.get_monthly_tides_for_scituate(selected_year, month_index)
+        # Callback to set the selected day in session state
+        def select_day(date_obj):
+            st.session_state.selected_tide_day = date_obj
 
-            if not tide_data:
-                st.error("Could not retrieve tide data. The NOAA API might be temporarily unavailable.")
-            else:
-                # Display the tide data in a clean, day-by-day format
-                for day in sorted(tide_data.keys()):
-                    day_str = day.strftime("%a, %b %d")
-                    tides_for_day = tide_data[day]
-                    
-                    high_tides = [f"{ecm.format_time_for_display(t['time'])} ({t['height']}')" for t in tides_for_day if t['type'] == 'H']
-                    low_tides = [f"{ecm.format_time_for_display(t['time'])} ({t['height']}')" for t in tides_for_day if t['type'] == 'L']
-                    
-                    with st.expander(f"**{day_str}**"):
-                        col1, col2 = st.columns(2)
-                        col1.markdown("**High Tides**")
-                        col1.text("\n".join(high_tides) if high_tides else "N/A")
-                        col2.markdown("**Low Tides**")
-                        col2.text("\n".join(low_tides) if low_tides else "N/A")
+        # Fetch data for the whole month
+        month_index = month_names.index(selected_month_name) + 1
+        tide_data = ecm.get_monthly_tides_for_scituate(selected_year, month_index)
+
+        if not tide_data:
+            st.warning("Could not retrieve tide data. The NOAA API might be unavailable.")
+        else:
+            # --- Create the Calendar Grid ---
+            st.markdown("---")
+            cal = calendar.Calendar()
+            cal_data = cal.monthdatescalendar(selected_year, month_index)
+
+            # Display day of the week headers
+            header_cols = st.columns(7)
+            for i, day_name in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
+                header_cols[i].markdown(f"<p style='text-align: center; font-weight: bold;'>{day_name}</p>", unsafe_allow_html=True)
+            st.divider()
+
+            # Display the calendar days
+            for week in cal_data:
+                cols = st.columns(7)
+                for i, day in enumerate(week):
+                    with cols[i]:
+                        if day.month != month_index:
+                            st.container(height=55, border=False) # Empty placeholder for days not in month
+                        else:
+                            # Use a button to make the day selectable
+                            st.button(
+                                str(day.day),
+                                key=f"day_{day}",
+                                on_click=select_day,
+                                args=(day,),
+                                use_container_width=True,
+                                type="secondary" if st.session_state.selected_tide_day != day else "primary"
+                            )
+            st.divider()
+
+            # --- Display Tide Details for Selected Day ---
+            if selected_day := st.session_state.get('selected_tide_day'):
+                if selected_day.year == selected_year and selected_day.month == month_index:
+                    day_str = selected_day.strftime("%A, %B %d, %Y")
+                    st.subheader(f"Tides for: {day_str}")
+
+                    tides_for_day = tide_data.get(selected_day, [])
+                    if not tides_for_day:
+                        st.write("No tide data available for this day.")
+                    else:
+                        high_tides = [f"{ecm.format_time_for_display(t['time'])} ({float(t['height']):.1f}')" for t in tides_for_day if t['type'] == 'H']
+                        low_tides = [f"{ecm.format_time_for_display(t['time'])} ({float(t['height']):.1f}')" for t in tides_for_day if t['type'] == 'L']
+                        tide_col1, tide_col2 = st.columns(2)
+                        tide_col1.metric("🌊 High Tides", " / ".join(high_tides) if high_tides else "N/A")
+                        tide_col2.metric("💧 Low Tides", " / ".join(low_tides) if low_tides else "N/A")
 
 
 # --- Session State Initialization ---
@@ -779,7 +812,8 @@ def initialize_session_state():
         'show_copy_dropdown': False,
         # New state variables for autocomplete
         'customer_search_input': '',
-        'selected_customer_id': None
+        'job_to_cancel': None,
+        'selected_tide_day': None # <<< ADD THIS LINE
     }
     for key, default_value in defaults.items():
         if key not in st.session_state: st.session_state[key] = default_value
