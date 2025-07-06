@@ -855,6 +855,7 @@ def initialize_session_state():
         'show_copy_dropdown': False,
         # New state variables for autocomplete
         'customer_search_input': '',
+        'selected_customer_id': None,
         'job_to_cancel': None,
         'selected_tide_day': None # <<< ADD THIS LINE
     }
