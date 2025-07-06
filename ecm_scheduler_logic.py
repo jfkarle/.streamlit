@@ -334,8 +334,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              manager_override=False, crane_look_back_days=7, crane_look_forward_days=60,
                              truck_operating_hours=None, strict_start_date=None, strict_end_date=None, **kwargs):
     """
-    Finds and ranks available job slots. Can now operate in a "strict" mode
-    where it does not search outside the provided date range.
+    Finds and ranks available job slots, now including a Proximity Score
+    to encourage batching jobs by location.
     """
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
@@ -353,16 +353,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     all_found_slots = []
     
-    # --- THIS IS THE NEW LOGIC ---
-    # If a strict date range is provided (from the bulk scheduler), use it.
     if strict_start_date and strict_end_date:
         search_start_date = strict_start_date
         search_end_date = strict_end_date
     else:
-        # Otherwise, use the normal "smart search" window for the UI.
         search_start_date = requested_date - timedelta(days=crane_look_back_days)
         search_end_date = requested_date + timedelta(days=crane_look_forward_days)
-    # --- END OF NEW LOGIC ---
 
     all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, search_start_date, search_end_date) if ramp_obj else {}
     compiled_schedule = _compile_truck_schedules(SCHEDULED_JOBS)
@@ -378,6 +374,19 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
         tide_score = calculate_tide_efficiency_score(check_date, ramp_obj, truck_operating_hours, all_tides)
         
+        # --- NEW: Proximity Logic ---
+        # First, find where trucks are already scheduled to be on this day.
+        todays_truck_locations = {}
+        for job in SCHEDULED_JOBS:
+            if job.job_status == "Scheduled" and job.scheduled_start_datetime.date() == check_date:
+                truck_id = job.assigned_hauling_truck_id
+                job_ramp_id = job.pickup_ramp_id or job.dropoff_ramp_id
+                if truck_id and job_ramp_id:
+                    if truck_id not in todays_truck_locations:
+                        todays_truck_locations[truck_id] = set()
+                    todays_truck_locations[truck_id].add(job_ramp_id)
+        # --- End of Proximity Pre-check ---
+        
         total_window_minutes = 0
         for truck in suitable_trucks:
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
@@ -388,6 +397,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         day_capacity_score = 10 if total_window_minutes < 180 else 0
         
         for truck in suitable_trucks:
+            # --- NEW: Proximity Score Calculation ---
+            proximity_score = 5 # Default score for an empty day
+            truck_current_ramps = todays_truck_locations.get(truck.truck_id)
+            if truck_current_ramps:
+                if selected_ramp_id in truck_current_ramps:
+                    proximity_score = 0 # Best case: truck is already at this ramp.
+                else:
+                    proximity_score = 20 # High penalty: truck is busy elsewhere.
+            # --- End of Proximity Score ---
+
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
             for window in windows:
                 p_time = window['start_time']
@@ -400,7 +419,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         p_time = (slot_start_dt + timedelta(minutes=30)).time(); continue
                     
                     time_of_day_score = 0 if p_time.hour < 12 else 1
-                    final_score = tide_score + day_capacity_score + time_of_day_score
+                    # Add the new proximity score to the final calculation
+                    final_score = tide_score + day_capacity_score + time_of_day_score + proximity_score
+
                     all_found_slots.append({
                         'date': check_date, 'time': p_time, 'truck_id': truck.truck_id,
                         'j17_needed': needs_j17, 'ramp_id': selected_ramp_id, 'score': final_score, 'priority': priority,
@@ -420,7 +441,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             if len(final_slots) >= num_suggestions_to_find:
                 break
         return final_slots, f"Found {len(final_slots)} best available slots.", [], False
-
 
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
