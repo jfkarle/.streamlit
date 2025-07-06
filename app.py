@@ -342,8 +342,12 @@ def show_scheduler_page():
     """
     Displays the entire Schedule New Boat page and handles new, moved, or rescheduled jobs.
     """
+    # --- DEFINE CALLBACKS FIRST ---
+    def schedule_another():
+        """Callback to clear a confirmation message and allow a new job to be scheduled."""
+        st.session_state.pop("confirmation_message", None)
+
     # --- Message Handling ---
-    # Check for info messages from other pages (like the reporting page)
     if st.session_state.get('info_message'):
         st.info(st.session_state.info_message)
         st.session_state.info_message = "" # Clear after displaying
@@ -351,6 +355,8 @@ def show_scheduler_page():
     if st.session_state.get("confirmation_message"):
         st.success(f"✅ {st.session_state.confirmation_message}")
         st.button("Schedule Another Job", on_click=schedule_another)
+        # Stop rendering the rest of the page after confirmation
+        return
 
     st.sidebar.header("New Job Request")
 
@@ -358,7 +364,7 @@ def show_scheduler_page():
     rebooking_details = st.session_state.get('rebooking_details')
     if rebooking_details:
         # Pre-select customer automatically when rebooking
-        st.session_state.selected_customer_id = ecm.get_parked_job_details(rebooking_details['parked_job_id']).customer_id
+        st.session_state.selected_customer_id = rebooking_details['customer_id']
 
     # --- ENHANCED CUSTOMER SEARCH ---
     def select_customer(cust_id):
