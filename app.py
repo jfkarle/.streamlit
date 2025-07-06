@@ -470,7 +470,7 @@ def show_scheduler_page():
             st.session_state.search_requested_date = req_date
             st.session_state.slot_page_index = 0
 
-            slots, msg, _, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override)
+            slots, msg, _, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override, prioritize_sailboats=st.session_state.get('sailboat_priority_enabled', True)
             st.session_state.info_message, st.session_state.found_slots, st.session_state.selected_slot = msg, slots, None
             st.rerun()
 
@@ -718,6 +718,18 @@ def show_settings_page():
     with tab1:
         st.subheader("Scheduling Defaults")
         st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=10, value=st.session_state.get('num_suggestions', 3), step=1)
+        
+        # --- NEW TOGGLE SWITCH ---
+        st.markdown("---")
+        st.subheader("Advanced Logic")
+        st.toggle(
+            "Prioritize Sailboats on Prime Tide Days",
+            value=st.session_state.get('sailboat_priority_enabled', True),
+            key='sailboat_priority_enabled',
+            help="When enabled, the scheduler will give a large bonus to sailboats on days with favorable high tides, making them 'outbid' powerboats for those slots. When disabled, all boats are treated equally."
+        )
+        # --- END OF NEW SWITCH ---
+
         st.markdown("---")
         st.subheader("Crane Job Search Window")
         c1,c2 = st.columns(2)
@@ -863,8 +875,10 @@ def initialize_session_state():
         'customer_search_input': '',
         'selected_customer_id': None,
         'job_to_cancel': None,
-        'selected_tide_day': None # <<< ADD THIS LINE
+        'selected_tide_day': None, 
+        'sailboat_priority_enabled': True # <<< ADD THIS LINE
     }
+    
     for key, default_value in defaults.items():
         if key not in st.session_state: st.session_state[key] = default_value
     if not st.session_state.data_loaded:
