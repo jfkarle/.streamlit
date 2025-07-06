@@ -325,8 +325,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              manager_override=False, crane_look_back_days=7, crane_look_forward_days=60,
                              truck_operating_hours=None, **kwargs):
     """
-    Finds and ranks available job slots with high performance by pre-compiling
-    the truck schedule and batching API calls.
+    Finds and ranks available job slots with all three efficiency rules:
+    1. Morning Preference 2. Tide Efficiency 3. Day Capacity
     """
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
@@ -358,8 +358,19 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         if check_date in active_crane_days: priority = 0
         elif check_date in candidate_crane_dates: priority = 1
 
-        # THIS IS THE CORRECTED CALL TO THE SCORING FUNCTION
         tide_score = calculate_tide_efficiency_score(check_date, ramp_obj, truck_operating_hours, all_tides)
+        
+        # --- NEW: Day Capacity Logic ---
+        total_window_minutes = 0
+        for truck in suitable_trucks:
+            windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
+            for w in windows:
+                start_dt = datetime.datetime.combine(check_date, w['start_time'])
+                end_dt = datetime.datetime.combine(check_date, w['end_time'])
+                total_window_minutes += (end_dt - start_dt).total_seconds() / 60
+        # Penalize days with less than 3 hours of total available work time
+        day_capacity_score = 10 if total_window_minutes < 180 else 0
+        # --- End of New Logic ---
         
         for truck in suitable_trucks:
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
@@ -373,7 +384,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     if needs_j17 and not check_truck_availability_optimized("J17", slot_start_dt, slot_start_dt + j17_duration, compiled_schedule):
                         p_time = (slot_start_dt + timedelta(minutes=30)).time(); continue
                     
-                    final_score = tide_score + (0 if p_time.hour < 12 else 1)
+                    # Combine all scores for the final ranking
+                    time_of_day_score = 0 if p_time.hour < 12 else 1
+                    final_score = tide_score + day_capacity_score + time_of_day_score
+
                     all_found_slots.append({
                         'date': check_date, 'time': p_time, 'truck_id': truck.truck_id,
                         'j17_needed': needs_j17, 'ramp_id': selected_ramp_id, 'score': final_score, 'priority': priority,
@@ -393,6 +407,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             if len(final_slots) >= num_suggestions_to_find:
                 break
         return final_slots, f"Found {len(final_slots)} best available slots.", [], False
+
+
+
+
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
     """
     Creates and schedules a new job. This version explicitly re-checks if a crane
