@@ -706,6 +706,68 @@ def show_reporting_page():
 
 #### END NEW CANCEL, REBOOK< PARK FUNCTIONALITY
 
+def show_settings_page():
+    st.header("Application Settings")
+    tab_list = ["Scheduling Rules", "Truck Schedules", "Developer Tools", "Tide Charts"]
+    tab1, tab2, tab3, tab4 = st.tabs(tab_list)
+
+    with tab1:
+        st.subheader("Scheduling Defaults")
+        st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=10, value=st.session_state.get('num_suggestions', 3), step=1)
+        st.markdown("---")
+        st.subheader("Crane Job Search Window")
+        c1,c2 = st.columns(2)
+        c1.number_input("Days to search in PAST", min_value=0, max_value=30, value=st.session_state.get('crane_look_back_days', 7), key="crane_look_back_days")
+        c2.number_input("Days to search in FUTURE", min_value=7, max_value=180, value=st.session_state.get('crane_look_forward_days', 60), key="crane_look_forward_days")
+
+    with tab2:
+        # --- Your existing Truck & Crane Weekly Hours code goes here ---
+        st.subheader("Truck & Crane Weekly Hours")
+        st.info("NOTE: Changes made here are for the current session only.")
+        # ... (rest of the truck schedule code) ...
+
+    with tab3:
+        # --- Your existing QA & Data Generation Tools code goes here ---
+        st.subheader("QA & Data Generation Tools")
+        st.write("This tool creates random, valid jobs to populate the calendar for testing.")
+        # ... (rest of the data generation code) ...
+
+    with tab4:
+        st.subheader("Monthly Tide Chart for Scituate Harbor")
+
+        # --- UI for selecting month and year ---
+        current_year = datetime.date.today().year
+        year_options = list(range(current_year - 1, current_year + 4))
+        # Default to September 2025 as requested
+        default_year_index = year_options.index(2025) if 2025 in year_options else 1
+        selected_year = st.selectbox("Select Year:", options=year_options, index=default_year_index)
+
+        month_names = list(calendar.month_name)[1:]
+        selected_month_name = st.selectbox("Select Month:", options=month_names, index=8) # Default to September
+        
+        if st.button("Get Tide Chart"):
+            month_index = month_names.index(selected_month_name) + 1
+            with st.spinner(f"Fetching tides for {selected_month_name} {selected_year}..."):
+                tide_data = ecm.get_monthly_tides_for_scituate(selected_year, month_index)
+
+            if not tide_data:
+                st.error("Could not retrieve tide data. The NOAA API might be temporarily unavailable.")
+            else:
+                # Display the tide data in a clean, day-by-day format
+                for day in sorted(tide_data.keys()):
+                    day_str = day.strftime("%a, %b %d")
+                    tides_for_day = tide_data[day]
+                    
+                    high_tides = [f"{ecm.format_time_for_display(t['time'])} ({t['height']}')" for t in tides_for_day if t['type'] == 'H']
+                    low_tides = [f"{ecm.format_time_for_display(t['time'])} ({t['height']}')" for t in tides_for_day if t['type'] == 'L']
+                    
+                    with st.expander(f"**{day_str}**"):
+                        col1, col2 = st.columns(2)
+                        col1.markdown("**High Tides**")
+                        col1.text("\n".join(high_tides) if high_tides else "N/A")
+                        col2.markdown("**Low Tides**")
+                        col2.text("\n".join(low_tides) if low_tides else "N/A")
+
 
 # --- Session State Initialization ---
 def initialize_session_state():
@@ -785,8 +847,7 @@ if app_mode == "Schedule New Boat":
 elif app_mode == "Reporting":
     show_reporting_page()
 elif app_mode == "Settings":
-    st.header("Application Settings")
-    tab1, tab2, tab3 = st.tabs(["Scheduling Rules", "Truck Schedules", "Developer Tools"])
+    show_settings_page()
 
     with tab1:
         st.subheader("Scheduling Defaults")
