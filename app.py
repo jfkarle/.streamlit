@@ -766,19 +766,32 @@ st.markdown("---")
 
 st.sidebar.title("Navigation")
 
-# This new logic handles switching pages automatically (e.g., for "Move Job")
 page_options = ["Schedule New Boat", "Reporting", "Settings"]
-index = 0 # Default to the first page
-if st.session_state.get('app_mode_switch'):
-    try:
-        # Find the index for the page we want to switch to
-        index = page_options.index(st.session_state.get('app_mode_switch'))
-    except ValueError:
-        index = 0 # Default if page name is wrong
-    # Clear the switch flag so it doesn't trigger again
-    st.session_state.pop('app_mode_switch')
 
-app_mode = st.sidebar.radio("Go to", page_options, index=index, key="app_mode_radio")
+# This corrected logic correctly determines the page index.
+# It prioritizes a programmatic switch, then the radio button's own
+# state, and finally defaults to the first page on the first run.
+if switch_to := st.session_state.get("app_mode_switch"):
+    try:
+        index = page_options.index(switch_to)
+    except ValueError:
+        index = 0
+    del st.session_state.app_mode_switch
+elif radio_state := st.session_state.get("app_mode_radio"):
+    try:
+        index = page_options.index(radio_state)
+    except ValueError:
+        index = 0
+else:
+    index = 0
+
+app_mode = st.sidebar.radio(
+    "Go to",
+    page_options,
+    index=index,
+    key="app_mode_radio" # The key is essential for remembering the state
+)
+
 
 # Call the new functions based on the selected mode
 if app_mode == "Schedule New Boat":
