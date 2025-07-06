@@ -231,7 +231,42 @@ def park_job(job_id):
     return False
 
 ### END New code to support cancel, rebook, park
+def _compile_truck_schedules(jobs):
+    """
+    Pre-processes the list of scheduled jobs into a simple dictionary
+    for extremely fast conflict lookups.
+    """
+    schedule = {}
+    for job in jobs:
+        if job.job_status != "Scheduled":
+            continue
+        
+        # Log busy time for the hauling truck
+        hauler_id = getattr(job, 'assigned_hauling_truck_id', None)
+        if hauler_id:
+            if hauler_id not in schedule:
+                schedule[hauler_id] = []
+            schedule[hauler_id].append((job.scheduled_start_datetime, job.scheduled_end_datetime))
+        
+        # Log busy time for the crane, if applicable
+        crane_id = getattr(job, 'assigned_crane_truck_id', None)
+        if crane_id and hasattr(job, 'j17_busy_end_datetime') and job.j17_busy_end_datetime:
+            if crane_id not in schedule:
+                schedule[crane_id] = []
+            schedule[crane_id].append((job.scheduled_start_datetime, job.j17_busy_end_datetime))
+    return schedule
 
+def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_schedule):
+    """
+    Checks for conflicts against the pre-compiled schedule. This is much
+    faster than iterating through the full job list every time.
+    """
+    # Check against the list of busy blocks for the given truck
+    for busy_start, busy_end in compiled_schedule.get(truck_id, []):
+        # A conflict exists if the new slot overlaps with a busy block
+        if start_dt < busy_end and end_dt > busy_start:
+            return False # Found an overlap
+    return True # No conflicts
 ### New code to support tide efficiency score
 
 def calculate_tide_efficiency_score(date_obj, ramp_obj, truck_operating_hours):
