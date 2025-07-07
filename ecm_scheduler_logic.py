@@ -169,6 +169,8 @@ def _abbreviate_town(address):
             return abbr
             
     return address.title().split(',')[0][:3]
+            
+
 
 def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide": return "Any Tide"
