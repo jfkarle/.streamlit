@@ -346,8 +346,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              truck_operating_hours=None, strict_start_date=None, strict_end_date=None,
                              prioritize_sailboats=True, **kwargs):
     """
-    Finds and ranks available job slots, including all efficiency rules:
-    Tide Score, Day Capacity, Proximity, Morning Bias, Sailboat Priority, and Customer Priority.
+    Finds and ranks available job slots, using Town-Centric proximity logic
+    to create more efficient geographic batches.
     """
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
@@ -356,7 +356,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
     if not customer or not boat: return [], "Invalid Customer/Boat ID.", ["Customer or boat not found in system."], False
+    
     ramp_obj = get_ramp_details(selected_ramp_id)
+    # Determine the town for the new job request to use in proximity checks
+    new_job_town = _abbreviate_town(ramp_obj.ramp_name) if ramp_obj else None
+
     rules = BOOKING_RULES.get(boat.boat_type, {})
     hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
     j17_duration = timedelta(minutes=rules.get('crane_mins', 0))
@@ -377,8 +381,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     active_crane_days = {datetime.datetime.strptime(d, '%Y-%m-%d').date() for d, s in crane_daily_status.items() if selected_ramp_id in s.get('ramps_visited', set())} if needs_j17 else set()
     candidate_crane_dates = {d['date'] for d in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, [])} if needs_j17 else set()
 
-    # --- NEW: Customer Priority Score ---
-    # Give a bonus (lower score) to ECM customers. This is calculated once per search.
     customer_priority_score = 0 if customer.is_ecm_customer else 10
 
     for i in range((search_end_date - search_start_date).days + 1):
@@ -394,14 +396,18 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
         sailboat_bonus = -10 if prioritize_sailboats and needs_j17 and tide_score == 0 else 0
 
-        todays_truck_locations = {}
+        # --- Proximity logic is now based on TOWN ---
+        todays_truck_towns = {}
         for job in SCHEDULED_JOBS:
             if job.job_status == "Scheduled" and job.scheduled_start_datetime.date() == check_date:
                 truck_id = job.assigned_hauling_truck_id
                 job_ramp_id = job.pickup_ramp_id or job.dropoff_ramp_id
                 if truck_id and job_ramp_id:
-                    todays_truck_locations.setdefault(truck_id, set()).add(job_ramp_id)
-
+                    job_ramp = get_ramp_details(job_ramp_id)
+                    if job_ramp:
+                        town = _abbreviate_town(job_ramp.ramp_name)
+                        todays_truck_towns.setdefault(truck_id, set()).add(town)
+        
         total_window_minutes = 0
         for truck in suitable_trucks:
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
@@ -413,8 +419,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
         for truck in suitable_trucks:
             proximity_score = 5
-            if truck_current_ramps := todays_truck_locations.get(truck.truck_id):
-                proximity_score = 0 if selected_ramp_id in truck_current_ramps else 20
+            if truck_towns := todays_truck_towns.get(truck.truck_id):
+                if new_job_town and new_job_town in truck_towns:
+                    proximity_score = 0
+                else:
+                    proximity_score = 20
 
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
             for window in windows:
@@ -429,7 +438,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
                     time_of_day_score = 0 if p_time.hour < 12 else 1
                     
-                    # Final score now includes all efficiency and priority metrics
                     final_score = (tide_score + day_capacity_score + time_of_day_score + 
                                    proximity_score + sailboat_bonus + customer_priority_score)
 
