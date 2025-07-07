@@ -472,7 +472,40 @@ def show_scheduler_page():
 
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
-        # ... (Your existing slot display logic, which is correct)
+        total_slots, page_index, slots_per_page = len(st.session_state.found_slots), st.session_state.slot_page_index, 3
+
+        # --- Pagination Buttons ---
+        nav_cols = st.columns([1, 1, 5, 1, 1])
+        nav_cols[0].button("⬅️ Prev", on_click=lambda: st.session_state.update(slot_page_index=page_index - slots_per_page), disabled=(page_index == 0), use_container_width=True)
+        nav_cols[1].button("Next ➡️", on_click=lambda: st.session_state.update(slot_page_index=page_index + slots_per_page), disabled=(page_index + slots_per_page >= total_slots), use_container_width=True)
+        if total_slots > 0: 
+            nav_cols[3].write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_")
+        st.markdown("---")
+
+        # --- Display Slot Cards ---
+        cols = st.columns(3)
+        for i, slot in enumerate(st.session_state.found_slots[page_index : page_index + slots_per_page]):
+            with cols[i % 3]:
+                border_style = "3px solid #FF8C00" if i == 0 and page_index == 0 else "2px solid #E0E0E0"
+                bg_color = "#FFF8DC" if i == 0 and page_index == 0 else "#FFFFFF"
+                
+                container_style = f"position:relative; padding:10px; border-radius:8px; border: {border_style}; background-color:{bg_color}; box-shadow: 0px 4px 8px rgba(0,0,0,0.1); margin-bottom: 15px; height: 260px;"
+                
+                card_html = f'<div style="{container_style}">'
+                if st.session_state.search_requested_date and slot['date'] == st.session_state.search_requested_date:
+                    card_html += "<div style='background-color:#F0FFF0;border-left:6px solid #2E8B57;padding:5px;border-radius:3px;margin-bottom:8px;'><h6 style='color:#2E8B57;margin:0;font-weight:bold;'>⭐ Requested Date</h6></div>"
+
+                ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
+                card_html += f"""
+                    <p><b>Date:</b> {slot['date'].strftime('%a, %b %d, %Y')}</p>
+                    <p><b>Time:</b> {ecm.format_time_for_display(slot.get('time'))}</p>
+                    <p><b>Truck:</b> {slot.get('truck_id', 'N/A')}</p>
+                    <p><b>Ramp:</b> {ramp_details.ramp_name if ramp_details else "N/A"}</p>
+                    <p><b>Tide Rule:</b> {slot.get('tide_rule_concise', 'N/A')}</p>
+                    <p>{format_tides_for_display(slot, st.session_state.truck_operating_hours)}</p>
+                </div>"""
+                st.html(card_html)
+                st.button("Select this slot", key=f"select_slot_{page_index + i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
     
     elif st.session_state.selected_slot:
         slot = st.session_state.selected_slot
