@@ -186,13 +186,13 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             col_index = column_map[job.assigned_hauling_truck_id]; text_x = margin + time_col_width + (col_index + 0.5) * col_width
             c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_x, line1_y, customer.customer_name)
             c.setFont("Helvetica", 7);c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
-            c.drawCentredString(text_x, line3_y, f"{_abbreviate_town(job.pickup_street_address)}-{_abbreviate_town(job.dropoff_street_address)}")
+            c.drawCentredString(text_x, line3_y, f"{ecm._abbreviate_town(job.pickup_street_address)}-{ecm._abbreviate_town(job.dropoff_street_address)}")
             c.setLineWidth(2);c.line(text_x, y0 - 45, text_x, y_end); c.line(text_x - 10, y_end, text_x + 10, y_end)
         if job.assigned_crane_truck_id and 'J17' in column_map:
             crane_col_index = column_map['J17'];crane_text_x = margin + time_col_width + (crane_col_index + 0.5) * col_width
             y_crane_end = get_y_for_time(job.j17_busy_end_datetime.time())
             c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
-            c.setFont("Helvetica", 7);c.drawCentredString(crane_text_x, line2_y, _abbreviate_town(job.dropoff_street_address))
+            c.setFont("Helvetica", 7);c.drawCentredString(crane_text_x, line2_y, ecm._abbreviate_town(job.dropoff_street_address))
             c.setLineWidth(2); c.line(crane_text_x, y0-45, crane_text_x, y_crane_end);c.line(crane_text_x-3, y_crane_end, crane_text_x+3, y_crane_end)
 
     c.save()
@@ -587,8 +587,8 @@ def show_reporting_page():
                 cols[2].write(ecm.get_customer_details(j.customer_id).customer_name)
                 
                 # --- NEW: Get and display the route ---
-                p_town = _abbreviate_town(j.pickup_street_address)
-                d_town = _abbreviate_town(j.dropoff_street_address)
+                p_town = ecm._abbreviate_town(j.pickup_street_address)
+                d_town = ecm._abbreviate_town(j.dropoff_street_address)
                 route_str = f"{p_town} → {d_town}"
                 cols[3].write(route_str)
 
