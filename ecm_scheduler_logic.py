@@ -21,6 +21,8 @@ BOOKING_RULES = {'Powerboat': {'truck_mins': 90, 'crane_mins': 0},'Sailboat DT':
 crane_daily_status = {}
 LOADED_CUSTOMERS, LOADED_BOATS = {}, {}
 
+YARD_ADDRESS = "43 Mattakeesett St, Pembroke, MA 02359"
+
 class Truck:
     def __init__(self, t_id, name, max_len): self.truck_id, self.truck_name, self.max_boat_length, self.is_crane = t_id, name, max_len, "Crane" in name
 class Ramp:
@@ -121,14 +123,23 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
             reader = csv.DictReader(infile)
             for i, row in enumerate(reader):
                 cust_id, boat_id = f"C{1001+i}", f"B{5001+i}"
-                LOADED_CUSTOMERS[cust_id] = Customer(cust_id, row['customer_name'], row.get('street_address', ''), row.get('preferred_truck'), row.get('is_ecm_boat', '').lower() in ['true', 'yes'], row.get('Bill to 2', ''), row.get('Bill to 3', ''))
+                
+                # --- NEW ECM BOAT LOGIC ---
+                # A boat is an ECM boat if the flag is set OR if the storage address is our main yard.
+                is_ecm_flag = row.get('is_ecm_boat', '').lower() in ['true', 'yes']
+                storage_addr = row.get('storage_address', '').strip()
+                is_at_main_yard = (storage_addr == YARD_ADDRESS)
+                
+                is_ecm = is_ecm_flag or is_at_main_yard
+                # --- END NEW LOGIC ---
+
+                LOADED_CUSTOMERS[cust_id] = Customer(cust_id, row['customer_name'], row.get('street_address', ''), row.get('preferred_truck'), is_ecm, row.get('Bill to 2', ''), row.get('Bill to 3', ''))
+                
                 try: 
                     boat_length = float(row.get('boat_length', '0').strip())
                     boat_draft = float(row.get('boat_draft', '0').strip() or 0)
                 except (ValueError, TypeError): continue
                 
-                # Load the new location fields for the boat
-                storage_addr = row.get('storage_address', '').strip()
                 pref_ramp = row.get('preferred_ramp', '').strip()
                 LOADED_BOATS[boat_id] = Boat(boat_id, cust_id, row['boat_type'].strip(), boat_length, boat_draft, storage_addr, pref_ramp)
 
