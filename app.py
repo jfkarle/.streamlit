@@ -84,19 +84,6 @@ def display_crane_day_calendar(crane_days_for_ramp):
                     font_weight = "bold" if is_candidate or is_today else "normal"
                     cols[i].markdown(f'<div style="padding:10px; border-radius:5px; border: 2px solid {border_color};background-color:{bg_color}; height: 60px;"><p style="text-align: right; font-weight: {font_weight}; color: black;">{day.day}</p></div>', unsafe_allow_html=True)
 
-def _abbreviate_town(address):
-    """
-    Takes a full address string or a special keyword ('HOME') and returns
-    a standardized three-letter abbreviation for the town.
-    """
-    if not address: return ""
-    abbr_map = { "arlington": "Arl", "boston": "Bos", "bourne": "Bou", "braintree": "Bra", "canton": "Can", "carver": "Car", "cohasset": "Coh", "dedham": "Ded", "dorchester": "Dor", "duxbury": "Dux", "east bridgewater": "EBr", "foxboro": "Fox", "green harbor": "GrH", "halifax": "Hal", "hanover": "Han", "hanson": "Hns", "hingham": "Hin", "holbrook": "Hol", "hull": "Hul", "humarock": "Hum", "kingston": "Kin", "lakeville": "Lak", "marshfield": "Mar", "milton": "Mil", "norwell": "Nor", "norwood": "Nwd", "pembroke": "Pem", "plymouth": "Ply", "plympton": "Pym", "quincy": "Qui", "randolph": "Ran", "rockland": "Roc", "scituate": "Sci", "sandwich": "San", "sharon": "Sha", "somerset": "Som", "taunton": "Tau", "weymouth": "Wey", "whitman": "Whi" }
-    if 'HOME' in address.upper(): return "Pem"
-    address_lower = address.lower()
-    for town, abbr in abbr_map.items():
-        if town in address_lower: return abbr
-    return address.title().split(',')[0][:3]
-
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
