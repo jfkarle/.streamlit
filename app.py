@@ -90,7 +90,7 @@ def _abbreviate_town(address):
     a standardized three-letter abbreviation for the town.
     """
     if not address: return ""
-    abbr_map = { "pembroke": "Pem", "scituate": "Sci", "green harbor": "GrH", "marshfield": "Mar", "cohasset": "Coh", "weymouth": "Wey", "plymouth": "Ply", "sandwich": "San", "duxbury": "Dux", "humarock": "Hum", "hingham": "Hin", "hull": "Hul" }
+    abbr_map = { "arlington": "Arl", "boston": "Bos", "bourne": "Bou", "braintree": "Bra", "canton": "Can", "carver": "Car", "cohasset": "Coh", "dedham": "Ded", "dorchester": "Dor", "duxbury": "Dux", "east bridgewater": "EBr", "foxboro": "Fox", "green harbor": "GrH", "halifax": "Hal", "hanover": "Han", "hanson": "Hns", "hingham": "Hin", "holbrook": "Hol", "hull": "Hul", "humarock": "Hum", "kingston": "Kin", "lakeville": "Lak", "marshfield": "Mar", "milton": "Mil", "norwell": "Nor", "norwood": "Nwd", "pembroke": "Pem", "plymouth": "Ply", "plympton": "Pym", "quincy": "Qui", "randolph": "Ran", "rockland": "Roc", "scituate": "Sci", "sandwich": "San", "sharon": "Sha", "somerset": "Som", "taunton": "Tau", "weymouth": "Wey", "whitman": "Whi" }
     if 'HOME' in address.upper(): return "Pem"
     address_lower = address.lower()
     for town, abbr in abbr_map.items():
