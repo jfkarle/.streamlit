@@ -147,6 +147,29 @@ def load_customers_and_boats_from_csv(filename="ECM Sample Cust.csv"):
         return True
     except FileNotFoundError: return False
 
+def _abbreviate_town(address):
+    """
+    Takes a full address string or a special keyword ('HOME') and returns
+    a standardized three-letter abbreviation for the town. Now handles
+    numeric-only addresses.
+    """
+    if not address:
+        return ""
+    if address.isdigit():
+        return "Pem"
+
+    abbr_map = { "pembroke": "Pem", "scituate": "Sci", "green harbor": "GrH", "marshfield": "Mar", "cohasset": "Coh", "weymouth": "Wey", "plymouth": "Ply", "sandwich": "San", "duxbury": "Dux", "humarock": "Hum", "hingham": "Hin", "hull": "Hul", "norwell": "Nor", "boston": "Bos", "quincy": "Qui", "kingston": "Kin", "hanover": "Han", "rockland": "Roc" }
+    
+    if 'HOME' in address.upper():
+        return "Pem"
+    
+    address_lower = address.lower()
+    for town, abbr in abbr_map.items():
+        if town in address_lower:
+            return abbr
+            
+    return address.title().split(',')[0][:3]
+
 def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide": return "Any Tide"
     if ramp.tide_calculation_method == "AnyTideWithDraftRule":
