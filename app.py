@@ -886,7 +886,7 @@ def initialize_session_state():
 initialize_session_state()
 
 # --- Main App Body ---
-st.title("Marine Transportation")
+st.title("ECM Logistics")
 
 with st.container(border=True):
     stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
