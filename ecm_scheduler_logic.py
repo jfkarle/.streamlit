@@ -621,32 +621,70 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return final_slots, f"Found {len(final_slots)} best available slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
+    """
+    Creates a new job, saves it to the database, and correctly handles all logic.
+    """
     global JOB_ID_COUNTER
     try:
-        # ... (all the logic to get customer, boat, create start_dt, etc. is the same) ...
-        # ... (the logic for pickup_addr, dropoff_addr is the same) ...
+        customer = get_customer_details(original_request['customer_id'])
+        boat = get_boat_details(original_request['boat_id'])
+        selected_ramp_id = selected_slot.get('ramp_id')
+        
+        pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
+        service_type = original_request['service_type']
+
+        if service_type == "Launch":
+            pickup_addr = boat.storage_address
+            dropoff_rid = selected_ramp_id or boat.preferred_ramp_id
+            dropoff_addr = get_ramp_details(dropoff_rid).ramp_name if dropoff_rid else ""
+        elif service_type == "Haul":
+            pickup_rid = selected_ramp_id or boat.preferred_ramp_id
+            pickup_addr = get_ramp_details(pickup_rid).ramp_name if pickup_rid else ""
+            dropoff_addr = boat.storage_address
+        elif service_type == "Transport":
+            pickup_rid = selected_ramp_id
+            pickup_addr = get_ramp_details(pickup_rid).ramp_name if pickup_rid else "N/A"
+            dropoff_addr = "N/A"
 
         job_id = JOB_ID_COUNTER + 1
         JOB_ID_COUNTER += 1
-        
-        new_job = Job( # ... (creating the new_job object is the same)
-        )
-        SCHEDULED_JOBS.append(new_job)
-        save_job(new_job) # Save the new job to the database
+        start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'])
+        rules = BOOKING_RULES.get(boat.boat_type, {})
+        crane_is_required = rules.get('crane_mins', 0) > 0
+        hauler_end_dt = start_dt + timedelta(minutes=rules.get('truck_mins', 90))
+        j17_end_dt = start_dt + timedelta(minutes=rules.get('crane_mins', 0)) if crane_is_required else None
 
+        new_job = Job(
+            job_id=job_id, customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
+            scheduled_start_datetime=start_dt, scheduled_end_datetime=hauler_end_dt,
+            assigned_hauling_truck_id=selected_slot['truck_id'],
+            assigned_crane_truck_id="J17" if crane_is_required else None,
+            j17_busy_end_datetime=j17_end_dt,
+            pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
+            job_status="Scheduled", notes=f"Booked via type: {selected_slot.get('type', 'N/A')}.",
+            pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
+        )
+
+        SCHEDULED_JOBS.append(new_job)
+        save_job(new_job)
+
+        # This is the block that likely had the indentation error
         if new_job.assigned_crane_truck_id and (new_job.pickup_ramp_id or new_job.dropoff_ramp_id):
-            # ... (crane status logic is the same) ...
+            date_str = new_job.scheduled_start_datetime.strftime('%Y-%m-%d')
+            if date_str not in crane_daily_status:
+                crane_daily_status[date_str] = {'ramps_visited': set()}
+            crane_daily_status[date_str]['ramps_visited'].add(new_job.pickup_ramp_id or new_job.dropoff_ramp_id)
 
         if parked_job_to_remove:
             if parked_job_to_remove in PARKED_JOBS:
                 del PARKED_JOBS[parked_job_to_remove]
-            delete_job_from_db(parked_job_to_remove) # Delete the old parked job from DB
-        
+            delete_job_from_db(parked_job_to_remove)
+
         message = f"SUCCESS: Job {job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
         return job_id, message
+
     except Exception as e:
         return None, f"An error occurred: {e}"
-
 def generate_random_jobs(num_to_generate, start_date, end_date, service_type_filter, truck_operating_hours):
     if not all((LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS)):
         return "Error: Master data not loaded."
