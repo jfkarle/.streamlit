@@ -6,7 +6,6 @@ import requests
 import random
 import json
 import streamlit as st
-from sqlalchemy import text
 from datetime import timedelta, time
 from collections import Counter
 
