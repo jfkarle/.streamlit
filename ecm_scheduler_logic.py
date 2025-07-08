@@ -7,6 +7,12 @@ from datetime import timedelta, time
 
 # --- Data Models and Configuration ---
 
+# --- GEOGRAPHIC AND ROUTE CONFIGURATION ---
+HOME_BASE_TOWN = "Pem"
+SOUTH_ROUTE = ["Han", "Nor", "Sci", "Mar", "Dux", "Kin", "Ply", "Bou", "San"]
+NORTH_ROUTE = ["Wey", "Hin", "Coh", "Hul", "Qui", "Bos"]
+
+
 DEFAULT_TRUCK_OPERATING_HOURS = {
     "S20/33": { 0: (time(7, 0), time(15, 0)), 1: (time(7, 0), time(15, 0)), 2: (time(7, 0), time(15, 0)), 3: (time(7, 0), time(15, 0)), 4: (time(7, 0), time(15, 0)), 5: (time(8, 0), time(12, 0)), 6: None },
     "S21/77": { 0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)), 2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)), 4: (time(8, 0), time(16, 0)), 5: None, 6: None },
@@ -371,8 +377,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              truck_operating_hours=None, strict_start_date=None, strict_end_date=None,
                              prioritize_sailboats=True, **kwargs):
     """
-    Finds and ranks available job slots, using Town-Centric proximity logic
-    to create more efficient geographic batches.
+    Finds and ranks slots using advanced logic for proximity (on the way home),
+    schedule density (contiguous jobs), and day capacity.
     """
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
@@ -381,9 +387,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
     if not customer or not boat: return [], "Invalid Customer/Boat ID.", ["Customer or boat not found in system."], False
-    
     ramp_obj = get_ramp_details(selected_ramp_id)
-    # Determine the town for the new job request to use in proximity checks
     new_job_town = _abbreviate_town(ramp_obj.ramp_name) if ramp_obj else None
 
     rules = BOOKING_RULES.get(boat.boat_type, {})
@@ -410,67 +414,73 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     for i in range((search_end_date - search_start_date).days + 1):
         check_date = search_start_date + timedelta(days=i)
-
+        
         priority = 2
         if check_date in active_crane_days: priority = 0
         elif check_date in candidate_crane_dates: priority = 1
 
         tide_score = calculate_tide_efficiency_score(check_date, ramp_obj, truck_operating_hours, all_tides)
-        if needs_j17 and tide_score > 0 and not manager_override:
-            continue
+        if needs_j17 and tide_score > 0 and not manager_override: continue
 
         sailboat_bonus = -10 if prioritize_sailboats and needs_j17 and tide_score == 0 else 0
-
-        # --- Proximity logic is now based on TOWN ---
+        
         todays_truck_towns = {}
         for job in SCHEDULED_JOBS:
             if job.job_status == "Scheduled" and job.scheduled_start_datetime.date() == check_date:
-                truck_id = job.assigned_hauling_truck_id
-                job_ramp_id = job.pickup_ramp_id or job.dropoff_ramp_id
-                if truck_id and job_ramp_id:
-                    job_ramp = get_ramp_details(job_ramp_id)
-                    if job_ramp:
-                        town = _abbreviate_town(job_ramp.ramp_name)
-                        todays_truck_towns.setdefault(truck_id, set()).add(town)
+                truck_id, job_ramp_id = job.assigned_hauling_truck_id, job.pickup_ramp_id or job.dropoff_ramp_id
+                if truck_id and job_ramp_id and (job_ramp := get_ramp_details(job_ramp_id)):
+                    todays_truck_towns.setdefault(truck_id, set()).add(_abbreviate_town(job_ramp.ramp_name))
+
+        total_window_minutes = sum((datetime.datetime.combine(check_date, w['end_time']) - datetime.datetime.combine(check_date, w['start_time'])).total_seconds() / 60
+                                   for truck in suitable_trucks for w in get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours))
         
-        total_window_minutes = 0
-        for truck in suitable_trucks:
-            windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
-            for w in windows:
-                start_dt = datetime.datetime.combine(check_date, w['start_time'])
-                end_dt = datetime.datetime.combine(check_date, w['end_time'])
-                total_window_minutes += (end_dt - start_dt).total_seconds() / 60
-        day_capacity_score = 10 if total_window_minutes < 180 else 0
+        day_capacity_score = 30 if total_window_minutes < 240 else 0 # Heavily penalize days with < 4 hours potential
 
         for truck in suitable_trucks:
             proximity_score = 5
             if truck_towns := todays_truck_towns.get(truck.truck_id):
                 if new_job_town and new_job_town in truck_towns:
                     proximity_score = 0
-                else:
-                    proximity_score = 20
+                else: # Truck has to move between towns
+                    last_town = list(truck_towns)[0] # Simplified assumption for now
+                    try:
+                        if last_town in SOUTH_ROUTE and new_job_town in SOUTH_ROUTE:
+                            proximity_score = 10 if SOUTH_ROUTE.index(new_job_town) > SOUTH_ROUTE.index(last_town) else -5 # Reward coming home
+                        elif last_town in NORTH_ROUTE and new_job_town in NORTH_ROUTE:
+                            proximity_score = 10 if NORTH_ROUTE.index(new_job_town) > NORTH_ROUTE.index(last_town) else -5 # Reward coming home
+                        else:
+                            proximity_score = 30 # High penalty for crossing between North/South routes
+                    except ValueError:
+                        proximity_score = 25 # Town not in defined routes
 
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
             for window in windows:
                 p_time = window['start_time']
                 while p_time < window['end_time']:
                     slot_start_dt = datetime.datetime.combine(check_date, p_time)
+                    slot_end_dt = slot_start_dt + hauler_duration
 
-                    if not check_truck_availability_optimized(truck.truck_id, slot_start_dt, slot_start_dt + hauler_duration, compiled_schedule):
+                    if not check_truck_availability_optimized(truck.truck_id, slot_start_dt, slot_end_dt, compiled_schedule):
                         p_time = (slot_start_dt + timedelta(minutes=30)).time(); continue
                     if needs_j17 and not check_truck_availability_optimized("J17", slot_start_dt, slot_start_dt + j17_duration, compiled_schedule):
                         p_time = (slot_start_dt + timedelta(minutes=30)).time(); continue
+                    
+                    # NEW: Contiguous Job Score
+                    contiguous_score = 0
+                    jobs_today_for_truck = sorted([js for js in compiled_schedule.get(truck.truck_id, []) if js[0].date() == check_date])
+                    if jobs_today_for_truck:
+                        # Find gap to previous or next job
+                        gap_before = min([abs((slot_start_dt - job_end).total_seconds()) for job_start, job_end in jobs_today_for_truck if job_end <= slot_start_dt], default=float('inf'))
+                        gap_after = min([abs((job_start - slot_end_dt).total_seconds()) for job_start, job_end in jobs_today_for_truck if job_start >= slot_end_dt], default=float('inf'))
+                        min_gap = min(gap_before, gap_after)
+                        if min_gap > 1800: contiguous_score = 5 # Penalize gaps > 30 mins
+                        if min_gap > 7200: contiguous_score = 15 # Heavily penalize gaps > 2 hours
 
                     time_of_day_score = 0 if p_time.hour < 12 else 1
-                    
                     final_score = (tide_score + day_capacity_score + time_of_day_score + 
-                                   proximity_score + sailboat_bonus + customer_priority_score)
+                                   proximity_score + sailboat_bonus + customer_priority_score + contiguous_score)
 
-                    all_found_slots.append({
-                        'date': check_date, 'time': p_time, 'truck_id': truck.truck_id,
-                        'j17_needed': needs_j17, 'ramp_id': selected_ramp_id, 'score': final_score, 'priority': priority,
-                        'tide_rule_concise': window.get('tide_rule_concise'), 'high_tide_times': window.get('high_tide_times', [])
-                    })
+                    all_found_slots.append({ 'date': check_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id, 'score': final_score, 'priority': priority, 'tide_rule_concise': window.get('tide_rule_concise'), 'high_tide_times': window.get('high_tide_times', [])})
                     p_time = (slot_start_dt + timedelta(minutes=30)).time()
 
     if not all_found_slots:
@@ -479,11 +489,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         all_found_slots.sort(key=lambda s: (s['priority'], s['score'], abs(s['date'] - requested_date)))
         final_slots, seen_dates = [], set()
         for slot in all_found_slots:
-            if slot['date'] not in seen_dates:
-                final_slots.append(slot)
-                seen_dates.add(slot['date'])
-            if len(final_slots) >= num_suggestions_to_find:
-                break
+            if slot['date'] not in seen_dates: final_slots.append(slot); seen_dates.add(slot['date'])
+            if len(final_slots) >= num_suggestions_to_find: break
         return final_slots, f"Found {len(final_slots)} best available slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
