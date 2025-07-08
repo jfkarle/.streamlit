@@ -5,6 +5,7 @@ import requests
 import random
 import json
 import streamlit as st
+from sqlalchemy import text
 from datetime import timedelta, time
 from collections import Counter
 
@@ -79,7 +80,7 @@ def get_db_connection():
 def initialize_database():
     conn = get_db_connection()
     with conn.session as s:
-        s.execute("""
+        s.execute(text("""
             CREATE TABLE IF NOT EXISTS jobs (
                 job_id INTEGER PRIMARY KEY, customer_id TEXT, boat_id TEXT, service_type TEXT,
                 scheduled_start_datetime TEXT, scheduled_end_datetime TEXT,
@@ -88,7 +89,7 @@ def initialize_database():
                 pickup_street_address TEXT, dropoff_street_address TEXT,
                 job_status TEXT, notes TEXT
             );
-        """)
+        """))
     print("Database initialized.")
 
 def load_schedule_data():
@@ -119,13 +120,12 @@ def save_job(job_to_save):
     job_dict = {k: v.isoformat() if isinstance(v, (datetime.datetime, datetime.date, datetime.time)) else v for k, v in job_to_save.__dict__.items()}
     conn = get_db_connection()
     with conn.session as s:
-        s.execute("INSERT OR REPLACE INTO jobs (job_id, customer_id, boat_id, service_type, scheduled_start_datetime, scheduled_end_datetime, assigned_hauling_truck_id, assigned_crane_truck_id, j17_busy_end_datetime, pickup_ramp_id, dropoff_ramp_id, pickup_street_address, dropoff_street_address, job_status, notes) VALUES (:job_id, :customer_id, :boat_id, :service_type, :scheduled_start_datetime, :scheduled_end_datetime, :assigned_hauling_truck_id, :assigned_crane_truck_id, :j17_busy_end_datetime, :pickup_ramp_id, :dropoff_ramp_id, :pickup_street_address, :dropoff_street_address, :job_status, :notes);", job_dict)
-    print(f"Saved job {job_to_save.job_id} to database.")
+        s.execute(text("INSERT OR REPLACE INTO jobs (job_id, customer_id, boat_id, service_type, scheduled_start_datetime, scheduled_end_datetime, assigned_hauling_truck_id, assigned_crane_truck_id, j17_busy_end_datetime, pickup_ramp_id, dropoff_ramp_id, pickup_street_address, dropoff_street_address, job_status, notes) VALUES (:job_id, :customer_id, :boat_id, :service_type, :scheduled_start_datetime, :scheduled_end_datetime, :assigned_hauling_truck_id, :assigned_crane_truck_id, :j17_busy_end_datetime, :pickup_ramp_id, :dropoff_ramp_id, :pickup_street_address, :dropoff_street_address, :job_status, :notes);"), job_dict)
 
 def delete_job_from_db(job_id):
     conn = get_db_connection()
     with conn.session as s:
-        s.execute("DELETE FROM jobs WHERE job_id = ?;", (job_id,))
+        s.execute(text("DELETE FROM jobs WHERE job_id = :job_id;"), {'job_id': job_id})
     print(f"Deleted job {job_id} from database.")
 
 
