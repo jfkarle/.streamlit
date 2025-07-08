@@ -204,36 +204,50 @@ def save_schedule_data():
         json.dump(data_to_save, f, cls=DateTimeEncoder, indent=4)
 
 def load_schedule_data():
-    """Loads schedule data from the JSON file on startup."""
+    """
+    Loads schedule data from the JSON file on startup. This version is more
+    robust and correctly handles datetime conversions for all job types.
+    """
     global SCHEDULED_JOBS, PARKED_JOBS, JOB_ID_COUNTER
     try:
         with open(SCHEDULE_FILE, 'r') as f:
             data = json.load(f)
-            
-            # Recreate Job objects from dictionaries
-            scheduled_dicts = data.get("scheduled_jobs", [])
-            SCHEDULED_JOBS = [Job(**job_dict) for job_dict in scheduled_dicts]
-            
-            parked_dicts = data.get("parked_jobs", {})
-            PARKED_JOBS = {job_id: Job(**job_dict) for job_id, job_dict in parked_dicts.items()}
 
-            JOB_ID_COUNTER = data.get("job_id_counter", 3000)
+        JOB_ID_COUNTER = data.get("job_id_counter", 3000)
+        
+        # Process scheduled jobs
+        temp_scheduled_jobs = []
+        for job_dict in data.get("scheduled_jobs", []):
+            # Convert datetime strings to objects before creating the Job instance
+            job_dict['scheduled_start_datetime'] = datetime.datetime.fromisoformat(job_dict['scheduled_start_datetime'])
+            job_dict['scheduled_end_datetime'] = datetime.datetime.fromisoformat(job_dict['scheduled_end_datetime'])
+            if job_dict.get('j17_busy_end_datetime'):
+                job_dict['j17_busy_end_datetime'] = datetime.datetime.fromisoformat(job_dict['j17_busy_end_datetime'])
+            temp_scheduled_jobs.append(Job(**job_dict))
+        SCHEDULED_JOBS = temp_scheduled_jobs
 
-            # Convert ISO format strings back to datetime objects
-            for job in SCHEDULED_JOBS:
-                job.scheduled_start_datetime = datetime.datetime.fromisoformat(job.scheduled_start_datetime)
-                job.scheduled_end_datetime = datetime.datetime.fromisoformat(job.scheduled_end_datetime)
-                if job.j17_busy_end_datetime:
-                    job.j17_busy_end_datetime = datetime.datetime.fromisoformat(job.j17_busy_end_datetime)
+        # Process parked jobs
+        temp_parked_jobs = {}
+        for job_id, job_dict in data.get("parked_jobs", {}).items():
+            job_dict['scheduled_start_datetime'] = datetime.datetime.fromisoformat(job_dict['scheduled_start_datetime'])
+            job_dict['scheduled_end_datetime'] = datetime.datetime.fromisoformat(job_dict['scheduled_end_datetime'])
+            if job_dict.get('j17_busy_end_datetime'):
+                job_dict['j17_busy_end_datetime'] = datetime.datetime.fromisoformat(job_dict['j17_busy_end_datetime'])
+            temp_parked_jobs[job_id] = Job(**job_dict)
+        PARKED_JOBS = temp_parked_jobs
+
+        print("Schedule data loaded successfully.")
 
     except FileNotFoundError:
         # If the file doesn't exist, start with empty lists
         print("Schedule data file not found. Starting with a fresh schedule.")
-        load_schedule_data()
+        SCHEDULED_JOBS = []
+        PARKED_JOBS = {}
     except Exception as e:
-        print(f"Error loading schedule data: {e}. Starting fresh.")
-        load_schedule_data()
-
+        # If any other error occurs during loading, start fresh to prevent a crash
+        print(f"Error loading schedule data: {e}. Starting with a fresh schedule.")
+        SCHEDULED_JOBS = []
+        PARKED_JOBS = {}
 def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide": return "Any Tide"
     if ramp.tide_calculation_method == "AnyTideWithDraftRule":
