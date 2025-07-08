@@ -154,11 +154,11 @@ def load_all_data_from_sheets():
             
         print(f"Loaded {len(LOADED_CUSTOMERS)} customers, {len(LOADED_BOATS)} boats, and {len(all_jobs)} jobs from Google Sheets.")
         
-    except Exception as e:
-        print(f"Error loading data from Google Sheets: {e}")
-        # Initialize empty if there's an error
-        LOADED_CUSTOMERS, LOADED_BOATS, SCHEDULED_JOBS, PARKED_JOBS = {}, {}, [], {}
-        JOB_ID_COUNTER = 3000
+except Exception as e:
+        # Display the actual error on the Streamlit page to help diagnose the issue
+        st.error(f"Failed to load data from Google Sheets: {e}")
+        # Stop the app from continuing with no data
+        st.stop()
 
 # Call this function once in your main app.py startup sequence
 # ecm.load_all_data_from_sheets()
