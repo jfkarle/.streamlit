@@ -519,13 +519,105 @@ def show_scheduler_page():
                 
 def show_reporting_page():
     """
-    Displays the Reporting dashboard, now with a "Route" column in the
-    Scheduled Jobs table to visualize job locations.
+    Displays the entire Reporting dashboard, including all original tabs and
+    interactive job management with a confirmation step for cancellation.
     """
     st.header("Reporting Dashboard")
 
-    # --- Action Callbacks (These remain the same) ---
-    # REPLACE WITH THIS
+    # --- Action Callbacks ---
+    def move_job(job_id):
+        job = ecm.get_job_details(job_id)
+        if not job: return
+        ecm.park_job(job_id)
+        # Clear any old slot selection state before starting the move.
+        st.session_state.selected_slot = None
+        st.session_state.found_slots = []
+        st.session_state.selected_customer_id = job.customer_id
+        st.session_state.rebooking_details = {
+            'parked_job_id': job.job_id, 'customer_id': job.customer_id,
+            'service_type': job.service_type, 'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
+        }
+        st.session_state.info_message = f"Rebooking job for {ecm.get_customer_details(job.customer_id).customer_name}. Please find a new slot."
+        st.session_state.app_mode_switch = "Schedule New Boat"
+
+    def park_job(job_id):
+        ecm.park_job(job_id)
+        st.toast(f"🅿️ Job #{job_id} has been parked.", icon="🅿️")
+
+    def reschedule_parked_job(parked_job_id):
+        job = ecm.get_parked_job_details(parked_job_id)
+        if not job: return
+        st.session_state.selected_customer_id = job.customer_id
+        st.session_state.rebooking_details = {
+            'parked_job_id': job.job_id, 'customer_id': job.customer_id,
+            'service_type': job.service_type, 'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
+        }
+        st.session_state.info_message = f"Rescheduling parked job for {ecm.get_customer_details(job.customer_id).customer_name}. Please select a new slot."
+        st.session_state.app_mode_switch = "Schedule New Boat"
+
+    def prompt_for_cancel(job_id):
+        st.session_state.job_to_cancel = job_id
+
+    def clear_cancel_prompt():
+        st.session_state.job_to_cancel = None
+
+    def cancel_job_confirmed():
+        job_id = st.session_state.get('job_to_cancel')
+        if job_id:
+            ecm.cancel_job(job_id)
+            st.toast(f"🗑️ Job #{job_id} has been permanently cancelled.", icon="🗑️")
+            clear_cancel_prompt()
+
+    # --- UI Layout ---
+    tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
+
+    with tab1:
+        st.subheader("Scheduled Jobs Overview")
+        if ecm.SCHEDULED_JOBS:
+            fields = ["Date/Time", "Service", "Customer", "Route", "Haul Truck", "Crane", "Actions"]
+            cols = st.columns((2, 1, 2, 1.5, 1, 1, 3))
+            for col, field in zip(cols, fields):
+                col.markdown(f"**{field}**")
+            st.markdown("---")
+
+            for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime):
+                cols = st.columns((2, 1, 2, 1.5, 1, 1, 3))
+                cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p"))
+                cols[1].write(j.service_type)
+                cols[2].write(ecm.get_customer_details(j.customer_id).customer_name)
+                p_town = ecm._abbreviate_town(j.pickup_street_address)
+                d_town = ecm._abbreviate_town(j.dropoff_street_address)
+                cols[3].write(f"{p_town} → {d_town}")
+                cols[4].write(j.assigned_hauling_truck_id)
+                cols[5].write(j.assigned_crane_truck_id or "—")
+                with cols[6]:
+                    if st.session_state.get('job_to_cancel') == j.job_id:
+                        st.warning("Are you sure?")
+                        btn_cols = st.columns(2)
+                        btn_cols[0].button("✅ Yes, Cancel", key=f"confirm_cancel_{j.job_id}", on_click=cancel_job_confirmed, use_container_width=True, type="primary")
+                        btn_cols[1].button("❌ No", key=f"deny_cancel_{j.job_id}", on_click=clear_cancel_prompt, use_container_width=True)
+                    else:
+                        btn_cols = st.columns(3)
+                        btn_cols[0].button("Move", key=f"move_{j.job_id}", on_click=move_job, args=(j.job_id,), use_container_width=True)
+                        btn_cols[1].button("Park", key=f"park_{j.job_id}", on_click=park_job, args=(j.job_id,), use_container_width=True)
+                        btn_cols[2].button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
+        else:
+            st.write("No jobs scheduled.")
+    
+    with tab2:
+        st.subheader("Crane Day Candidate Calendar")
+        ramp_options = list(ecm.CANDIDATE_CRANE_DAYS.keys())
+        if ramp_options:
+            ramp = st.selectbox("Select a ramp:", ramp_options, key="cal_ramp_sel")
+            if ramp: display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp])
+        else:
+            st.warning("No crane day data available.")
+
+    with tab3:
+        st.subheader("Scheduling Progress Report")
+        stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS
+                                               
 def move_job(job_id):
     job = ecm.get_job_details(job_id)
     if not job: return
