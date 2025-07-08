@@ -616,7 +616,26 @@ def show_reporting_page():
 
     with tab3:
         st.subheader("Scheduling Progress Report")
-        stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS
+        # This line was incomplete in your file. This is the corrected version.
+        stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
+        
+        st.markdown("#### Overall Progress")
+        c1, c2 = st.columns(2)
+        c1.metric("Boats Scheduled", f"{stats['all_boats']['scheduled']} / {stats['all_boats']['total']}")
+        c2.metric("Boats Launched (to date)", f"{stats['all_boats']['launched']} / {stats['all_boats']['total']}")
+        
+        st.markdown("#### ECM Boats")
+        c1, c2 = st.columns(2)
+        c1.metric("ECM Scheduled", f"{stats['ecm_boats']['scheduled']} / {stats['ecm_boats']['total']}")
+        c2.metric("ECM Launched (to date)", f"{stats['ecm_boats']['launched']} / {stats['ecm_boats']['total']}")
+        
+        st.markdown("---")
+        st.subheader("Download Formatted PDF Report")
+        if st.button("📊 Generate PDF Report"):
+            with st.spinner("Generating your report..."):
+                analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
+                pdf_buffer = generate_progress_report_pdf(stats, analysis)
+                st.download_button(label="📥 Download Report (.pdf)", data=pdf_buffer, file_name=f"progress_report_{datetime.date.today()}.pdf", mime="application/pdf")
                                                
 def move_job(job_id):
     job = ecm.get_job_details(job_id)
