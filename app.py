@@ -525,17 +525,25 @@ def show_reporting_page():
     st.header("Reporting Dashboard")
 
     # --- Action Callbacks (These remain the same) ---
-    def move_job(job_id):
-        job = ecm.get_job_details(job_id)
-        if not job: return
-        ecm.park_job(job_id)
-        st.session_state.selected_customer_id = job.customer_id
-        st.session_state.rebooking_details = {
-            'parked_job_id': job.job_id, 'customer_id': job.customer_id,
-            'service_type': job.service_type, 'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
-        }
-        st.session_state.info_message = f"Rebooking job for {ecm.get_customer_details(job.customer_id).customer_name}. Please find a new slot."
-        st.session_state.app_mode_switch = "Schedule New Boat"
+    # REPLACE WITH THIS
+def move_job(job_id):
+    job = ecm.get_job_details(job_id)
+    if not job: return
+    ecm.park_job(job_id)
+
+    # --- THIS IS THE FIX ---
+    # Clear any old slot selection state before starting the move.
+    st.session_state.selected_slot = None
+    st.session_state.found_slots = []
+    # --- END OF FIX ---
+
+    st.session_state.selected_customer_id = job.customer_id
+    st.session_state.rebooking_details = {
+        'parked_job_id': job.job_id, 'customer_id': job.customer_id,
+        'service_type': job.service_type, 'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
+    }
+    st.session_state.info_message = f"Rebooking job for {ecm.get_customer_details(job.customer_id).customer_name}. Please find a new slot."
+    st.session_state.app_mode_switch = "Schedule New Boat"
 
     def park_job(job_id):
         ecm.park_job(job_id)
