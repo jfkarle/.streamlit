@@ -75,8 +75,11 @@ SCHEDULED_JOBS, PARKED_JOBS = [], {}
 # --- DATABASE PERSISTENCE FUNCTIONS ---
 @st.cache_resource
 def get_db_connection():
-    return st.connection("turso", type="sql")
-
+    return st.connection(
+        "turso",
+        type="sql",
+        connect_args={"isolation_level": None}
+    )
 def initialize_database():
     conn = get_db_connection()
     with conn.session as s:
