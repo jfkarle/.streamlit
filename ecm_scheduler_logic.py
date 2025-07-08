@@ -78,20 +78,6 @@ SCHEDULED_JOBS, PARKED_JOBS = [], {}
 def get_db_connection():
     return st.connection("gsheets", type=GSheetsConnection)
     )
-def initialize_database():
-    conn = get_db_connection()
-    with conn.session as s:
-        s.execute(text("""
-            CREATE TABLE IF NOT EXISTS jobs (
-                job_id INTEGER PRIMARY KEY, customer_id TEXT, boat_id TEXT, service_type TEXT,
-                scheduled_start_datetime TEXT, scheduled_end_datetime TEXT,
-                assigned_hauling_truck_id TEXT, assigned_crane_truck_id TEXT,
-                j17_busy_end_datetime TEXT, pickup_ramp_id TEXT, dropoff_ramp_id TEXT,
-                pickup_street_address TEXT, dropoff_street_address TEXT,
-                job_status TEXT, notes TEXT
-            );
-        """))
-    print("Database initialized.")
 
 def load_all_data_from_sheets():
     """
