@@ -3,6 +3,7 @@ import datetime
 import calendar
 import requests
 import random
+import json
 from datetime import timedelta, time
 
 # --- Data Models and Configuration ---
@@ -176,7 +177,62 @@ def _abbreviate_town(address):
             
     return address.title().split(',')[0][:3]
             
+# --- DATA PERSISTENCE FUNCTIONS ---
 
+# Define a filename for our schedule data
+SCHEDULE_FILE = "schedule_data.json"
+
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder to handle datetime objects."""
+    def default(self, obj):
+        if isinstance(obj, (datetime.datetime, datetime.date, datetime.time)):
+            return obj.isoformat()
+        return super().default(self, obj)
+
+def save_schedule_data():
+    """Saves both SCHEDULED_JOBS and PARKED_JOBS to a single JSON file."""
+    # Convert lists of objects to lists of dictionaries
+    scheduled_data = [job.__dict__ for job in SCHEDULED_JOBS]
+    parked_data = {job_id: job.__dict__ for job_id, job in PARKED_JOBS.items()}
+    
+    data_to_save = {
+        "scheduled_jobs": scheduled_data,
+        "parked_jobs": parked_data,
+        "job_id_counter": JOB_ID_COUNTER
+    }
+    with open(SCHEDULE_FILE, 'w') as f:
+        json.dump(data_to_save, f, cls=DateTimeEncoder, indent=4)
+
+def load_schedule_data():
+    """Loads schedule data from the JSON file on startup."""
+    global SCHEDULED_JOBS, PARKED_JOBS, JOB_ID_COUNTER
+    try:
+        with open(SCHEDULE_FILE, 'r') as f:
+            data = json.load(f)
+            
+            # Recreate Job objects from dictionaries
+            scheduled_dicts = data.get("scheduled_jobs", [])
+            SCHEDULED_JOBS = [Job(**job_dict) for job_dict in scheduled_dicts]
+            
+            parked_dicts = data.get("parked_jobs", {})
+            PARKED_JOBS = {job_id: Job(**job_dict) for job_id, job_dict in parked_dicts.items()}
+
+            JOB_ID_COUNTER = data.get("job_id_counter", 3000)
+
+            # Convert ISO format strings back to datetime objects
+            for job in SCHEDULED_JOBS:
+                job.scheduled_start_datetime = datetime.datetime.fromisoformat(job.scheduled_start_datetime)
+                job.scheduled_end_datetime = datetime.datetime.fromisoformat(job.scheduled_end_datetime)
+                if job.j17_busy_end_datetime:
+                    job.j17_busy_end_datetime = datetime.datetime.fromisoformat(job.j17_busy_end_datetime)
+
+    except FileNotFoundError:
+        # If the file doesn't exist, start with empty lists
+        print("Schedule data file not found. Starting with a fresh schedule.")
+        load_schedule_data()
+    except Exception as e:
+        print(f"Error loading schedule data: {e}. Starting fresh.")
+        load_schedule_data()
 
 def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide": return "Any Tide"
@@ -276,6 +332,7 @@ def cancel_job(job_id):
     job_to_cancel = get_job_details(job_id)
     if job_to_cancel:
         SCHEDULED_JOBS.remove(job_to_cancel)
+        save_schedule_data()
         # Here you might also add logic to save the updated schedule to a file
         return True
     return False
@@ -290,6 +347,7 @@ def park_job(job_id):
     if job_to_park:
         SCHEDULED_JOBS.remove(job_to_park)
         PARKED_JOBS[job_id] = job_to_park
+        save_schedule_data()
         return True
     return False
 
@@ -556,6 +614,8 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
             if parked_job_to_remove in PARKED_JOBS:
                 del PARKED_JOBS[parked_job_to_remove]
 
+        save_schedule_data()
+        
         message = f"SUCCESS: Job {new_job.job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
         return new_job.job_id, message
 
