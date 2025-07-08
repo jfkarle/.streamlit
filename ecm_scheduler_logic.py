@@ -77,7 +77,6 @@ SCHEDULED_JOBS, PARKED_JOBS = [], {}
 @st.cache_resource
 def get_db_connection():
     return st.connection("gsheets", type=GSheetsConnection)
-    )
 
 def load_all_data_from_sheets():
     """
