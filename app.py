@@ -119,8 +119,12 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         ramp_id = getattr(jobs_for_day[0], 'pickup_ramp_id', None) or getattr(jobs_for_day[0], 'dropoff_ramp_id', None)
         if ramp_id:
             ramp_obj = ecm.get_ramp_details(ramp_id)
-            all_tides = ecm.get_all_tide_times_for_ramp_and_date(ramp_obj, report_date)
-            high_tides = all_tides.get('H', [])
+            # Fetch tides for the specific day
+            tide_data_for_day = ecm.fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, report_date, report_date)
+            all_tides = tide_data_for_day.get(report_date, [])
+            
+            # Process the fetched tides
+            high_tides = [t for t in all_tides if t.get('type') == 'H']
             if high_tides:
                 noon = datetime.datetime.combine(datetime.date.min, datetime.time(12,0))
                 primary_high_tide = min(high_tides, key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - noon))
@@ -859,10 +863,9 @@ def initialize_session_state():
     
     for key, default_value in defaults.items():
         if key not in st.session_state: st.session_state[key] = default_value
-    if not st.session_state.data_loaded:
-        if ecm.load_customers_and_boats_from_csv("ECM Sample Cust.csv"):
-            st.session_state.data_loaded = True
-        else: st.error("Failed to load customer and boat data.")
+    if not st.session_state.get('data_loaded'):
+        ecm.load_all_data_from_sheets()
+        st.session_state.data_loaded = True
 
 initialize_session_state()
 
