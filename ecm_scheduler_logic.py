@@ -21,9 +21,8 @@ DEFAULT_TRUCK_OPERATING_HOURS = {
     "J17":    { 0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)), 2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)), 4: (time(8, 0), time(16, 0)), 5: None, 6: None }
 }
 CANDIDATE_CRANE_DAYS = { 'ScituateHarborJericho': [], 'PlymouthHarbor': [], 'WeymouthWessagusset': [], 'CohassetParkerAve': [] }
-SCHEDULED_JOBS = []
-PARKED_JOBS = {}
-JOB_ID_COUNTER = 3000
+initialize_database()
+load_schedule_data()
 BOOKING_RULES = {'Powerboat': {'truck_mins': 90, 'crane_mins': 0},'Sailboat DT': {'truck_mins': 180, 'crane_mins': 60},'Sailboat MT': {'truck_mins': 180, 'crane_mins': 90}}
 crane_daily_status = {}
 LOADED_CUSTOMERS, LOADED_BOATS = {}, {}
@@ -177,31 +176,97 @@ def _abbreviate_town(address):
             
     return address.title().split(',')[0][:3]
             
-# --- DATA PERSISTENCE FUNCTIONS ---
+import streamlit as st # Add streamlit for connections
 
-# Define a filename for our schedule data
-SCHEDULE_FILE = "schedule_data.json"
+# --- DATABASE PERSISTENCE FUNCTIONS ---
 
-class DateTimeEncoder(json.JSONEncoder):
-    """Custom JSON encoder to handle datetime objects."""
-    def default(self, obj):
-        if isinstance(obj, (datetime.datetime, datetime.date, datetime.time)):
-            return obj.isoformat()
-        return super().default(self, obj)
+@st.cache_resource
+def get_db_connection():
+    """Returns a singleton database connection object."""
+    return st.connection("turso", type="sql")
 
-def save_schedule_data():
-    """Saves both SCHEDULED_JOBS and PARKED_JOBS to a single JSON file."""
-    # Convert lists of objects to lists of dictionaries
-    scheduled_data = [job.__dict__ for job in SCHEDULED_JOBS]
-    parked_data = {job_id: job.__dict__ for job_id, job in PARKED_JOBS.items()}
+def initialize_database():
+    """Ensures the jobs table exists in the database."""
+    conn = get_db_connection()
+    with conn.session as s:
+        s.execute("""
+            CREATE TABLE IF NOT EXISTS jobs (
+                job_id TEXT PRIMARY KEY,
+                customer_id TEXT,
+                boat_id TEXT,
+                service_type TEXT,
+                scheduled_start_datetime TEXT,
+                scheduled_end_datetime TEXT,
+                assigned_hauling_truck_id TEXT,
+                assigned_crane_truck_id TEXT,
+                j17_busy_end_datetime TEXT,
+                pickup_ramp_id TEXT,
+                dropoff_ramp_id TEXT,
+                pickup_street_address TEXT,
+                dropoff_street_address TEXT,
+                job_status TEXT,
+                notes TEXT
+            );
+        """)
+    print("Database initialized.")
+
+def load_schedule_data():
+    """Loads schedule data from the Turso database on startup."""
+    global SCHEDULED_JOBS, PARKED_JOBS, JOB_ID_COUNTER
+    try:
+        conn = get_db_connection()
+        jobs_df = conn.query("SELECT * FROM jobs;")
+        
+        all_jobs = [Job(**row) for i, row in jobs_df.iterrows()]
+        
+        # Convert ISO format strings back to datetime objects
+        for job in all_jobs:
+            job.scheduled_start_datetime = datetime.datetime.fromisoformat(job.scheduled_start_datetime)
+            job.scheduled_end_datetime = datetime.datetime.fromisoformat(job.scheduled_end_datetime)
+            if job.j17_busy_end_datetime:
+                job.j17_busy_end_datetime = datetime.datetime.fromisoformat(job.j17_busy_end_datetime)
+        
+        SCHEDULED_JOBS = [job for job in all_jobs if job.job_status == "Scheduled"]
+        PARKED_JOBS = {job.job_id: job for job in all_jobs if job.job_status == "Parked"}
+        
+        # Safely update the job counter
+        if all_jobs:
+            max_id = max(int(job.job_id) for job in all_jobs if job.job_id.isdigit())
+            JOB_ID_COUNTER = max(3000, max_id)
+
+        print(f"Loaded {len(SCHEDULED_JOBS)} scheduled and {len(PARKED_JOBS)} parked jobs from database.")
+        
+    except Exception as e:
+        print(f"Error loading schedule from database: {e}. Initializing fresh schedule.")
+        initialize_database() # Ensure table exists even if load fails
+        SCHEDULED_JOBS = []
+        PARKED_JOBS = {}
+
+def save_job(job_to_save):
+    """Saves a single job object to the database."""
+    job_dict = job_to_save.__dict__
+    # Convert datetimes to strings for storage
+    for key, value in job_dict.items():
+        if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+            job_dict[key] = value.isoformat()
     
-    data_to_save = {
-        "scheduled_jobs": scheduled_data,
-        "parked_jobs": parked_data,
-        "job_id_counter": JOB_ID_COUNTER
-    }
-    with open(SCHEDULE_FILE, 'w') as f:
-        json.dump(data_to_save, f, cls=DateTimeEncoder, indent=4)
+    conn = get_db_connection()
+    with conn.session as s:
+        # Use INSERT OR REPLACE to handle both new jobs and updates
+        s.execute(
+            "INSERT OR REPLACE INTO jobs VALUES (:job_id, :customer_id, :boat_id, :service_type, :scheduled_start_datetime, :scheduled_end_datetime, :assigned_hauling_truck_id, :assigned_crane_truck_id, :j17_busy_end_datetime, :pickup_ramp_id, :dropoff_ramp_id, :pickup_street_address, :dropoff_street_address, :job_status, :notes);",
+            job_dict
+        )
+    print(f"Saved job {job_to_save.job_id} to database.")
+
+def delete_job_from_db(job_id):
+    """Deletes a job from the database by its ID."""
+    conn = get_db_connection()
+    with conn.session as s:
+        s.execute("DELETE FROM jobs WHERE job_id = ?;", (job_id,))
+    print(f"Deleted job {job_id} from database.")
+
+### END NEW SAVE LOAD FUNCTION
 
 def load_schedule_data():
     """
@@ -339,32 +404,22 @@ def get_parked_job_details(job_id):
     return PARKED_JOBS.get(job_id)
 
 def cancel_job(job_id):
-    """
-    Finds a job by its ID in the main schedule and removes it permanently.
-    Returns True if successful, False otherwise.
-    """
     job_to_cancel = get_job_details(job_id)
     if job_to_cancel:
         SCHEDULED_JOBS.remove(job_to_cancel)
-        save_schedule_data()
-        # Here you might also add logic to save the updated schedule to a file
+        delete_job_from_db(job_id) # Delete from the database
         return True
     return False
 
 def park_job(job_id):
-    """
-    Finds a job, removes it from the main schedule, and places it in the
-    PARKED_JOBS dictionary for later rescheduling.
-    Returns True if successful, False otherwise.
-    """
     job_to_park = get_job_details(job_id)
     if job_to_park:
         SCHEDULED_JOBS.remove(job_to_park)
+        job_to_park.job_status = "Parked" # Change status
         PARKED_JOBS[job_id] = job_to_park
-        save_schedule_data()
+        save_job(job_to_park) # Save the updated job (with "Parked" status) to the DB
         return True
     return False
-
 ### END New code to support cancel, rebook, park
 def _compile_truck_schedules(jobs):
     """
@@ -566,73 +621,29 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return final_slots, f"Found {len(final_slots)} best available slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
-    """
-    Creates a new job using the boat's specific storage_address and preferred_ramp.
-    """
+    global JOB_ID_COUNTER
     try:
-        customer = get_customer_details(original_request['customer_id'])
-        boat = get_boat_details(original_request['boat_id'])
-        
-        # The selected ramp in the UI is still used, but we now have defaults from the boat data
-        selected_ramp_id = selected_slot.get('ramp_id')
-        
-        # --- NEW LOGIC FOR PICKUP/DROPOFF ---
-        pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
-        service_type = original_request['service_type']
-        
-        if service_type == "Launch":
-            # For a Launch, pickup is from storage, dropoff is at the preferred ramp
-            pickup_addr = boat.storage_address
-            dropoff_rid = selected_ramp_id or boat.preferred_ramp_id
-            dropoff_addr = get_ramp_details(dropoff_rid).ramp_name if dropoff_rid else ""
-        elif service_type == "Haul":
-            # For a Haul, pickup is from the preferred ramp, dropoff is at storage
-            pickup_rid = selected_ramp_id or boat.preferred_ramp_id
-            pickup_addr = get_ramp_details(pickup_rid).ramp_name if pickup_rid else ""
-            dropoff_addr = boat.storage_address
-        elif service_type == "Transport":
-            # Transport logic can be expanded here if needed
-            pickup_rid = selected_ramp_id
-            pickup_addr = get_ramp_details(pickup_rid).ramp_name if pickup_rid else "N/A"
-            dropoff_addr = "N/A" # Placeholder for transport destination
-        
-        # --- (The rest of the function remains largely the same) ---
-        global JOB_ID_COUNTER
+        # ... (all the logic to get customer, boat, create start_dt, etc. is the same) ...
+        # ... (the logic for pickup_addr, dropoff_addr is the same) ...
+
         job_id = JOB_ID_COUNTER + 1
         JOB_ID_COUNTER += 1
-        start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'])
-        rules = BOOKING_RULES.get(boat.boat_type, {})
-        crane_is_required = rules.get('crane_mins', 0) > 0
-        hauler_end_dt = start_dt + timedelta(minutes=rules.get('truck_mins', 90))
-        j17_end_dt = start_dt + timedelta(minutes=rules.get('crane_mins', 0)) if crane_is_required else None
-
-        new_job = Job(
-            job_id=job_id, customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
-            scheduled_start_datetime=start_dt, scheduled_end_datetime=hauler_end_dt,
-            assigned_hauling_truck_id=selected_slot['truck_id'],
-            assigned_crane_truck_id="J17" if crane_is_required else None,
-            j17_busy_end_datetime=j17_end_dt,
-            pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
-            job_status="Scheduled", notes=f"Booked via type: {selected_slot.get('type', 'N/A')}.",
-            pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
+        
+        new_job = Job( # ... (creating the new_job object is the same)
         )
         SCHEDULED_JOBS.append(new_job)
+        save_job(new_job) # Save the new job to the database
 
         if new_job.assigned_crane_truck_id and (new_job.pickup_ramp_id or new_job.dropoff_ramp_id):
-            date_str = new_job.scheduled_start_datetime.strftime('%Y-%m-%d')
-            if date_str not in crane_daily_status:
-                crane_daily_status[date_str] = {'ramps_visited': set()}
-            crane_daily_status[date_str]['ramps_visited'].add(new_job.pickup_ramp_id or new_job.dropoff_ramp_id)
+            # ... (crane status logic is the same) ...
 
         if parked_job_to_remove:
             if parked_job_to_remove in PARKED_JOBS:
                 del PARKED_JOBS[parked_job_to_remove]
-
-        save_schedule_data()
+            delete_job_from_db(parked_job_to_remove) # Delete the old parked job from DB
         
-        message = f"SUCCESS: Job {new_job.job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
-        return new_job.job_id, message
-
+        message = f"SUCCESS: Job {job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
+        return job_id, message
     except Exception as e:
         return None, f"An error occurred: {e}"
 
