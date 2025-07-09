@@ -76,13 +76,7 @@ SCHEDULED_JOBS, PARKED_JOBS = [], {}
 # --- DATABASE PERSISTENCE FUNCTIONS ---
 @st.cache_resource
 def get_db_connection():
-    # Explicitly create the connection using all settings from secrets
-    conn = st.connection(
-        "gsheets",
-        type=GSheetsConnection,
-        **st.secrets.connections.gsheets
-    )
-    return conn
+    return st.connection("gsheets", type=GSheetsConnection)
 
 def load_all_data_from_sheets():
     """
