@@ -76,7 +76,8 @@ SCHEDULED_JOBS, PARKED_JOBS = [], {}
 # --- DATABASE PERSISTENCE FUNCTIONS ---
 @st.cache_resource
 def get_db_connection():
-    return st.connection("gsheets", type=GSheetsConnection)
+    # The spreadsheet argument tells the connection which file to open
+    return st.connection("gsheets", type=GSheetsConnection, spreadsheet="ECM Scheduler Data")
 
 def load_all_data_from_sheets():
     """
