@@ -73,156 +73,95 @@ JOB_ID_COUNTER = 3000
 SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
 
+import streamlit as st
+from sqlalchemy.sql import text
+
 # --- DATABASE PERSISTENCE FUNCTIONS ---
+
 @st.cache_resource
 def get_db_connection():
-    return st.connection("gsheets", type=GSheetsConnection)
+    """Returns a singleton database connection object."""
+    return st.connection("supabase_db", type="sql")
 
-def load_all_data_from_sheets():
-    """
-    Loads all customers, boats, and jobs from Google Sheets into memory.
-    """
-    global LOADED_CUSTOMERS, LOADED_BOATS, SCHEDULED_JOBS, PARKED_JOBS, JOB_ID_COUNTER
+def initialize_database():
+    """Ensures the jobs table exists in the database."""
+    conn = get_db_connection()
+    with conn.session as s:
+        s.execute(text("""
+            CREATE TABLE IF NOT EXISTS jobs (
+                job_id SERIAL PRIMARY KEY,
+                customer_id TEXT,
+                boat_id TEXT,
+                service_type TEXT,
+                scheduled_start_datetime TIMESTAMPTZ,
+                scheduled_end_datetime TIMESTAMPTZ,
+                assigned_hauling_truck_id TEXT,
+                assigned_crane_truck_id TEXT,
+                j17_busy_end_datetime TIMESTAMPTZ,
+                pickup_ramp_id TEXT,
+                dropoff_ramp_id TEXT,
+                pickup_street_address TEXT,
+                dropoff_street_address TEXT,
+                job_status TEXT,
+                notes TEXT
+            );
+        """))
+    print("Database initialized.")
 
+def load_all_data_from_sheets(): # Keep original name to avoid changing app.py
+    """Loads all jobs from the Supabase database."""
+    global SCHEDULED_JOBS, PARKED_JOBS, JOB_ID_COUNTER
     try:
         conn = get_db_connection()
+        jobs_df = conn.query("SELECT * FROM jobs;")
         
-        # Load Customers
-        customers_df = conn.read(worksheet="Customers").dropna(how="all")
-        for i, row in customers_df.iterrows():
-            cust_id = str(row['customer_id'])
-            LOADED_CUSTOMERS[cust_id] = Customer(
-                c_id=cust_id,
-                name=row['customer_name'],
-                street=row['street_address'],
-                truck=row['preferred_truck_id'],
-                is_ecm=row['is_ecm_customer'],
-                line2=row['home_line2'],
-                cityzip=row['home_citystatezip']
-            )
-
-        # Load Boats
-        boats_df = conn.read(worksheet="Boats").dropna(how="all")
-        for i, row in boats_df.iterrows():
-            boat_id = str(row['boat_id'])
-            LOADED_BOATS[boat_id] = Boat(
-                b_id=boat_id,
-                c_id=str(row['customer_id']),
-                b_type=row['boat_type'],
-                b_len=float(row['boat_length']),
-                draft=float(row['draft_ft']),
-                storage_addr=row['storage_address'],
-                pref_ramp=row['preferred_ramp_id']
-            )
-            
-        # Load Jobs
-        jobs_df = conn.read(worksheet="Jobs").dropna(how="all")
-        all_jobs = []
-        if not jobs_df.empty:
-            for i, row in jobs_df.iterrows():
-                # Convert to datetime objects, handling potential empty values
-                start_dt = pd.to_datetime(row['scheduled_start_datetime'], errors='coerce')
-                end_dt = pd.to_datetime(row['scheduled_end_datetime'], errors='coerce')
-                j17_end_dt = pd.to_datetime(row['j17_busy_end_datetime'], errors='coerce')
-
-                job = Job(
-                    job_id=int(row['job_id']),
-                    customer_id=str(row['customer_id']),
-                    boat_id=str(row['boat_id']),
-                    service_type=row['service_type'],
-                    scheduled_start_datetime=start_dt if pd.notna(start_dt) else None,
-                    scheduled_end_datetime=end_dt if pd.notna(end_dt) else None,
-                    assigned_hauling_truck_id=row['assigned_hauling_truck_id'],
-                    assigned_crane_truck_id=row['assigned_crane_truck_id'],
-                    j17_busy_end_datetime=j17_end_dt if pd.notna(j17_end_dt) else None,
-                    pickup_ramp_id=row['pickup_ramp_id'],
-                    dropoff_ramp_id=row['dropoff_ramp_id'],
-                    pickup_street_address=row['pickup_street_address'],
-                    dropoff_street_address=row['dropoff_street_address'],
-                    job_status=row['job_status'],
-                    notes=row['notes']
-                )
-                all_jobs.append(job)
-
-        SCHEDULED_JOBS[:] = [j for j in all_jobs if j.job_status == "Scheduled"]
-        PARKED_JOBS.clear()
-        PARKED_JOBS.update({j.job_id: j for j in all_jobs if j.job_status == "Parked"})
+        all_jobs = [Job(**row) for i, row in jobs_df.iterrows()]
+        
+        SCHEDULED_JOBS = [job for job in all_jobs if job.job_status == "Scheduled"]
+        PARKED_JOBS = {job.job_id: job for job in all_jobs if job.job_status == "Parked"}
         
         if all_jobs:
-            JOB_ID_COUNTER = max([3000] + [j.job_id for j in all_jobs if j.job_id])
+            JOB_ID_COUNTER = max(job.job_id for job in all_jobs)
         else:
             JOB_ID_COUNTER = 3000
-            
-        print(f"Loaded {len(LOADED_CUSTOMERS)} customers, {len(LOADED_BOATS)} boats, and {len(all_jobs)} jobs from Google Sheets.")
-        
+
+        print(f"Loaded {len(SCHEDULED_JOBS)} scheduled and {len(PARKED_JOBS)} parked jobs from database.")
+    
     except Exception as e:
-            # Display the actual error on the Streamlit page to help diagnose the issue
-            st.error(f"Failed to load data from Google Sheets: {e}")
-            # Stop the app from continuing with no data
-            st.stop()
-
-# Call this function once in your main app.py startup sequence
-# ecm.load_all_data_from_sheets()
-
+        print(f"Error loading from database: {e}. Re-initializing.")
+        initialize_database()
+        SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
 def save_job(job_to_save):
-    """
-    Saves a job to the Google Sheet.
-    It updates the row if the job_id exists, otherwise it appends a new row.
-    """
-    try:
-        conn = get_db_connection()
-        jobs_worksheet = conn.get_worksheet(worksheet="Jobs")
-        
-        # Prepare the data in the correct order of columns
-        job_data = [
-            job_to_save.job_id, job_to_save.customer_id, job_to_save.boat_id,
-            job_to_save.service_type, 
-            job_to_save.scheduled_start_datetime.isoformat() if job_to_save.scheduled_start_datetime else None,
-            job_to_save.scheduled_end_datetime.isoformat() if job_to_save.scheduled_end_datetime else None,
-            job_to_save.assigned_hauling_truck_id, job_to_save.assigned_crane_truck_id,
-            job_to_save.j17_busy_end_datetime.isoformat() if job_to_save.j17_busy_end_datetime else None,
-            job_to_save.pickup_ramp_id, job_to_save.dropoff_ramp_id,
-            job_to_save.pickup_street_address, job_to_save.dropoff_street_address,
-            job_to_save.job_status, job_to_save.notes
-        ]
-        
-        # Find if the job already exists
-        job_ids = jobs_worksheet.col_values(1) # Assumes job_id is in the first column
-        try:
-            row_index = job_ids.index(str(job_to_save.job_id)) + 1
-            # Update existing row
-            jobs_worksheet.update(f'A{row_index}', [job_data])
-            print(f"Updated job {job_to_save.job_id} in Google Sheets.")
-        except ValueError:
-            # Append new row if job_id not found
-            jobs_worksheet.append_row(job_data)
-            print(f"Appended new job {job_to_save.job_id} to Google Sheets.")
+    """Saves or updates a single job object in the database."""
+    conn = get_db_connection()
+    job_dict = job_to_save.__dict__
+    
+    # Separate job_id for the WHERE clause
+    job_id = job_dict.pop('job_id', None)
+    
+    with conn.session as s:
+        if job_id and any(j.job_id == job_id for j in SCHEDULED_JOBS + list(PARKED_JOBS.values())):
+            # Update existing job
+            set_clause = ", ".join([f"{key} = :{key}" for key in job_dict])
+            s.execute(text(f"UPDATE jobs SET {set_clause} WHERE job_id = :job_id"), params={**job_dict, 'job_id': job_id})
+        else:
+            # Insert new job and get the new ID
+            columns = ", ".join(job_dict.keys())
+            values = ", ".join([f":{key}" for key in job_dict])
+            result = s.execute(text(f"INSERT INTO jobs ({columns}) VALUES ({values}) RETURNING job_id;"), params=job_dict)
+            new_id = result.scalar_one()
+            job_to_save.job_id = new_id
             
-    except Exception as e:
-        print(f"Failed to save job {job_to_save.job_id} to Google Sheets: {e}")
+    print(f"Saved job {job_to_save.job_id} to database.")
 
 
 def delete_job_from_db(job_id):
-    """
-    Deletes a job from the Google Sheet by finding its row and deleting it.
-    """
-    try:
-        conn = get_db_connection()
-        jobs_worksheet = conn.get_worksheet(worksheet="Jobs")
-        
-        # Find the row of the job to delete
-        job_ids = jobs_worksheet.col_values(1) # Assumes job_id is in the first column
-        try:
-            row_index = job_ids.index(str(job_id)) + 1
-            jobs_worksheet.delete_rows(row_index)
-            print(f"Deleted job {job_id} from Google Sheets.")
-        except ValueError:
-            print(f"Could not find job {job_id} to delete in Google Sheets.")
-
-    except Exception as e:
-        print(f"Failed to delete job {job_id} from Google Sheets: {e}")
-
+    """Deletes a job from the database by its ID."""
+    conn = get_db_connection()
+    with conn.session as s:
+        s.execute(text("DELETE FROM jobs WHERE job_id = :job_id;"), params=dict(job_id=job_id))
+    print(f"Deleted job {job_id} from database.")
 
 # --- CORE HELPER FUNCTIONS ---
 get_customer_details = LOADED_CUSTOMERS.get
@@ -480,13 +419,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return final_slots, f"Found {len(final_slots)} best available slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
-    global JOB_ID_COUNTER
+    # No 'global JOB_ID_COUNTER' is needed anymore
     try:
         customer = get_customer_details(original_request['customer_id'])
         boat = get_boat_details(original_request['boat_id'])
         selected_ramp_id = selected_slot.get('ramp_id')
         pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
         service_type = original_request['service_type']
+        
         if service_type == "Launch":
             pickup_addr = boat.storage_address
             dropoff_rid = selected_ramp_id or boat.preferred_ramp_id
@@ -499,36 +439,51 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
             pickup_rid = selected_ramp_id
             pickup_addr = get_ramp_details(pickup_rid).ramp_name if pickup_rid else "N/A"
             dropoff_addr = "N/A"
-        job_id = JOB_ID_COUNTER + 1
-        JOB_ID_COUNTER += 1
+
         start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'])
         rules = BOOKING_RULES.get(boat.boat_type, {})
         crane_is_required = rules.get('crane_mins', 0) > 0
         hauler_end_dt = start_dt + timedelta(minutes=rules.get('truck_mins', 90))
         j17_end_dt = start_dt + timedelta(minutes=rules.get('crane_mins', 0)) if crane_is_required else None
+
+        # Create the job object *without* an ID. The database will assign one.
         new_job = Job(
-            job_id=job_id, customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
-            scheduled_start_datetime=start_dt, scheduled_end_datetime=hauler_end_dt,
+            customer_id=customer.customer_id,
+            boat_id=boat.boat_id,
+            service_type=service_type,
+            scheduled_start_datetime=start_dt,
+            scheduled_end_datetime=hauler_end_dt,
             assigned_hauling_truck_id=selected_slot['truck_id'],
             assigned_crane_truck_id="J17" if crane_is_required else None,
             j17_busy_end_datetime=j17_end_dt,
-            pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
-            job_status="Scheduled", notes=f"Booked via type: {selected_slot.get('type', 'N/A')}.",
-            pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
+            pickup_ramp_id=pickup_rid,
+            dropoff_ramp_id=dropoff_rid,
+            job_status="Scheduled",
+            notes=f"Booked via type: {selected_slot.get('type', 'N/A')}.",
+            pickup_street_address=pickup_addr,
+            dropoff_street_address=dropoff_addr
         )
+        
         SCHEDULED_JOBS.append(new_job)
+        
+        # This function now saves the job and updates the new_job object with the ID from the database
         save_job(new_job)
+        
         if new_job.assigned_crane_truck_id and (new_job.pickup_ramp_id or new_job.dropoff_ramp_id):
             date_str = new_job.scheduled_start_datetime.strftime('%Y-%m-%d')
             if date_str not in crane_daily_status:
                 crane_daily_status[date_str] = {'ramps_visited': set()}
             crane_daily_status[date_str]['ramps_visited'].add(new_job.pickup_ramp_id or new_job.dropoff_ramp_id)
+            
         if parked_job_to_remove:
             if parked_job_to_remove in PARKED_JOBS:
                 del PARKED_JOBS[parked_job_to_remove]
             delete_job_from_db(parked_job_to_remove)
-        message = f"SUCCESS: Job {job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
-        return job_id, message
+            
+        # Use the ID that was assigned by the database in the success message
+        message = f"SUCCESS: Job #{new_job.job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
+        return new_job.job_id, message
+        
     except Exception as e:
         return None, f"An error occurred: {e}"
 
