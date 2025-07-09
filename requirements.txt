@@ -7,3 +7,4 @@ streamlit-aggrid==0.3.4
 xhtml2pdf
 libsql-client
 st-gsheets-connection
+psycopg2-binary
