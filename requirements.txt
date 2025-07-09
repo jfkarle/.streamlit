@@ -8,3 +8,4 @@ xhtml2pdf
 libsql-client
 st-gsheets-connection
 psycopg2-binary
+SQLAlchemy
