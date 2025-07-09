@@ -77,7 +77,7 @@ SCHEDULED_JOBS, PARKED_JOBS = [], {}
 @st.cache_resource
 def get_db_connection():
     # The spreadsheet argument tells the connection which file to open
-    return st.connection("gsheets", type=GSheetsConnection, spreadsheet="ECM Scheduler Data")
+    return st.connection("gsheets", type=GSheetsConnection)
 
 def load_all_data_from_sheets():
     """
