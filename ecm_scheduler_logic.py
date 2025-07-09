@@ -76,8 +76,13 @@ SCHEDULED_JOBS, PARKED_JOBS = [], {}
 # --- DATABASE PERSISTENCE FUNCTIONS ---
 @st.cache_resource
 def get_db_connection():
-    # The spreadsheet argument tells the connection which file to open
-    return st.connection("gsheets", type=GSheetsConnection)
+    # Explicitly create the connection using all settings from secrets
+    conn = st.connection(
+        "gsheets",
+        type=GSheetsConnection,
+        **st.secrets.connections.gsheets
+    )
+    return conn
 
 def load_all_data_from_sheets():
     """
