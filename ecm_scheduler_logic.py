@@ -69,7 +69,6 @@ ECM_RAMPS = {
 CANDIDATE_CRANE_DAYS = { 'ScituateHarborJericho': [], 'PlymouthHarbor': [], 'WeymouthWessagusset': [], 'CohassetParkerAve': [] }
 crane_daily_status = {}
 LOADED_CUSTOMERS, LOADED_BOATS = {}, {}
-JOB_ID_COUNTER = 3000
 SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
 
@@ -110,7 +109,6 @@ def initialize_database():
 
 def load_all_data_from_sheets(): # Keep original name to avoid changing app.py
     """Loads all jobs from the Supabase database."""
-    global SCHEDULED_JOBS, PARKED_JOBS, JOB_ID_COUNTER
     try:
         conn = get_db_connection()
         jobs_df = conn.query("SELECT * FROM jobs;")
@@ -120,11 +118,6 @@ def load_all_data_from_sheets(): # Keep original name to avoid changing app.py
         SCHEDULED_JOBS = [job for job in all_jobs if job.job_status == "Scheduled"]
         PARKED_JOBS = {job.job_id: job for job in all_jobs if job.job_status == "Parked"}
         
-        if all_jobs:
-            JOB_ID_COUNTER = max(job.job_id for job in all_jobs)
-        else:
-            JOB_ID_COUNTER = 3000
-
         print(f"Loaded {len(SCHEDULED_JOBS)} scheduled and {len(PARKED_JOBS)} parked jobs from database.")
     
     except Exception as e:
