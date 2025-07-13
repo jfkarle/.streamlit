@@ -5,6 +5,12 @@ conn = st.connection("supabase", type=SupabaseConnection)
 st.set_page_config(layout="wide")
 st.title("Supabase Connection Test")
 
+import streamlit as st
+
+st.write("Loaded connections keys:", list(st.secrets.get("connections", {}).keys()))
+# or even
+st.write("Supabase URL:", st.secrets["connections"]["supabase"]["url"])
+
 
 try:
     # Initialize connection.
