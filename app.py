@@ -1,27 +1,21 @@
 import streamlit as st
-from st_supabase_connection import SupabaseConnection
-conn = st.connection("supabase", type=SupabaseConnection) 
 
 st.set_page_config(layout="wide")
 st.title("Supabase Connection Test")
 
-import streamlit as st
+# 1️⃣ Debug your secrets first
+st.write("All secrets keys:", st.secrets)
+st.write("Connections keys:", list(st.secrets.get("connections", {}).keys()))
+st.write("Supabase creds:", st.secrets["connections"].get("supabase"))
 
-st.write("Loaded connections keys:", list(st.secrets.get("connections", {}).keys()))
-# or even
-st.write("Supabase URL:", st.secrets["connections"]["supabase"]["url"])
-
+from st_supabase_connection import SupabaseConnection
 
 try:
-    # Initialize connection.
+    # 2️⃣ Only now create your connection
     conn = st.connection("supabase", type=SupabaseConnection)
 
-    # Perform a test query. This will query the 'jobs' table we created.
-    # If the table doesn't exist yet, this will fail, which is okay for a first test.
     st.write("Attempting to query the 'jobs' table...")
     rows = conn.query("*", table="jobs", ttl="10m").execute()
-
-    # Print results.
     st.write("Connection successful! Data from 'jobs' table:")
     st.dataframe(rows.data)
 
