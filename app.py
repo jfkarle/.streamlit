@@ -10,13 +10,16 @@ st.write("Supabase creds:", st.secrets["connections"].get("supabase"))
 
 from st_supabase_connection import SupabaseConnection
 
-try:
-    # 2️⃣ Only now create your connection
-    conn = st.connection("supabase", type=SupabaseConnection)
 
-    st.write("Attempting to query the 'jobs' table...")
+try:
+    conn = st.connection(
+        "supabase",
+        type=SupabaseConnection,
+        url=st.secrets["connections"]["supabase"]["url"],
+        key=st.secrets["connections"]["supabase"]["key"],
+    )
+
     rows = conn.query("*", table="jobs", ttl="10m").execute()
-    st.write("Connection successful! Data from 'jobs' table:")
     st.dataframe(rows.data)
 
 except Exception as e:
