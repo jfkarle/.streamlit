@@ -1,4 +1,3 @@
-from streamlit_gsheets import GSheetsConnection
 import csv
 import datetime
 import pandas as pd
