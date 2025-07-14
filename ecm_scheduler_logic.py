@@ -7,6 +7,7 @@ import requests
 import random
 import json
 import streamlit as st
+from st_supabase_connection import SupabaseConnection, execute_query
 from datetime import timedelta, time
 from collections import Counter
 
@@ -71,90 +72,80 @@ crane_daily_status = {}
 LOADED_CUSTOMERS, LOADED_BOATS = {}, {}
 SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
-
-import streamlit as st
-from sqlalchemy.sql import text
-
 # --- DATABASE PERSISTENCE FUNCTIONS ---
 
 @st.cache_resource
 def get_db_connection():
-    """Returns a singleton database connection object."""
-    return st.connection("supabase_db", type="sql")
-
-def initialize_database():
-    """Ensures the jobs table exists in the database."""
-    conn = get_db_connection()
-    with conn.session as s:
-        s.execute(text("""
-            CREATE TABLE IF NOT EXISTS jobs (
-                job_id SERIAL PRIMARY KEY,
-                customer_id TEXT,
-                boat_id TEXT,
-                service_type TEXT,
-                scheduled_start_datetime TIMESTAMPTZ,
-                scheduled_end_datetime TIMESTAMPTZ,
-                assigned_hauling_truck_id TEXT,
-                assigned_crane_truck_id TEXT,
-                j17_busy_end_datetime TIMESTAMPTZ,
-                pickup_ramp_id TEXT,
-                dropoff_ramp_id TEXT,
-                pickup_street_address TEXT,
-                dropoff_street_address TEXT,
-                job_status TEXT,
-                notes TEXT
-            );
-        """))
-    print("Database initialized.")
+    """Returns a singleton Supabase connection object."""
+    # Use the connection name from your working app_test.py
+    return st.connection("supabase", type=SupabaseConnection)
 
 def load_all_data_from_sheets(): # Keep original name to avoid changing app.py
     """Loads all jobs from the Supabase database."""
+    global SCHEDULED_JOBS, PARKED_JOBS
     try:
         conn = get_db_connection()
-        jobs_df = conn.query("SELECT * FROM jobs;")
+        # Build the query to select all records from the 'jobs' table
+        builder = conn.table("jobs").select("*")
+        # Execute the query. ttl=0 ensures data is always fresh.
+        response = execute_query(builder, ttl=0)
         
-        all_jobs = [Job(**row) for i, row in jobs_df.iterrows()]
+        all_jobs = [Job(**row) for row in response.data]
         
+        # Reset and populate the in-memory caches
         SCHEDULED_JOBS = [job for job in all_jobs if job.job_status == "Scheduled"]
         PARKED_JOBS = {job.job_id: job for job in all_jobs if job.job_status == "Parked"}
         
+        st.toast(f"Loaded {len(SCHEDULED_JOBS)} scheduled and {len(PARKED_JOBS)} parked jobs.", icon="🔄")
         print(f"Loaded {len(SCHEDULED_JOBS)} scheduled and {len(PARKED_JOBS)} parked jobs from database.")
     
     except Exception as e:
-        print(f"Error loading from database: {e}. Re-initializing.")
-        initialize_database()
+        st.error("Error connecting to or loading from Supabase.")
+        st.exception(e)
+        # If loading fails, ensure caches are empty to prevent using stale data
         SCHEDULED_JOBS, PARKED_JOBS = [], {}
+        # NOTE: Schema creation should be handled in your Supabase dashboard.
+        # The app assumes the 'jobs' table already exists.
 
 def save_job(job_to_save):
-    """Saves or updates a single job object in the database."""
+    """Saves or updates a single job object in the Supabase database."""
     conn = get_db_connection()
     job_dict = job_to_save.__dict__
     
-    # Separate job_id for the WHERE clause
-    job_id = job_dict.pop('job_id', None)
+    # Exclude job_id from the dict for insertion, as Supabase assigns it.
+    # Keep it for the update's 'eq' filter.
+    job_id = job_dict.get('job_id')
     
-    with conn.session as s:
+    try:
         if job_id and any(j.job_id == job_id for j in SCHEDULED_JOBS + list(PARKED_JOBS.values())):
-            # Update existing job
-            set_clause = ", ".join([f"{key} = :{key}" for key in job_dict])
-            s.execute(text(f"UPDATE jobs SET {set_clause} WHERE job_id = :job_id"), params={**job_dict, 'job_id': job_id})
+            # UPDATE existing job
+            # The job_id is not part of the updated values, it's used in the filter
+            update_data = {k: v for k, v in job_dict.items() if k != 'job_id'}
+            conn.table("jobs").update(update_data).eq("job_id", job_id).execute()
         else:
-            # Insert new job and get the new ID
-            columns = ", ".join(job_dict.keys())
-            values = ", ".join([f":{key}" for key in job_dict])
-            result = s.execute(text(f"INSERT INTO jobs ({columns}) VALUES ({values}) RETURNING job_id;"), params=job_dict)
-            new_id = result.scalar_one()
+            # INSERT new job
+            # The database will auto-generate the primary key (job_id)
+            insert_data = {k: v for k, v in job_dict.items() if k != 'job_id'}
+            response = conn.table("jobs").insert(insert_data).execute()
+            # Get the new ID back from the response and assign it to the object
+            new_id = response.data[0]['job_id']
             job_to_save.job_id = new_id
             
-    print(f"Saved job {job_to_save.job_id} to database.")
+        print(f"Saved job {job_to_save.job_id} to database.")
+    except Exception as e:
+        st.error(f"Database save error for job {job_id or '(new)'}")
+        st.exception(e)
 
 
 def delete_job_from_db(job_id):
-    """Deletes a job from the database by its ID."""
-    conn = get_db_connection()
-    with conn.session as s:
-        s.execute(text("DELETE FROM jobs WHERE job_id = :job_id;"), params=dict(job_id=job_id))
-    print(f"Deleted job {job_id} from database.")
+    """Deletes a job from the Supabase database by its ID."""
+    try:
+        conn = get_db_connection()
+        conn.table("jobs").delete().eq("job_id", job_id).execute()
+        print(f"Deleted job {job_id} from database.")
+    except Exception as e:
+        st.error(f"Failed to delete job {job_id}")
+        st.exception(e)
 
 # --- CORE HELPER FUNCTIONS ---
 get_customer_details = LOADED_CUSTOMERS.get
