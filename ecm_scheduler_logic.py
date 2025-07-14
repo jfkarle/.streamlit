@@ -76,8 +76,14 @@ SCHEDULED_JOBS, PARKED_JOBS = [], {}
 @st.cache_resource
 def get_db_connection():
     """Returns a singleton Supabase connection object."""
-    # Use the connection name from your working app_test.py
-    return st.connection("supabase", type=SupabaseConnection)
+    # Explicitly pass the URL and Key from secrets to match your successful test file.
+    # This bypasses the automatic discovery issue.
+    return st.connection(
+        "supabase",
+        type=SupabaseConnection,
+        url=st.secrets["connections"]["supabase"]["url"],
+        key=st.secrets["connections"]["supabase"]["key"],
+    )
 
 def load_all_data_from_sheets(): # Keep original name to avoid changing app.py
     """Loads all jobs from the Supabase database."""
