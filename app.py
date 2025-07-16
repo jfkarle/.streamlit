@@ -417,7 +417,7 @@ def show_scheduler_page():
                 st.sidebar.write("---")
                 with st.sidebar.container(height=250):
                     for cust in sorted_customers:
-                        boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == cust.customer_id), None)
+                        boat = next((b for b in ecm.LOADED_BOATS.values() if str(b.customer_id) == str(cust.customer_id)), None)
                         boat_info = f" ({boat.boat_length}' {boat.boat_type}, ID: {boat.boat_id})" if boat else ""
                         st.button(f"{cust.customer_name}{boat_info}", key=f"select_{cust.customer_id}", on_click=select_customer, args=(cust.customer_id,), use_container_width=True)
             else:
@@ -427,7 +427,7 @@ def show_scheduler_page():
     if st.session_state.get('selected_customer_id'):
         customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
         if customer:
-            boat = next((b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id), None)
+            boat = next((b for b in ecm.LOADED_BOATS.values() if str(b.customer_id) == str(customer.customer_id)), None)
             if not boat:
                 st.sidebar.error(f"No boat found for {customer.customer_name}.")
                 clear_selection(); st.stop()
