@@ -238,12 +238,37 @@ def get_concise_tide_rule(ramp, boat):
     return f"{float(ramp.tide_offset_hours1):g} hrs +/- HT" if ramp.tide_offset_hours1 else "Tide Rule N/A"
 
 def calculate_ramp_windows(ramp, boat, tide_data, date):
-    if ramp.tide_calculation_method == "AnyTide": return [{'start_time': time.min, 'end_time': time.max}]
-    if ramp.tide_calculation_method == "AnyTideWithDraftRule" and boat.draft_ft and boat.draft_ft < 5.0: return [{'start_time': time.min, 'end_time': time.max}]
-    offset_hours = 3.0 if ramp.tide_calculation_method == "AnyTideWithDraftRule" else float(ramp.tide_offset_hours1 or 0)
-    if not tide_data or not offset_hours: return []
+    # Rule for ramps that don't depend on tide at all
+    if ramp.tide_calculation_method == "AnyTide":
+        return [{'start_time': time.min, 'end_time': time.max}]
+
+    # Rule for ramps where boats with shallow draft don't need to worry about tide
+    if ramp.tide_calculation_method == "AnyTideWithDraftRule" and boat.draft_ft and boat.draft_ft < 5.0:
+        return [{'start_time': time.min, 'end_time': time.max}]
+
+    # --- Start of New Logic ---
+    # This new section handles different tide windows based on the boat's draft.
+    # It specifically looks for the "HoursAroundHighTide_WithDraftRule" method.
+    if ramp.tide_calculation_method == "HoursAroundHighTide_WithDraftRule":
+        # If it's a Powerboat with less than 5ft draft, use a 3.5-hour window.
+        if boat.boat_type == 'Powerboat' and boat.draft_ft < 5.0:
+            offset_hours = 3.5
+        # Otherwise (e.g., for sailboats), use the default 3-hour window.
+        else:
+            offset_hours = 3.0
+    # --- End of New Logic ---
+    else:
+        # This handles the original, simple "HoursAroundHighTide" method.
+        # It will use whatever number is set for the ramp (e.g., 1.5 for Cordage Park).
+        offset_hours = float(ramp.tide_offset_hours1 or 0)
+
+    # The rest of the function remains the same.
+    if not tide_data or not offset_hours:
+        return []
     offset = timedelta(hours=offset_hours)
-    return [{'start_time': (datetime.datetime.combine(date, t['time']) - offset).time(), 'end_time': (datetime.datetime.combine(date, t['time']) + offset).time()} for t in tide_data if t['type']=='H']
+    return [{'start_time': (datetime.datetime.combine(date, t['time']) - offset).time(),
+             'end_time': (datetime.datetime.combine(date, t['time']) + offset).time()}
+            for t in tide_data if t['type']=='H']
 
 def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tides, truck_id, truck_hours_schedule):
     day_of_week = date_to_check.weekday()
