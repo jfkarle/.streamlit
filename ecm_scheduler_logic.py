@@ -387,7 +387,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     except ValueError:
         return [], "Error: Invalid date format.", [], False
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
-    if not customer or not boat: return [], "Invalid Customer/Boat ID.", ["Customer or boat not found in system."], False
+    if not customer:
+        return [], "Invalid Customer ID.", ["Customer could not be found in the system."], False
+    if not boat:
+        return [], "Sorry, no boat found attached to this customer ID", ["A valid customer was found, but they do not have a boat linked to their account."], False
     ramp_obj = get_ramp_details(selected_ramp_id)
     new_job_town = _abbreviate_town(ramp_obj.ramp_name) if ramp_obj else None
     rules = BOOKING_RULES.get(boat.boat_type, {})
