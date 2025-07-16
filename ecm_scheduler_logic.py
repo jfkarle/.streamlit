@@ -85,32 +85,58 @@ def get_db_connection():
         key=st.secrets["connections"]["supabase"]["key"],
     )
 
-def load_all_data_from_sheets(): # Keep original name to avoid changing app.py
-    """Loads all jobs from the Supabase database."""
-    global SCHEDULED_JOBS, PARKED_JOBS
+def load_all_data_from_sheets():  # Keep original name so app.py doesn’t break
+    """Loads all jobs, customers, and boats from the Supabase database."""
+    global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS
+
     try:
         conn = get_db_connection()
-        # Build the query to select all records from the 'jobs' table
-        builder = conn.table("jobs").select("*")
-        # Execute the query. ttl=0 ensures data is always fresh.
-        response = execute_query(builder, ttl=0)
-        
-        all_jobs = [Job(**row) for row in response.data]
-        
-        # Reset and populate the in-memory caches
+
+        # Load jobs
+        jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
+        all_jobs = [Job(**row) for row in jobs_resp.data]
         SCHEDULED_JOBS = [job for job in all_jobs if job.job_status == "Scheduled"]
-        PARKED_JOBS = {job.job_id: job for job in all_jobs if job.job_status == "Parked"}
-        
+        PARKED_JOBS    = {job.job_id: job for job in all_jobs if job.job_status == "Parked"}
+
+        # Load customers
+        cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
+        LOADED_CUSTOMERS = {
+            row["customer_id"]: Customer(
+                c_id    = row["customer_id"],
+                name    = row["customer_name"],
+                street  = row["street_address"],
+                truck   = row.get("preferred_truck_id"),
+                is_ecm  = row.get("is_ecm_customer", False),
+                line2   = row.get("home_line2", ""),
+                cityzip = row.get("home_citystatezip", "")
+            )
+            for row in cust_resp.data
+        }
+        st.toast(f"Loaded {len(LOADED_CUSTOMERS)} customers.", icon="👤")
+
+        # Load boats
+        boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
+        LOADED_BOATS = {
+            row["boat_id"]: Boat(
+                b_id         = row["boat_id"],
+                c_id         = row["customer_id"],
+                b_type       = row["boat_type"],
+                b_len        = row["boat_length"],
+                draft        = row["draft_ft"],
+                storage_addr = row.get("storage_address", ""),
+                pref_ramp    = row.get("preferred_ramp_id")
+            )
+            for row in boat_resp.data
+        }
+        st.toast(f"Loaded {len(LOADED_BOATS)} boats.", icon="⛵")
+
+        # Final toast for jobs
         st.toast(f"Loaded {len(SCHEDULED_JOBS)} scheduled and {len(PARKED_JOBS)} parked jobs.", icon="🔄")
         print(f"Loaded {len(SCHEDULED_JOBS)} scheduled and {len(PARKED_JOBS)} parked jobs from database.")
-    
+
     except Exception as e:
-        st.error("Error connecting to or loading from Supabase.")
-        st.exception(e)
-        # If loading fails, ensure caches are empty to prevent using stale data
-        SCHEDULED_JOBS, PARKED_JOBS = [], {}
-        # NOTE: Schema creation should be handled in your Supabase dashboard.
-        # The app assumes the 'jobs' table already exists.
+        st.error(f"Error loading data: {e}")
+        raise
 
 def save_job(job_to_save):
     """Saves or updates a single job object in the Supabase database."""
