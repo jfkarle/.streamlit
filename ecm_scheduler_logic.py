@@ -86,7 +86,7 @@ def get_db_connection():
     )
 
 def load_all_data_from_sheets():
-    """Loads jobs, customers, and boats (including storage_address & preferred_ramp_id) from Supabase."""
+    """Loads jobs, customers, and boats (including storage_address & preferred_ramp) from Supabase."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS
 
     try:
@@ -123,23 +123,23 @@ def load_all_data_from_sheets():
                 "boat_length",
                 "draft_ft",
                 "storage_address",
-                "preferred_ramp_id"
+                "preferred_ramp"
             ),
             ttl=0
         )
         LOADED_BOATS = {
             row["boat_id"]: Boat(
-                b_id          = row["boat_id"],
-                c_id          = row["customer_id"],
-                b_type        = row["boat_type"],
-                b_len         = row["boat_length"],
-                draft         = row["draft_ft"],
-                storage_addr  = row.get("storage_address", ""),
-                pref_ramp     = row.get("preferred_ramp_id", "")
+                b_id         = row["boat_id"],
+                c_id         = row["customer_id"],
+                b_type       = row["boat_type"],
+                b_len        = row["boat_length"],
+                draft        = row["draft_ft"],
+                storage_addr = row.get("storage_address", ""),
+                pref_ramp    = row.get("preferred_ramp", "")
             )
             for row in boat_resp.data
         }
-        st.toast(f"Loaded {len(LOADED_BOATS)} boats (storage_address & preferred_ramp_id).", icon="⛵")
+        st.toast(f"Loaded {len(LOADED_BOATS)} boats (with storage_address & preferred_ramp).", icon="⛵")
 
         # ─── Summary ──────────────────────────────────────────────────────────────────
         st.toast(
