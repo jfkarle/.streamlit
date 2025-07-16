@@ -112,6 +112,7 @@ def load_all_data_from_sheets():
             )
             for row in cust_resp.data
         }
+        print(f"DEBUG: Loaded {len(LOADED_CUSTOMERS)} customers into memory.") # <-- ADD THIS LINE
         st.toast(f"Loaded {len(LOADED_CUSTOMERS)} customers.", icon="👤")
 
         # ─── Boats ────────────────────────────────────────────────────────────────────
