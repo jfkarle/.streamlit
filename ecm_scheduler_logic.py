@@ -103,7 +103,7 @@ def load_all_data_from_sheets():
         LOADED_CUSTOMERS = {
             row.get("customer_id", row.get("id")): Customer(
                 c_id    = row.get("customer_id", row.get("id")),
-                name    = row.get("customer_name", ""),
+                name    = row.get("customer_name") or row.get("Customer") or "",
                 street  = row.get("street_address", "") or row.get("address", ""),
                 truck   = row.get("preferred_truck_id", None),
                 is_ecm  = row.get("is_ecm_boat", "no").lower() == 'yes',
