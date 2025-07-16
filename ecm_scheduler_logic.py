@@ -250,10 +250,11 @@ def calculate_ramp_windows(ramp, boat, tide_data, date):
     # This new section handles different tide windows based on the boat's draft.
     # It specifically looks for the "HoursAroundHighTide_WithDraftRule" method.
     if ramp.tide_calculation_method == "HoursAroundHighTide_WithDraftRule":
-        # If it's a Powerboat with less than 5ft draft, use a 3.5-hour window.
-        if boat.boat_type == 'Powerboat' and boat.draft_ft < 5.0:
+        # If the boat's draft is less than 5ft, use a 3.5-hour window.
+        # This now applies to ANY boat type.
+        if boat.draft_ft and boat.draft_ft < 5.0:
             offset_hours = 3.5
-        # Otherwise (e.g., for sailboats), use the default 3-hour window.
+        # Otherwise (for any boat with a 5ft or greater draft), use the default 3-hour window.
         else:
             offset_hours = 3.0
     # --- End of New Logic ---
