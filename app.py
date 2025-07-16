@@ -407,7 +407,7 @@ def show_scheduler_page():
         search_term = st.session_state.customer_search_input.lower().strip()
         if search_term:
             customer_results = [c for c in ecm.LOADED_CUSTOMERS.values() if search_term in c.customer_name.lower()]
-            boat_results = [b for b in ecm.LOADED_BOATS.values() if search_term in b.boat_id.lower()]
+            boat_results = [b for b in ecm.LOADED_BOATS.values() if search_term in str(b.boat_id).lower()]
             customers_from_boat_search = [ecm.LOADED_CUSTOMERS.get(b.customer_id) for b in boat_results if b and ecm.LOADED_CUSTOMERS.get(b.customer_id)]
             combined_customers = {c.customer_id: c for c in customer_results}
             for c in customers_from_boat_search:
