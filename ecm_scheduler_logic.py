@@ -106,7 +106,7 @@ def load_all_data_from_sheets():
                 name    = row.get("customer_name", ""),
                 street  = row.get("street_address", "") or row.get("address", ""),
                 truck   = row.get("preferred_truck_id", None),
-                is_ecm  = row.get("is_ecm_customer", False),
+                is_ecm  = row.get("is_ecm_boat", "no").lower() == 'yes',
                 line2   = row.get("home_line2", ""),
                 cityzip = row.get("home_citystatezip", "")
             )
