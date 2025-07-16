@@ -86,7 +86,7 @@ def get_db_connection():
     )
 
 def load_all_data_from_sheets():
-    """Loads jobs, customers, and boats (including storage_address & preferred_ramp) from Supabase."""
+    """Loads jobs, customers, and boats (including storage_address & preferred_ramp_id) from Supabase."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS
 
     try:
@@ -104,7 +104,7 @@ def load_all_data_from_sheets():
             row.get("customer_id", row.get("id")): Customer(
                 c_id    = row.get("customer_id", row.get("id")),
                 name    = row.get("customer_name", ""),
-                street  = row.get("address", row.get("street_address", "")),
+                street  = row.get("street_address", "") or row.get("address", ""),
                 truck   = row.get("preferred_truck_id", None),
                 is_ecm  = row.get("is_ecm_customer", False),
                 line2   = row.get("home_line2", ""),
@@ -117,24 +117,29 @@ def load_all_data_from_sheets():
         # ─── Boats ────────────────────────────────────────────────────────────────────
         boat_resp = execute_query(
             conn.table("boats").select(
-                "boat_id", "customer_id", "boat_type", "boat_length", "draft_ft",
-                "storage_address", "preferred_ramp"
+                "boat_id",
+                "customer_id",
+                "boat_type",
+                "boat_length",
+                "draft_ft",
+                "storage_address",
+                "preferred_ramp_id"
             ),
             ttl=0
         )
         LOADED_BOATS = {
             row["boat_id"]: Boat(
-                b_id         = row["boat_id"],
-                c_id         = row["customer_id"],
-                b_type       = row["boat_type"],
-                b_len        = row["boat_length"],
-                draft        = row["draft_ft"],
-                storage_addr = row.get("storage_address", ""),
-                pref_ramp    = row.get("preferred_ramp", "")
+                b_id          = row["boat_id"],
+                c_id          = row["customer_id"],
+                b_type        = row["boat_type"],
+                b_len         = row["boat_length"],
+                draft         = row["draft_ft"],
+                storage_addr  = row.get("storage_address", ""),
+                pref_ramp     = row.get("preferred_ramp_id", "")
             )
             for row in boat_resp.data
         }
-        st.toast(f"Loaded {len(LOADED_BOATS)} boats (with storage_address & preferred_ramp).", icon="⛵")
+        st.toast(f"Loaded {len(LOADED_BOATS)} boats (storage_address & preferred_ramp_id).", icon="⛵")
 
         # ─── Summary ──────────────────────────────────────────────────────────────────
         st.toast(
