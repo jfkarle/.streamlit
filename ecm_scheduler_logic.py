@@ -85,27 +85,27 @@ def get_db_connection():
         key=st.secrets["connections"]["supabase"]["key"],
     )
 
-def load_all_data_from_sheets():  # Keep original name so app.py doesn’t break
-    """Loads all jobs, customers, and boats from the Supabase database."""
+def load_all_data_from_sheets():
+    """Loads jobs, customers, and boats (including storage_address & preferred_ramp) from Supabase."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS
 
     try:
         conn = get_db_connection()
 
-        # Load jobs
+        # ─── Jobs ─────────────────────────────────────────────────────────────────────
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
         all_jobs = [Job(**row) for row in jobs_resp.data]
         SCHEDULED_JOBS = [job for job in all_jobs if job.job_status == "Scheduled"]
         PARKED_JOBS    = {job.job_id: job for job in all_jobs if job.job_status == "Parked"}
 
-        # Load customers
+        # ─── Customers ───────────────────────────────────────────────────────────────
         cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
         LOADED_CUSTOMERS = {
-            row["customer_id"]: Customer(
-                c_id    = row["customer_id"],
-                name    = row["customer_name"],
-                street  = row["street_address"],
-                truck   = row.get("preferred_truck_id"),
+            row.get("customer_id", row.get("id")): Customer(
+                c_id    = row.get("customer_id", row.get("id")),
+                name    = row.get("customer_name", ""),
+                street  = row.get("address", row.get("street_address", "")),
+                truck   = row.get("preferred_truck_id", None),
                 is_ecm  = row.get("is_ecm_customer", False),
                 line2   = row.get("home_line2", ""),
                 cityzip = row.get("home_citystatezip", "")
@@ -114,8 +114,14 @@ def load_all_data_from_sheets():  # Keep original name so app.py doesn’t break
         }
         st.toast(f"Loaded {len(LOADED_CUSTOMERS)} customers.", icon="👤")
 
-        # Load boats
-        boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
+        # ─── Boats ────────────────────────────────────────────────────────────────────
+        boat_resp = execute_query(
+            conn.table("boats").select(
+                "boat_id", "customer_id", "boat_type", "boat_length", "draft_ft",
+                "storage_address", "preferred_ramp"
+            ),
+            ttl=0
+        )
         LOADED_BOATS = {
             row["boat_id"]: Boat(
                 b_id         = row["boat_id"],
@@ -124,15 +130,17 @@ def load_all_data_from_sheets():  # Keep original name so app.py doesn’t break
                 b_len        = row["boat_length"],
                 draft        = row["draft_ft"],
                 storage_addr = row.get("storage_address", ""),
-                pref_ramp    = row.get("preferred_ramp_id")
+                pref_ramp    = row.get("preferred_ramp", "")
             )
             for row in boat_resp.data
         }
-        st.toast(f"Loaded {len(LOADED_BOATS)} boats.", icon="⛵")
+        st.toast(f"Loaded {len(LOADED_BOATS)} boats (with storage_address & preferred_ramp).", icon="⛵")
 
-        # Final toast for jobs
-        st.toast(f"Loaded {len(SCHEDULED_JOBS)} scheduled and {len(PARKED_JOBS)} parked jobs.", icon="🔄")
-        print(f"Loaded {len(SCHEDULED_JOBS)} scheduled and {len(PARKED_JOBS)} parked jobs from database.")
+        # ─── Summary ──────────────────────────────────────────────────────────────────
+        st.toast(
+            f"Loaded {len(SCHEDULED_JOBS)} scheduled jobs and {len(PARKED_JOBS)} parked jobs.",
+            icon="🔄"
+        )
 
     except Exception as e:
         st.error(f"Error loading data: {e}")
