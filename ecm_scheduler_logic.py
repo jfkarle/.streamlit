@@ -81,8 +81,14 @@ def get_db_connection():
     return st.connection(
         "supabase",
         type=SupabaseConnection,
-        url=st.secrets["connections"]["supabase"]["url"],
-        key=st.secrets["connections"]["supabase"]["key"],
+        
+        # TEMPORARILY COMMENT OUT THE OLD LINES:
+        # url=st.secrets["connections"]["supabase"]["url"],
+        # key=st.secrets["connections"]["supabase"]["key"],
+
+        # ADD THESE NEW LINES WITH YOUR ACTUAL URL AND KEY:
+        url="https://knexrzljvagiwqstapnk.supabase.co",
+        key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZXhyemxqdmFnaXdxc3RhcG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwODY0ODIsImV4cCI6MjA2NzY2MjQ4Mn0.hgWhtefyiEmGj5CERladOe3hMBM-rVnwMGNwrt8FT6Y"
     )
 
 def load_all_data_from_sheets():
