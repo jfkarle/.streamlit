@@ -456,6 +456,7 @@ def show_scheduler_page():
         relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
         manager_override = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
         if st.sidebar.button("Find Best Slot"):
+            print(f"DEBUG app.py (button click): {len(ecm.LOADED_CUSTOMERS)} customers exist.") # <-- ADD THIS
             st.session_state.current_job_request = {'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'), 'selected_ramp_id': ramp_id}
             st.session_state.search_requested_date = req_date
             st.session_state.slot_page_index = 0
@@ -868,6 +869,8 @@ def initialize_session_state():
         st.session_state.data_loaded = True
 
 initialize_session_state()
+
+print(f"DEBUG app.py (initial load): {len(ecm.LOADED_CUSTOMERS)} customers loaded.") # <-- ADD THIS
 
 # --- Main App Body ---
 st.title("ECM Logistics")
