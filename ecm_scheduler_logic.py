@@ -33,14 +33,41 @@ class Boat:
 
 class Job:
     def __init__(self, **kwargs):
-        self.job_id = None; self.customer_id = None; self.boat_id = None; self.service_type = None
-        self.scheduled_start_datetime = None; self.scheduled_end_datetime = None
-        self.assigned_hauling_truck_id = None; self.assigned_crane_truck_id = None
-        self.j17_busy_end_datetime = None; self.pickup_ramp_id = None; self.dropoff_ramp_id = None
-        self.pickup_street_address = ""; self.dropoff_street_address = ""
-        self.job_status = "Scheduled"; self.notes = ""
-        self.__dict__.update(kwargs)
+        # Safely converts a string from the database into a datetime object
+        def _parse_datetime(dt_string):
+            if not dt_string or not isinstance(dt_string, str):
+                return None
+            try:
+                # Handles common ISO formats like "YYYY-MM-DD HH:MM:SS"
+                return datetime.datetime.fromisoformat(dt_string.replace(" ", "T"))
+            except (ValueError, TypeError):
+                return None
 
+        # Safely converts a string from the database into an integer
+        def _parse_int(int_string):
+            if not int_string:
+                return None
+            try:
+                return int(int_string)
+            except (ValueError, TypeError):
+                return None
+
+        # Assign attributes by parsing the text values from the database row
+        self.job_id = _parse_int(kwargs.get("job_id"))
+        self.customer_id = _parse_int(kwargs.get("customer_id"))
+        self.boat_id = _parse_int(kwargs.get("boat_id"))
+        self.service_type = kwargs.get("service_type")
+        self.scheduled_start_datetime = _parse_datetime(kwargs.get("scheduled_start_datetime"))
+        self.scheduled_end_datetime = _parse_datetime(kwargs.get("scheduled_end_datetime"))
+        self.assigned_hauling_truck_id = kwargs.get("assigned_hauling_truck_id")
+        self.assigned_crane_truck_id = kwargs.get("assigned_crane_truck_id")
+        self.j17_busy_end_datetime = _parse_datetime(kwargs.get("j17_busy_end_datetime"))
+        self.pickup_ramp_id = kwargs.get("pickup_ramp_id")
+        self.dropoff_ramp_id = kwargs.get("dropoff_ramp_id")
+        self.pickup_street_address = kwargs.get("pickup_street_address", "")
+        self.dropoff_street_address = kwargs.get("dropoff_street_address", "")
+        self.job_status = kwargs.get("job_status", "Scheduled")
+        self.notes = kwargs.get("notes", "")
 
 # --- CONFIGURATION AND GLOBAL CONSTANTS ---
 HOME_BASE_TOWN = "Pem"
