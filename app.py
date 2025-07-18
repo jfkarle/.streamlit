@@ -1,20 +1,18 @@
-# Force redeploy
-
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
 import pandas as pd
 import csv
 import math
-from reportlab.lib.pagesizes import letter
+#from reportlab.lib.pagesizes import letter
 import calendar
-from reportlab.lib import colors
+#from reportlab.lib import colors
 from io import BytesIO
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.graphics.shapes import Drawing
-from reportlab.graphics.charts.barcharts import VerticalBarChart
-from reportlab.graphics.charts.piecharts import Pie
+#from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+#from reportlab.lib.styles import getSampleStyleSheet
+#from reportlab.graphics.shapes import Drawing
+#from reportlab.graphics.charts.barcharts import VerticalBarChart
+#from reportlab.graphics.charts.piecharts import Pie
 
 st.set_page_config(layout="wide")
 
@@ -636,7 +634,7 @@ def show_reporting_page():
             with st.spinner("Generating your report..."):
                 analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
                 pdf_buffer = generate_progress_report_pdf(stats, analysis)
-                st.download_button(label="📥 Download Report (.pdf)", data=pdf_buffer, file_name=f"progress_report_{datetime.date.today()}.pdf", mime="application/pdf")
+                #st.download_button(label="📥 Download Report (.pdf)", data=pdf_buffer, file_name=f"progress_report_{datetime.date.today()}.pdf", mime="application/pdf")
 
     with tab4:
         st.subheader("Generate Daily Planner PDF")
@@ -647,7 +645,7 @@ def show_reporting_page():
                 st.warning("No jobs scheduled for that date.")
             else:
                 pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
-                st.download_button(label="📥 Download Planner", data=pdf_buffer.getvalue(), file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf", key="download_daily_planner_button")
+                #st.download_button(label="📥 Download Planner", data=pdf_buffer.getvalue(), file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf", key="download_daily_planner_button")
 
         st.markdown("---")
         st.subheader("Export Multi-Day Planner")
@@ -665,7 +663,7 @@ def show_reporting_page():
                     st.warning("No jobs scheduled in this date range.")
                 else:
                     merged_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
-                    st.download_button(label="📥 Download Multi-Day Planner", data=merged_pdf, file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf", key="download_multi_planner_button")
+                    #st.download_button(label="📥 Download Multi-Day Planner", data=merged_pdf, file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf", key="download_multi_planner_button")
 
     with tab5:
         st.subheader("🅿️ Parked Jobs")
