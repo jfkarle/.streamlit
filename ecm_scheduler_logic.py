@@ -21,15 +21,21 @@ class Ramp:
         self.tide_offset_hours1, self.allowed_boat_types = offset, boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
 
 class Customer:
-    def __init__(self, c_id, name, street, truck, is_ecm, line2, cityzip):
-        self.customer_id, self.customer_name, self.street_address, self.preferred_truck_id = c_id, name, street, truck
-        self.is_ecm_customer, self.home_line2, self.home_citystatezip = is_ecm, line2, cityzip
+    def __init__(self, c_id, name, is_ecm):
+        self.customer_id = c_id
+        self.customer_name = name
+        self.is_ecm_customer = is_ecm
 
 class Boat:
-    def __init__(self, b_id, c_id, b_type, b_len, draft, storage_addr, pref_ramp):
-        self.boat_id, self.customer_id, self.boat_type = b_id, c_id, b_type
-        self.boat_length, self.draft_ft = b_len, draft
-        self.storage_address, self.preferred_ramp_id = storage_addr, pref_ramp
+    def __init__(self, b_id, c_id, b_type, b_len, draft, storage_addr, pref_ramp, pref_truck):
+        self.boat_id = b_id
+        self.customer_id = c_id
+        self.boat_type = b_type
+        self.boat_length = b_len
+        self.draft_ft = draft
+        self.storage_address = storage_addr
+        self.preferred_ramp_id = pref_ramp
+        self.preferred_truck_id = pref_truck # Changed to be a boat attribute
 
 class Job:
     def __init__(self, **kwargs):
@@ -136,20 +142,29 @@ def load_all_data_from_sheets():
         LOADED_CUSTOMERS = {
             row["customer_id"]: Customer(
                 c_id    = row["customer_id"],
-                name    = row.get("Customer", ""), # Reads from the "Customer" column
-                street  = "", # Defaults to empty as column is missing
-                truck   = None, # Defaults to None as column is missing
-                is_ecm  = str(row.get("is_ecm_boat", "no")).lower() == 'yes',
-                line2   = "", # Defaults to empty as column is missing
-                cityzip = ""  # Defaults to empty as column is missing
+                name    = row.get("Customer", ""),
+                is_ecm  = str(row.get("is_ecm_boat", "no")).lower() == 'yes'
             )
             for row in cust_resp.data if row.get("customer_id")
         }
-        print(f"DEBUG: Loaded {len(LOADED_CUSTOMERS)} customers into memory.") # <-- ADD THIS LINE
+        print(f"DEBUG: Loaded {len(LOADED_CUSTOMERS)} customers into memory.")
         st.toast(f"Loaded {len(LOADED_CUSTOMERS)} customers.", icon="👤")
 
         # ─── Boats ────────────────────────────────────────────────────────────────────
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
+        LOADED_BOATS = {
+            row["boat_id"]: Boat(
+                b_id         = row["boat_id"],
+                c_id         = row["customer_id"],
+                b_type       = row.get("boat_type"),
+                b_len        = row.get("boat_length"),
+                draft        = row.get("draft_ft"),
+                storage_addr = row.get("storage_address", ""),
+                pref_ramp    = row.get("preferred_ramp", ""),
+                pref_truck   = row.get("preferred_truck", "")
+            )
+            for row in boat_resp.data if row.get("boat_id")
+        }
         
         LOADED_BOATS = {
             row["boat_id"]: Boat(
