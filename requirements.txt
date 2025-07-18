@@ -3,6 +3,4 @@ supabase
 st-supabase-connection
 pandas
 requests
-reportlab
 streamlit-aggrid==0.3.4
-xhtml2pdf
