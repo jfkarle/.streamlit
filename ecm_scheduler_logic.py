@@ -149,18 +149,8 @@ def load_all_data_from_sheets():
         st.toast(f"Loaded {len(LOADED_CUSTOMERS)} customers.", icon="👤")
 
         # ─── Boats ────────────────────────────────────────────────────────────────────
-        boat_resp = execute_query(
-            conn.table("boats").select(
-                "boat_id",
-                "customer_id",
-                "boat_type",
-                "boat_length",
-                "draft_ft",
-                "storage_address",
-                "preferred_ramp"
-            ),
-            ttl=0
-        )
+        boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
+        
         LOADED_BOATS = {
             row["boat_id"]: Boat(
                 b_id         = row["boat_id"],
