@@ -4,6 +4,5 @@ st-supabase-connection
 pandas
 requests
 reportlab
-PyPDF2>=3.0.0
 streamlit-aggrid==0.3.4
 xhtml2pdf
