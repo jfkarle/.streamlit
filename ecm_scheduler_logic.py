@@ -104,19 +104,19 @@ def load_all_data_from_sheets():
         SCHEDULED_JOBS = [job for job in all_jobs if job.job_status == "Scheduled"]
         PARKED_JOBS    = {job.job_id: job for job in all_jobs if job.job_status == "Parked"}
 
-        # ─── Customers ───────────────────────────────────────────────────────────────
+       # ─── Customers ───────────────────────────────────────────────────────────────
         cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
         LOADED_CUSTOMERS = {
-            row.get("customer_id", row.get("id")): Customer(
-                c_id    = row.get("customer_id", row.get("id")),
-                name    = row.get("customer_name") or row.get("Customer") or "",
-                street  = row.get("street_address", "") or row.get("address", ""),
-                truck   = row.get("preferred_truck_id", None),
-                is_ecm  = row.get("is_ecm_boat", "no").lower() == 'yes',
-                line2   = row.get("home_line2", ""),
-                cityzip = row.get("home_citystatezip", "")
+            row["customer_id"]: Customer(
+                c_id    = row["customer_id"],
+                name    = row.get("Customer", ""), # Reads from the "Customer" column
+                street  = "", # Defaults to empty as column is missing
+                truck   = None, # Defaults to None as column is missing
+                is_ecm  = str(row.get("is_ecm_boat", "no")).lower() == 'yes',
+                line2   = "", # Defaults to empty as column is missing
+                cityzip = ""  # Defaults to empty as column is missing
             )
-            for row in cust_resp.data
+            for row in cust_resp.data if row.get("customer_id")
         }
         print(f"DEBUG: Loaded {len(LOADED_CUSTOMERS)} customers into memory.") # <-- ADD THIS LINE
         st.toast(f"Loaded {len(LOADED_CUSTOMERS)} customers.", icon="👤")
