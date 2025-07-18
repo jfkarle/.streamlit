@@ -161,7 +161,7 @@ def load_all_data_from_sheets():
                 draft        = row.get("draft_ft"),
                 storage_addr = row.get("storage_address", ""),
                 pref_ramp    = row.get("preferred_ramp", ""),
-                pref_truck   = row.get("preferred_truck", "")
+                pref_truck   = row.get("preferred_truck", "") # Adds the missing argument
             )
             for row in boat_resp.data if row.get("boat_id")
         }
