@@ -605,10 +605,13 @@ def show_reporting_page():
 
             # Display a row for each scheduled job
             for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime):
+                customer = ecm.get_customer_details(j.customer_id)
+                if not customer:
+                    continue # Skip this job if the customer can't be found 
                 cols = st.columns((2, 1, 2, 1, 1, 3))
                 cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p"))
                 cols[1].write(j.service_type)
-                cols[2].write(ecm.get_customer_details(j.customer_id).customer_name)
+                cols[2].write(customer.customer_name)
                 cols[3].write(j.assigned_hauling_truck_id)
                 cols[4].write(j.assigned_crane_truck_id or "—")
 
