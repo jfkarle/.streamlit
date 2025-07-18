@@ -870,10 +870,9 @@ def initialize_session_state():
         'num_suggestions': 3, 'crane_look_back_days': 7, 'crane_look_forward_days': 60,
         'slot_page_index': 0, 'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS,
         'show_copy_dropdown': False,
-        # New state variables for autocomplete
         'customer_search_input': '',
         'selected_customer_id': None,
-        'selected_boat_id': None, # <-- ADD THIS LINE
+        'selected_boat_id': None, # <-- THIS LINE WAS MISSING
         'job_to_cancel': None,
         'selected_tide_day': None, 
         'sailboat_priority_enabled': True,
@@ -882,10 +881,11 @@ def initialize_session_state():
     
     for key, default_value in defaults.items():
         if key not in st.session_state: st.session_state[key] = default_value
+            
     if not st.session_state.get('data_loaded'):
         ecm.load_all_data_from_sheets()
         st.session_state.data_loaded = True
-
+        
 initialize_session_state()
 
 print(f"DEBUG app.py (initial load): {len(ecm.LOADED_CUSTOMERS)} customers loaded.") # <-- ADD THIS
