@@ -21,14 +21,14 @@ class Ramp:
         self.tide_offset_hours1, self.allowed_boat_types = offset, boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
 
 class Customer:
-    def __init__(self, c_id, name): # is_ecm is removed
-        self.customer_id = c_id
+    def __init__(self, c_id, name):
+        self.customer_id = int(c_id) # Enforce integer
         self.customer_name = name
 
 class Boat:
-    def __init__(self, b_id, c_id, b_type, b_len, draft, storage_addr, pref_ramp, pref_truck, is_ecm): # is_ecm is added
-        self.boat_id = b_id
-        self.customer_id = c_id
+    def __init__(self, b_id, c_id, b_type, b_len, draft, storage_addr, pref_ramp, pref_truck, is_ecm):
+        self.boat_id = int(b_id) # Enforce integer
+        self.customer_id = int(c_id) # Enforce integer
         self.boat_type = b_type
         self.boat_length = b_len
         self.draft_ft = draft
@@ -156,13 +156,12 @@ def load_all_data_from_sheets():
         }
         st.toast(f"Loaded {len(ECM_RAMPS)} ramps.", icon="⚓")
 
-       # ─── Customers ───────────────────────────────────────────────────────────────
+        # ─── Customers ───────────────────────────────────────────────────────────────
         cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
         LOADED_CUSTOMERS = {
-            row["customer_id"]: Customer(
+            int(row["customer_id"]): Customer(
                 c_id    = row["customer_id"],
                 name    = row.get("Customer", "")
-                # is_ecm logic is removed
             )
             for row in cust_resp.data if row.get("customer_id")
         }
@@ -170,7 +169,7 @@ def load_all_data_from_sheets():
         # ─── Boats ────────────────────────────────────────────────────────────────────
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
         LOADED_BOATS = {
-            row["boat_id"]: Boat(
+            int(row["boat_id"]): Boat(
                 b_id         = row["boat_id"],
                 c_id         = row["customer_id"],
                 b_type       = row.get("boat_type"),
@@ -179,7 +178,7 @@ def load_all_data_from_sheets():
                 storage_addr = row.get("storage_address", ""),
                 pref_ramp    = row.get("preferred_ramp", ""),
                 pref_truck   = row.get("preferred_truck", ""),
-                is_ecm       = str(row.get("is_ecm_boat", "no")).lower() == 'yes' # is_ecm is added here
+                is_ecm       = str(row.get("is_ecm_boat", "no")).lower() == 'yes'
             )
             for row in boat_resp.data if row.get("boat_id")
         }
