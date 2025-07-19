@@ -474,16 +474,20 @@ def show_scheduler_page():
             service_type_options = ["Launch", "Haul", "Transport"]
             service_index = service_type_options.index(rebooking_details['service_type']) if rebooking_details and rebooking_details.get('service_type') in service_type_options else 0
             service_type = st.sidebar.selectbox("Select Service Type:", service_type_options, index=service_index)
+            # ... (previous code) ...
             req_date = st.sidebar.date_input("Requested Date:", datetime.date.today() + datetime.timedelta(days=90))
             
             ramp_id = None
             if service_type in ["Launch", "Haul"]:
+                # --- START of block to replace ---
                 ramp_options = list(ecm.ECM_RAMPS.keys())
                 ramp_index = ramp_options.index(rebooking_details['ramp_id']) if rebooking_details and rebooking_details.get('ramp_id') in ramp_options else 0
                 ramp_id = st.sidebar.selectbox("Select Ramp:", ramp_options, index=ramp_index)
+                # --- END of block to replace ---
             
             st.sidebar.markdown("---")
             st.sidebar.subheader("Search Options")
+            # ... (rest of the code) ...
             relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
             manager_override = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
             if st.sidebar.button("Find Best Slot"):
