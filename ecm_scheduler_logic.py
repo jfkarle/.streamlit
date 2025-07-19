@@ -447,7 +447,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
     j17_duration = timedelta(minutes=rules.get('crane_mins', 0))
     needs_j17 = j17_duration.total_seconds() > 0
-    suitable_trucks = get_suitable_trucks(boat.boat_length, customer.preferred_truck_id, force_preferred_truck)
+    suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
     all_found_slots = []
     if strict_start_date and strict_end_date:
         search_start_date = strict_start_date
