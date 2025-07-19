@@ -632,7 +632,7 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
     total_all_boats = len(all_boats)
     scheduled_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled"}
     launched_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled" and j.service_type == "Launch" and j.scheduled_start_datetime.date() < today}
-   ecm_customer_ids = {boat.customer_id for boat in all_boats.values() if boat.is_ecm_boat}
+    ecm_customer_ids = {boat.customer_id for boat in all_boats.values() if boat.is_ecm_boat}
     return {
         'all_boats': {'total': total_all_boats, 'scheduled': len(scheduled_customer_ids), 'launched': len(launched_customer_ids)},
         'ecm_boats': {'total': len(ecm_customer_ids), 'scheduled': len(scheduled_customer_ids.intersection(ecm_customer_ids)), 'launched': len(launched_customer_ids.intersection(ecm_customer_ids))}
