@@ -432,7 +432,7 @@ def show_scheduler_page():
         st.sidebar.text_input("Selected Customer:", value=customer.customer_name, disabled=True)
         st.sidebar.button("Clear Selection", on_click=clear_selection, use_container_width=True)
         
-        boats_for_customer = [b for b in ecm.LOADED_BOATS.values() if str(b.customer_id) == str(customer.customer_id)]
+        boats_for_customer = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id]
 
         if not boats_for_customer:
             st.sidebar.error(f"No boats found for {customer.customer_name}.")
