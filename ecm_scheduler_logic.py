@@ -459,7 +459,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     compiled_schedule = _compile_truck_schedules(SCHEDULED_JOBS)
     active_crane_days = {datetime.datetime.strptime(d, '%Y-%m-%d').date() for d, s in crane_daily_status.items() if selected_ramp_id in s.get('ramps_visited', set())} if needs_j17 else set()
     candidate_crane_dates = {d['date'] for d in CANDIDATE_CRANE_DAYS.get(selected_ramp_id, [])} if needs_j17 else set()
-    customer_priority_score = 0 if customer.is_ecm_customer else 10
+    customer_priority_score = 0 if boat.is_ecm_boat else 10
     for i in range((search_end_date - search_start_date).days + 1):
         check_date = search_start_date + timedelta(days=i)
         priority = 2
