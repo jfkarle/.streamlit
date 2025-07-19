@@ -387,9 +387,14 @@ def show_scheduler_page():
         st.session_state.customer_search_input = ""
     
     # --- EXISTING LOGIC: Message Handling ---
-    if st.session_state.get('info_message'):
-        st.info(st.session_state.info_message)
+    if info_msg := st.session_state.get('info_message'):
+        st.info(info_msg)
+        if reasons := st.session_state.get('failure_reasons'):
+            for reason in reasons:
+                st.warning(reason) # Display each reason
+        # Clear the messages
         st.session_state.info_message = ""
+        st.session_state.failure_reasons = []
 
     if st.session_state.get("confirmation_message"):
         st.success(f"✅ {st.session_state.confirmation_message}")
@@ -485,8 +490,11 @@ def show_scheduler_page():
                 st.session_state.current_job_request = {'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'), 'selected_ramp_id': ramp_id}
                 st.session_state.search_requested_date = req_date
                 st.session_state.slot_page_index = 0
-                slots, msg, _, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override, prioritize_sailboats=st.session_state.get('sailboat_priority_enabled', True))
-                st.session_state.info_message, st.session_state.found_slots, st.session_state.selected_slot = msg, slots, None
+                slots, msg, reasons, _ = ecm.find_available_job_slots(**st.session_state.current_job_request, num_suggestions_to_find=st.session_state.num_suggestions, crane_look_back_days=st.session_state.crane_look_back_days, crane_look_forward_days=st.session_state.crane_look_forward_days, truck_operating_hours=st.session_state.truck_operating_hours, force_preferred_truck=(not relax_truck), manager_override=manager_override, prioritize_sailboats=st.session_state.get('sailboat_priority_enabled', True))
+                st.session_state.info_message = msg
+                st.session_state.found_slots = slots
+                st.session_state.selected_slot = None
+                st.session_state.failure_reasons = reasons # Store the reasons
                 st.rerun()
 
     # --- EXISTING LOGIC: Displaying and Confirming Slots ---
