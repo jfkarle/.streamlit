@@ -130,6 +130,7 @@ def load_all_data_from_sheets():
         # ─── Trucks ───────────────────────────────────────────────────────────────────
         global ECM_TRUCKS
         trucks_resp = execute_query(conn.table("trucks").select("*"), ttl=0)
+        print(f"DEBUG: Raw trucks response: {trucks_resp.data}") # ADD THIS LINE
         ECM_TRUCKS = {
             row["truck_id"]: Truck(
                 t_id=row["truck_id"],
@@ -143,6 +144,7 @@ def load_all_data_from_sheets():
         # ─── Ramps ────────────────────────────────────────────────────────────────────
         global ECM_RAMPS
         ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
+        print(f"DEBUG: Raw ramps response: {ramps_resp.data}") # ADD THIS LINE
         ECM_RAMPS = {
             row["ramp_id"]: Ramp(
                 r_id=row["ramp_id"],
@@ -158,6 +160,7 @@ def load_all_data_from_sheets():
 
         # ─── Customers ───────────────────────────────────────────────────────────────
         cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
+        print(f"DEBUG: Raw customers response: {cust_resp.data[:1]}") # ADD THIS LINE (shows first customer)
         LOADED_CUSTOMERS = {
             int(row["customer_id"]): Customer(
                 c_id    = row["customer_id"],
@@ -168,6 +171,7 @@ def load_all_data_from_sheets():
        
         # ─── Boats ────────────────────────────────────────────────────────────────────
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
+        print(f"DEBUG: Raw boats response: {boat_resp.data[:1]}") # ADD THIS LINE (shows first boat)
         LOADED_BOATS = {
             int(row["boat_id"]): Boat(
                 b_id         = row["boat_id"],
