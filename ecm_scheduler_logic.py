@@ -382,7 +382,7 @@ def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
         return [t for t in all_suitable if t.truck_id == pref_truck_id]
     return all_suitable
 
-def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, truck_hours, manager_override):
+def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, truck_hours, manager_override, force_preferred_truck):
     reasons = []
     suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
     if not suitable_trucks: return [f"**Boat Too Large:** No trucks in the fleet are rated for a boat of {boat.boat_length}ft."]
@@ -516,7 +516,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     all_found_slots.append({ 'date': check_date, 'time': p_time, 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id, 'score': final_score, 'priority': priority, 'tide_rule_concise': window.get('tide_rule_concise'), 'high_tide_times': window.get('high_tide_times', [])})
                     p_time = (slot_start_dt + timedelta(minutes=30)).time()
     if not all_found_slots:
-        return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override), False
+        return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
     else:
         all_found_slots.sort(key=lambda s: (s['priority'], s['score'], abs(s['date'] - requested_date)))
         final_slots, seen_dates = [], set()
