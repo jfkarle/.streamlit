@@ -139,6 +139,35 @@ def load_all_data_from_sheets():
         SCHEDULED_JOBS = [job for job in all_jobs if job.job_status == "Scheduled"]
         PARKED_JOBS    = {job.job_id: job for job in all_jobs if job.job_status == "Parked"}
 
+        # ─── Trucks ───────────────────────────────────────────────────────────────────
+        global ECM_TRUCKS
+        trucks_resp = execute_query(conn.table("trucks").select("*"), ttl=0)
+        ECM_TRUCKS = {
+            row["truck_id"]: Truck(
+                t_id=row["truck_id"],
+                name=row.get("truck_name"),
+                max_len=row.get("max_boat_length")
+            )
+            for row in trucks_resp.data
+        }
+        st.toast(f"Loaded {len(ECM_TRUCKS)} trucks.", icon="🚚")
+        
+        # ─── Ramps ────────────────────────────────────────────────────────────────────
+        global ECM_RAMPS
+        ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
+        ECM_RAMPS = {
+            row["ramp_id"]: Ramp(
+                r_id=row["ramp_id"],
+                name=row.get("ramp_name"),
+                station=row.get("noaa_station_id"),
+                tide_method=row.get("tide_calculation_method"),
+                offset=row.get("tide_offset_hours1"),
+                boats=row.get("allowed_boat_types")
+            )
+            for row in ramps_resp.data
+        }
+        st.toast(f"Loaded {len(ECM_RAMPS)} ramps.", icon="⚓")
+
        # ─── Customers ───────────────────────────────────────────────────────────────
         cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
         LOADED_CUSTOMERS = {
