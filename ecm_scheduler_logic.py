@@ -21,12 +21,12 @@ class Ramp:
         self.tide_offset_hours1, self.allowed_boat_types = offset, boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
 
 class Customer:
-    def __init__(self, c_id, name): # 'is_ecm' is removed
+    def __init__(self, c_id, name): # is_ecm is removed
         self.customer_id = c_id
         self.customer_name = name
 
 class Boat:
-    def __init__(self, b_id, c_id, b_type, b_len, draft, storage_addr, pref_ramp, pref_truck, is_ecm): # 'is_ecm' is added
+    def __init__(self, b_id, c_id, b_type, b_len, draft, storage_addr, pref_ramp, pref_truck, is_ecm): # is_ecm is added
         self.boat_id = b_id
         self.customer_id = c_id
         self.boat_type = b_type
@@ -160,7 +160,7 @@ def load_all_data_from_sheets():
                 storage_addr = row.get("storage_address", ""),
                 pref_ramp    = row.get("preferred_ramp", ""),
                 pref_truck   = row.get("preferred_truck", ""),
-                is_ecm       = str(row.get("is_ecm_boat", "no")).lower() == 'yes' # is_ecm is added
+                is_ecm       = str(row.get("is_ecm_boat", "no")).lower() == 'yes' # is_ecm is added here
             )
             for row in boat_resp.data if row.get("boat_id")
         }
