@@ -454,7 +454,7 @@ def show_scheduler_page():
             st.sidebar.markdown("---")
             st.sidebar.subheader("Selected Customer & Boat:")
             st.sidebar.write(f"**Customer:** {customer.customer_name}")
-            st.sidebar.write(f"**ECM Boat:** {'Yes' if customer.is_ecm_customer else 'No'}")
+            st.sidebar.write(f"**ECM Boat:** {'Yes' if boat.is_ecm_boat else 'No'}")
             st.sidebar.write(f"**Boat Type:** {boat.boat_type}")
             st.sidebar.write(f"**Boat Length:** {boat.boat_length}ft")
             st.sidebar.write(f"**Preferred Truck:** {boat.preferred_truck_id or 'N/A'}") # Now from boat
