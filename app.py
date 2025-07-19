@@ -4,6 +4,11 @@ import ecm_scheduler_logic as ecm
 import pandas as pd
 import csv
 import math
+
+st.write("--- Session State ---")
+st.write(st.session_state)
+st.write("--- End Session State ---")
+
 #from reportlab.lib.pagesizes import letter
 import calendar
 #from reportlab.lib import colors
@@ -477,13 +482,6 @@ def show_scheduler_page():
             relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
             manager_override = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
             if st.sidebar.button("Find Best Slot"):
-                # --- START DEBUG CODE ---
-                st.sidebar.write("--- DEBUG INFO ---")
-                st.sidebar.write(f"ID being sent: {customer.customer_id}")
-                st.sidebar.write(f"Type: {type(customer.customer_id)}")
-                st.sidebar.write(f"Customers in memory: {len(ecm.LOADED_CUSTOMERS)}")
-                # --- END DEBUG CODE ---
-
                 st.session_state.current_job_request = {'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'), 'selected_ramp_id': ramp_id}
                 st.session_state.search_requested_date = req_date
                 st.session_state.slot_page_index = 0
