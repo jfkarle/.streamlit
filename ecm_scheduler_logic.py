@@ -426,6 +426,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              manager_override=False, crane_look_back_days=7, crane_look_forward_days=60,
                              truck_operating_hours=None, strict_start_date=None, strict_end_date=None,
                              prioritize_sailboats=True, **kwargs):
+
+    # --- START DEBUG CODE ---
+    print("\n--- ENTERING find_available_job_slots ---")
+    print(f"ID received: {customer_id} (Type: {type(customer_id)})")
+    print(f"Customers in memory: {len(LOADED_CUSTOMERS)}")
+    print(f"First 5 keys in customer dict: {list(LOADED_CUSTOMERS.keys())[:5]}")
+    # --- END DEBUG CODE ---
+
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError:
