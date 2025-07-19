@@ -91,7 +91,7 @@ BOOKING_RULES = {'Powerboat': {'truck_mins': 90, 'crane_mins': 0},'Sailboat DT':
 # --- IN-MEMORY DATA CACHES (populated by loaders) ---
 CANDIDATE_CRANE_DAYS = { 'ScituateHarborJericho': [], 'PlymouthHarbor': [], 'WeymouthWessagusset': [], 'CohassetParkerAve': [] }
 crane_daily_status = {}
-LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS = {}, {}, {}
+ECM_TRUCKS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS = {}, {}, {}, {}
 SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
 # --- DATABASE PERSISTENCE FUNCTIONS ---
