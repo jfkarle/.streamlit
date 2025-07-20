@@ -889,7 +889,7 @@ def initialize_session_state():
         'data_loaded': False, 'info_message': "", 'current_job_request': None, 'found_slots': [],
         'selected_slot': None, 'search_requested_date': None, 'was_forced_search': False,
         'num_suggestions': 3, 'crane_look_back_days': 7, 'crane_look_forward_days': 60,
-        'slot_page_index': 0, 'truck_operating_hours': ecm.DEFAULT_TRUCK_OPERATING_HOURS,
+        'slot_page_index': 0, 'truck_operating_hours': ecm.TRUCK_OPERATING_HOURS,
         'show_copy_dropdown': False,
         'customer_search_input': '',
         'selected_customer_id': None,
