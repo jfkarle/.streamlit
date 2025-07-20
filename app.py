@@ -930,6 +930,9 @@ print(f"DEBUG app.py (initial load): {len(ecm.LOADED_CUSTOMERS)} customers loade
 # --- Main App Body ---
 st.title("ECM Logistics")
 
+st.sidebar.subheader("DEBUG: Loaded Trucks")
+st.sidebar.json(ecm.ECM_TRUCKS)
+
 # --- DEBUG ADD THESE TWO LINES ---
 st.sidebar.subheader("DEBUG: Loaded Schedule")
 st.sidebar.json(ecm.TRUCK_OPERATING_HOURS)
