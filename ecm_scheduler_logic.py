@@ -79,7 +79,7 @@ BOOKING_RULES = {'Powerboat': {'truck_mins': 90, 'crane_mins': 0},'Sailboat DT':
 # --- IN-MEMORY DATA CACHES ---
 CANDIDATE_CRANE_DAYS = { 'ScituateHarborJericho': [], 'PlymouthHarbor': [], 'WeymouthWessagusset': [], 'CohassetParkerAve': [] }
 crane_daily_status = {}
-ECM_TRUCKS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS = {}, {}, {}, {}
+ECM_TRUCKS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS, TRUCK_OPERATING_HOURS = {}, {}, {}, {}, {}
 SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
 # --- DATABASE PERSISTENCE FUNCTIONS ---
@@ -93,31 +93,59 @@ def get_db_connection():
     )
 
 def load_all_data_from_sheets():
-    global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS
+    """Loads all data from Supabase, now including truck schedules."""
+    global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS
     try:
         conn = get_db_connection()
+        
+        # Load Jobs
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
         all_jobs = [Job(**row) for row in jobs_resp.data]
-        SCHEDULED_JOBS = [job for job in all_jobs if job.job_status == "Scheduled"]
-        PARKED_JOBS = {job.job_id: job for job in all_jobs if job.job_status == "Parked"}
+        SCHEDULED_JOBS[:] = [job for job in all_jobs if job.job_status == "Scheduled"]
+        PARKED_JOBS.clear()
+        PARKED_JOBS.update({job.job_id: job for job in all_jobs if job.job_status == "Parked"})
 
+        # Load Trucks
         trucks_resp = execute_query(conn.table("trucks").select("*"), ttl=0)
+        ECM_TRUCKS.clear()
         ECM_TRUCKS.update({ row["truck_id"]: Truck(t_id=row["truck_id"], name=row.get("truck_name"), max_len=row.get("max_boat_length")) for row in trucks_resp.data })
         
+        # Load Ramps
         ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
+        ECM_RAMPS.clear()
         ECM_RAMPS.update({ row["ramp_id"]: Ramp(r_id=row["ramp_id"], name=row.get("ramp_name"), station=row.get("noaa_station_id"), tide_method=row.get("tide_calculation_method"), offset=row.get("tide_offset_hours1"), boats=row.get("allowed_boat_types")) for row in ramps_resp.data })
         
+        # Load Customers
         cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
+        LOADED_CUSTOMERS.clear()
         LOADED_CUSTOMERS.update({ int(row["customer_id"]): Customer(c_id=row["customer_id"], name=row.get("Customer", "")) for row in cust_resp.data if row.get("customer_id") })
         
+        # Load Boats
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
+        LOADED_BOATS.clear()
         LOADED_BOATS.update({ int(row["boat_id"]): Boat(b_id=row["boat_id"], c_id=row["customer_id"], b_type=row.get("boat_type"), b_len=row.get("boat_length"), draft=row.get("draft_ft"), storage_addr=row.get("storage_address", ""), pref_ramp=row.get("preferred_ramp", ""), pref_truck=row.get("preferred_truck", ""), is_ecm=str(row.get("is_ecm_boat", "no")).lower() == 'yes') for row in boat_resp.data if row.get("boat_id") })
 
-        st.toast(f"Loaded {len(SCHEDULED_JOBS)} jobs, {len(ECM_TRUCKS)} trucks, {len(ECM_RAMPS)} ramps, {len(LOADED_CUSTOMERS)} customers, {len(LOADED_BOATS)} boats.", icon="✅")
+        # --- NEW: Load Truck Schedules ---
+        schedules_resp = execute_query(conn.table("truck_schedules").select("*"), ttl=0)
+        processed_schedules = {}
+        for row in schedules_resp.data:
+            truck_name = row['truck_name']
+            day = row['day_of_week']
+            start_time = datetime.datetime.strptime(row['start_time'], '%H:%M:%S').time()
+            end_time = datetime.datetime.strptime(row['end_time'], '%H:%M:%S').time()
+            if truck_name not in processed_schedules:
+                processed_schedules[truck_name] = {}
+            processed_schedules[truck_name][day] = (start_time, end_time)
+        
+        TRUCK_OPERATING_HOURS.clear()
+        TRUCK_OPERATING_HOURS.update(processed_schedules)
+        # --- END NEW ---
+
+        st.toast(f"Loaded data for {len(ECM_TRUCKS)} trucks, {len(ECM_RAMPS)} ramps, {len(LOADED_CUSTOMERS)} customers.", icon="✅")
     except Exception as e:
         st.error(f"Error loading data: {e}")
         raise
-
+        
 def save_job(job_to_save):
     conn = get_db_connection()
     job_dict = job_to_save.__dict__
