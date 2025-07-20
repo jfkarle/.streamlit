@@ -4,6 +4,23 @@ import ecm_scheduler_logic as ecm
 import pandas as pd
 import csv
 import math
+import os
+
+# --- FINAL DIAGNOSTIC ---
+st.subheader("Inspecting 'ecm_scheduler_logic.py' on the server:")
+try:
+    with open("ecm_scheduler_logic.py", "r") as f:
+        file_content = f.read()
+        st.code(file_content, language="python")
+except FileNotFoundError:
+    st.error("'ecm_scheduler_logic.py' not found in the current directory.")
+except Exception as e:
+    st.error(f"An error occurred while reading the file: {e}")
+# --- END DIAGNOSTIC ---
+
+import datetime
+import ecm_scheduler_logic as ecm
+
 
 st.write("--- Session State ---")
 st.write(st.session_state)
