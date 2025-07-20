@@ -309,6 +309,9 @@ def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
 def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, truck_hours, manager_override, force_preferred_truck):
     reasons = []
     suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
+    # --- ADD THIS LINE ---
+    print(f"DEBUG: Suitable trucks found: {suitable_trucks}")
+    # ---------------------
     if not suitable_trucks: return [f"**Boat Too Large:** No trucks in the fleet are rated for a boat of {boat.boat_length}ft."]
     if not any(truck_hours.get(t.truck_id, {}).get(req_date.weekday()) for t in suitable_trucks):
         return [f"**No Trucks on Duty:** No suitable trucks are scheduled to work on {req_date.strftime('%A, %B %d')}."]
