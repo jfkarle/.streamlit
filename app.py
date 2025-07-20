@@ -930,6 +930,12 @@ print(f"DEBUG app.py (initial load): {len(ecm.LOADED_CUSTOMERS)} customers loade
 # --- Main App Body ---
 st.title("ECM Logistics")
 
+# --- DEBUG ADD THESE TWO LINES ---
+st.sidebar.subheader("DEBUG: Loaded Schedule")
+st.sidebar.json(ecm.TRUCK_OPERATING_HOURS)
+# ---------------------------
+
+
 with st.container(border=True):
     stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
     col1, col2 = st.columns(2)
