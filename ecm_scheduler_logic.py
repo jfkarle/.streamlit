@@ -98,39 +98,36 @@ def load_all_data_from_sheets():
     try:
         conn = get_db_connection()
         
-        # Load Jobs
+        # Load Jobs, Trucks, Ramps, Customers, Boats (existing code is correct)
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
         all_jobs = [Job(**row) for row in jobs_resp.data]
         SCHEDULED_JOBS[:] = [job for job in all_jobs if job.job_status == "Scheduled"]
         PARKED_JOBS.clear()
         PARKED_JOBS.update({job.job_id: job for job in all_jobs if job.job_status == "Parked"})
 
-        # Load Trucks
         trucks_resp = execute_query(conn.table("trucks").select("*"), ttl=0)
         ECM_TRUCKS.clear()
         ECM_TRUCKS.update({ row["truck_id"]: Truck(t_id=row["truck_id"], name=row.get("truck_name"), max_len=row.get("max_boat_length")) for row in trucks_resp.data })
         
-        # Load Ramps
         ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
         ECM_RAMPS.clear()
         ECM_RAMPS.update({ row["ramp_id"]: Ramp(r_id=row["ramp_id"], name=row.get("ramp_name"), station=row.get("noaa_station_id"), tide_method=row.get("tide_calculation_method"), offset=row.get("tide_offset_hours1"), boats=row.get("allowed_boat_types")) for row in ramps_resp.data })
         
-        # Load Customers
         cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
         LOADED_CUSTOMERS.clear()
         LOADED_CUSTOMERS.update({ int(row["customer_id"]): Customer(c_id=row["customer_id"], name=row.get("Customer", "")) for row in cust_resp.data if row.get("customer_id") })
         
-        # Load Boats
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
         LOADED_BOATS.clear()
         LOADED_BOATS.update({ int(row["boat_id"]): Boat(b_id=row["boat_id"], c_id=row["customer_id"], b_type=row.get("boat_type"), b_len=row.get("boat_length"), draft=row.get("draft_ft"), storage_addr=row.get("storage_address", ""), pref_ramp=row.get("preferred_ramp", ""), pref_truck=row.get("preferred_truck", ""), is_ecm=str(row.get("is_ecm_boat", "no")).lower() == 'yes') for row in boat_resp.data if row.get("boat_id") })
 
-        # --- NEW: Load Truck Schedules ---
+        # --- CORRECTED Schedule Loading Logic ---
         schedules_resp = execute_query(conn.table("truck_schedules").select("*"), ttl=0)
         processed_schedules = {}
         for row in schedules_resp.data:
             truck_name = row['truck_name']
-            day = row['day_of_week']
+            # Ensure the day of the week is an INTEGER
+            day = int(row['day_of_week'])
             start_time = datetime.datetime.strptime(row['start_time'], '%H:%M:%S').time()
             end_time = datetime.datetime.strptime(row['end_time'], '%H:%M:%S').time()
             if truck_name not in processed_schedules:
@@ -139,7 +136,7 @@ def load_all_data_from_sheets():
         
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
-        # --- END NEW ---
+        # --- END CORRECTION ---
 
         st.toast(f"Loaded data for {len(ECM_TRUCKS)} trucks, {len(ECM_RAMPS)} ramps, {len(LOADED_CUSTOMERS)} customers.", icon="✅")
     except Exception as e:
