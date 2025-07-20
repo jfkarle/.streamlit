@@ -98,7 +98,6 @@ def load_all_data_from_sheets():
     try:
         conn = get_db_connection()
         
-        # Load Jobs, Trucks, Ramps, Customers, Boats
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
         all_jobs = [Job(**row) for row in jobs_resp.data]
         SCHEDULED_JOBS[:] = [job for job in all_jobs if job.job_status == "Scheduled"]
