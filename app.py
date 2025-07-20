@@ -482,7 +482,7 @@ def show_scheduler_page():
                 # --- START of block to replace ---
                 ramp_options = list(ecm.ECM_RAMPS.keys())
                 ramp_index = ramp_options.index(rebooking_details['ramp_id']) if rebooking_details and rebooking_details.get('ramp_id') in ramp_options else 0
-                ramp_id = st.sidebar.selectbox("Select Ramp:", ramp_options, index=ramp_index)
+                ramp_id = st.sidebar.selectbox("Select Ramp:", ramp_options, index=ramp_index, format_func=lambda ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name)
                 # --- END of block to replace ---
             
             st.sidebar.markdown("---")
