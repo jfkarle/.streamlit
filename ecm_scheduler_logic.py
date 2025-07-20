@@ -190,6 +190,17 @@ def park_job(job_id):
         return True
     return False
 
+def get_monthly_tides_for_scituate(year, month):
+    scituate_station_id = "8445138"
+    try:
+        start_date = datetime.date(year, month, 1)
+        _, num_days = calendar.monthrange(year, month)
+        end_date = datetime.date(year, month, num_days)
+        return fetch_noaa_tides_for_range(scituate_station_id, start_date, end_date)
+    except Exception as e:
+        print(f"Error fetching monthly tides: {e}")
+        return None
+
 def fetch_noaa_tides_for_range(station_id, start_date, end_date):
     start_str, end_str = start_date.strftime("%Y%m%d"), end_date.strftime("%Y%m%d")
     params = {"product": "predictions", "application": "ecm-boat-scheduler", "begin_date": start_str, "end_date": end_str, "datum": "MLLW", "station": station_id, "time_zone": "lst_ldt", "units": "english", "interval": "hilo", "format": "json"}
