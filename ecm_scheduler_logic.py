@@ -163,6 +163,33 @@ def save_job(job_to_save):
         st.error(f"Database save error for job {job_id or '(new)'}")
         st.exception(e)
 
+def update_truck_schedule(truck_name, new_hours_dict):
+    """Deletes all existing schedule entries for a truck and inserts the new ones."""
+    try:
+        conn = get_db_connection()
+        
+        # First, delete all old schedule entries for this truck
+        conn.table("truck_schedules").delete().eq("truck_name", truck_name).execute()
+
+        # Then, insert the new schedule entries
+        rows_to_insert = []
+        for day_of_week, hours in new_hours_dict.items():
+            if hours:  # Only insert if the truck is working
+                start_time, end_time = hours
+                rows_to_insert.append({
+                    "truck_name": truck_name,
+                    "day_of_week": day_of_week,
+                    "start_time": start_time.strftime('%H:%M:%S'),
+                    "end_time": end_time.strftime('%H:%M:%S')
+                })
+        
+        if rows_to_insert:
+            conn.table("truck_schedules").insert(rows_to_insert).execute()
+            
+        return True, f"Schedule for {truck_name} updated successfully."
+    except Exception as e:
+        return False, f"Error updating schedule for {truck_name}: {e}"
+
 def delete_job_from_db(job_id):
     try:
         conn = get_db_connection()
