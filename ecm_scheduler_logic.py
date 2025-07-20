@@ -92,22 +92,6 @@ def get_db_connection():
         key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZXhyemxqdmFnaXdxc3RhcG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwODY0ODIsImV4cCI6MjA2NzY2MjQ4Mn0.hgWhtefyiEmGj5CERladOe3hMBM-rVnwMGNwrt8FT6Y"
     )
 
-Thank you. This session state information gives us the final, definitive answer. The problem is exactly what we suspected in our last exchange.
-
-The truck_operating_hours section of your session state confirms that the keys for the days of the week are being loaded as strings ("0", "1", etc.) instead of integers (0, 1, etc.).
-
-The application's logic looks for the schedule using the integer 0 for Monday. Since the key in your data is the string "0", the lookup fails, and the app incorrectly reports that no trucks are on duty.
-
-This proves that the version of ecm_scheduler_logic.py running on Streamlit Cloud is an older version that does not have our final fix.
-
-The Final Solution
-To resolve this, we must ensure the correct version of the code is deployed and running.
-
-1. Replace the Function
-Please open your ecm_scheduler_logic.py file and replace the entire load_all_data_from_sheets function with the correct version below. This guarantees the critical day = int(row['day_of_week']) line is in place.
-
-Python
-
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS
