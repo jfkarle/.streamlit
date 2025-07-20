@@ -928,7 +928,7 @@ initialize_session_state()
 print(f"DEBUG app.py (initial load): {len(ecm.LOADED_CUSTOMERS)} customers loaded.") # <-- ADD THIS
 
 # --- Main App Body ---
-st.title("ECM Logistics")
+st.title("ECM Logistics - V2")
 
 st.sidebar.subheader("DEBUG: Loaded Trucks")
 st.sidebar.json(ecm.ECM_TRUCKS)
