@@ -10,6 +10,8 @@ from st_supabase_connection import SupabaseConnection, execute_query
 from datetime import timedelta, time
 from collections import Counter
 
+st.header("DEBUG: LOGIC FILE IS UPDATED")
+
 # --- DATA MODELS (CLASSES) ---
 class Truck:
     def __init__(self, t_id, name, max_len):
