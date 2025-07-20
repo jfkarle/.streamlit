@@ -302,8 +302,8 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tide
 
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
     all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and t.max_boat_length is not None and boat_len <= t.max_boat_length]
-    if force_preferred and pref_truck_id and any(t.truck_id == pref_truck_id for t in all_suitable):
-        return [t for t in all_suitable if t.truck_id == pref_truck_id]
+    if force_preferred and pref_truck_id and any(t.truck_name == pref_truck_id for t in all_suitable):
+        return [t for t in all_suitable if t.truck_name == pref_truck_id]
     return all_suitable
 
 def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, truck_hours, manager_override, force_preferred_truck):
