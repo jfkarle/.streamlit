@@ -340,12 +340,12 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tide
     if not ramp_obj: return [{'start_time': truck_hours[0], 'end_time': truck_hours[1], 'high_tide_times': [], 'tide_rule_concise': 'N/A'}]
     tide_data_for_day = all_tides.get(date_to_check, [])
     tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
-    ### DENUG Hingham error
-    if ramp_obj.name == "Hingham Harbor":
-    st.sidebar.subheader("🔎 Hingham Tide Windows")
-    st.sidebar.write(tide_windows)
-    st.sidebar.write("Truck hours:", truck_hours_schedule.get(truck_id))
-    @END Debug
+        ### DENUG Hingham error
+        if ramp_obj.name == "Hingham Harbor":
+        st.sidebar.subheader("🔎 Hingham Tide Windows")
+        st.sidebar.write(tide_windows)
+        st.sidebar.write("Truck hours:", truck_hours_schedule.get(truck_id))
+        @END Debug
     final_windows = []
     for t_win in tidal_windows:
         tidal_start_dt, tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['start_time']), datetime.datetime.combine(date_to_check, t_win['end_time'])
