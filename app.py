@@ -942,19 +942,11 @@ def initialize_session_state():
         
 initialize_session_state()
 
-print(f"DEBUG app.py (initial load): {len(ecm.LOADED_CUSTOMERS)} customers loaded.") # <-- ADD THIS
-
 # --- Main App Body ---
 st.title("ECM Logistics - V2")
 
 st.sidebar.subheader("DEBUG: Loaded Trucks")
 st.sidebar.json(ecm.ECM_TRUCKS)
-
-# --- DEBUG ADD THESE TWO LINES ---
-st.sidebar.subheader("DEBUG: Loaded Schedule")
-st.sidebar.json(ecm.TRUCK_OPERATING_HOURS)
-# ---------------------------
-
 
 with st.container(border=True):
     stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
