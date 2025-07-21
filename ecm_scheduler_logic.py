@@ -341,7 +341,7 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tide
     tide_data_for_day = all_tides.get(date_to_check, [])
     tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
     ### DEBUG Hingham error
-    if ramp_obj.name == "Hingham Harbor":
+    if ramp_obj.ramp_name == "Hingham Harbor":
         st.sidebar.subheader("🔎 Hingham Tide Windows")
         st.sidebar.write(tide_windows)
         st.sidebar.write("Truck hours:", truck_hours_schedule.get(truck_id))
