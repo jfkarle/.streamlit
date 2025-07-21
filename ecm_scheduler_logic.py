@@ -400,7 +400,7 @@ def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, 
     reasons = []
     suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
     if not suitable_trucks: return [f"**Boat Too Large:** No trucks in the fleet are rated for a boat of {boat.boat_length}ft."]
-    if not any(truck_hours.get(t.truck_id, {}).get(req_date.weekday()) for t in suitable_trucks):
+    if not any(truck_hours.get(t.truck_name, {}).get(req_date.weekday()) for t in suitable_trucks):
         return [f"**No Trucks on Duty:** No suitable trucks are scheduled to work on {req_date.strftime('%A, %B %d')}."]
     if (needs_j17 := BOOKING_RULES.get(boat.boat_type, {}).get('crane_mins', 0) > 0) and not manager_override and ramp_obj:
         if (date_str := req_date.strftime('%Y-%m-%d')) in crane_daily_status and (visited := crane_daily_status[date_str]['ramps_visited']) and ramp_obj.ramp_id not in visited:
@@ -427,31 +427,7 @@ def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_sche
     return True
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, truck_operating_hours=None, prioritize_sailboats=True, **kwargs):
-    try:
-        requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
-    except ValueError:
-        return [], "Error: Invalid date format.", [], False
-    
-    customer = get_customer_details(customer_id)
-    boat = get_boat_details(boat_id)
-    
-    if not customer: return [], "Invalid Customer ID.", ["Customer could not be found in the system."], False
-    if not boat: return [], "Sorry, no boat found for this customer.", ["A valid customer was found, but they do not have a boat linked to their account."], False
-    
-    ramp_obj = get_ramp_details(selected_ramp_id)
-    rules = BOOKING_RULES.get(boat.boat_type, {})
-    hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
-    j17_duration = timedelta(minutes=rules.get('crane_mins', 0))
-    needs_j17 = j17_duration.total_seconds() > 0
-    suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
-    
-    all_found_slots = []
-    search_start_date = kwargs.get('strict_start_date') or (requested_date - timedelta(days=crane_look_back_days))
-    search_end_date = kwargs.get('strict_end_date') or (requested_date + timedelta(days=crane_look_forward_days))
-    
-    all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, search_start_date, search_end_date) if ramp_obj else {}
-    compiled_schedule = _compile_truck_schedules(SCHEDULED_JOBS)
-
+    # ... (code at start of function) ...
     for i in range((search_end_date - search_start_date).days + 1):
         check_date = search_start_date + timedelta(days=i)
         for truck in suitable_trucks:
@@ -461,13 +437,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 while p_time < window['end_time']:
                     slot_start_dt = datetime.datetime.combine(check_date, p_time)
                     slot_end_dt = slot_start_dt + hauler_duration
-                    if not check_truck_availability_optimized(truck.truck_id, slot_start_dt, slot_end_dt, compiled_schedule):
+                    if not check_truck_availability_optimized(truck.truck_name, slot_start_dt, slot_end_dt, compiled_schedule):
                         p_time = (slot_start_dt + timedelta(minutes=15)).time(); continue
                     if needs_j17 and not check_truck_availability_optimized("J17", slot_start_dt, slot_start_dt + j17_duration, compiled_schedule):
                         p_time = (slot_start_dt + timedelta(minutes=15)).time(); continue
-                    
+
                     all_found_slots.append({
-                        'date': check_date, 'time': p_time, 'truck_id': truck.truck_id, 
+                        'date': check_date, 'time': p_time, 'truck_id': truck.truck_name, 
                         'j17_needed': needs_j17, 'ramp_id': selected_ramp_id,
                         'tide_rule_concise': window.get('tide_rule_concise'), 
                         'high_tide_times': window.get('high_tide_times', [])
