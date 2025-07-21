@@ -407,7 +407,7 @@ def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, 
             return [f"**Crane Is Busy Elsewhere:** The J17 crane is already committed to **{list(visited)[0]}** on this date."]
     if ramp_obj:
         all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, req_date, req_date)
-        if not any(get_final_schedulable_ramp_times(ramp_obj, boat, req_date, all_tides, truck.truck_id, truck_hours) for truck in suitable_trucks):
+        if not any(get_final_schedulable_ramp_times(ramp_obj, boat, req_date, all_tides, truck.truck_name, truck_hours) for truck in suitable_trucks):
             return ["**Tide Conditions Not Met:** No valid tide windows overlap with available truck working hours on this date."]
     return ["**All Slots Booked:** All available time slots for suitable trucks are already taken on this date."]
 
@@ -455,7 +455,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     for i in range((search_end_date - search_start_date).days + 1):
         check_date = search_start_date + timedelta(days=i)
         for truck in suitable_trucks:
-            windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
+            windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_name, truck_operating_hours)
             for window in windows:
                 p_time = window['start_time']
                 while p_time < window['end_time']:
