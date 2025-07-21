@@ -343,8 +343,8 @@ def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tide
     ### DEBUG Hingham error
     if ramp_obj.ramp_name == "Hingham Harbor":
         st.sidebar.subheader("🔎 Hingham Tide Windows")
-        st.sidebar.write(tide_windows)
-        st.sidebar.write("Truck hours:", truck_hours_schedule.get(truck_id))
+        st.sidebar.write(tidal_windows)                # use 'tidal_windows' not 'tide_windows'
+        st.sidebar.write("Truck hours:", truck_hours)  # use the 'truck_hours' variable
     ### END Debug
     final_windows = []
     for t_win in tidal_windows:
