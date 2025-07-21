@@ -21,10 +21,9 @@ except Exception as e:
 import datetime
 import ecm_scheduler_logic as ecm
 
-
-st.write("--- Session State ---")
-st.write(st.session_state)
-st.write("--- End Session State ---")
+### st.write("--- Session State ---")
+### st.write(st.session_state)
+### st.write("--- End Session State ---")
 
 #from reportlab.lib.pagesizes import letter
 import calendar
