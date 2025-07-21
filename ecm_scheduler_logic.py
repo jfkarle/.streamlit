@@ -399,16 +399,23 @@ def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
 def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, truck_hours, manager_override, force_preferred_truck):
     reasons = []
     suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
-    if not suitable_trucks: return [f"**Boat Too Large:** No trucks in the fleet are rated for a boat of {boat.boat_length}ft."]
+
+    if not suitable_trucks:
+        return [f"**Boat Too Large:** No trucks in the fleet are rated for a boat of {boat.boat_length}ft."]
+
     if not any(truck_hours.get(t.truck_name, {}).get(req_date.weekday()) for t in suitable_trucks):
         return [f"**No Trucks on Duty:** No suitable trucks are scheduled to work on {req_date.strftime('%A, %B %d')}."]
+
     if (needs_j17 := BOOKING_RULES.get(boat.boat_type, {}).get('crane_mins', 0) > 0) and not manager_override and ramp_obj:
         if (date_str := req_date.strftime('%Y-%m-%d')) in crane_daily_status and (visited := crane_daily_status[date_str]['ramps_visited']) and ramp_obj.ramp_id not in visited:
             return [f"**Crane Is Busy Elsewhere:** The J17 crane is already committed to **{list(visited)[0]}** on this date."]
+
     if ramp_obj:
         all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, req_date, req_date)
+        # This line is now corrected to use truck.truck_name
         if not any(get_final_schedulable_ramp_times(ramp_obj, boat, req_date, all_tides, truck.truck_name, truck_hours) for truck in suitable_trucks):
             return ["**Tide Conditions Not Met:** No valid tide windows overlap with available truck working hours on this date."]
+            
     return ["**All Slots Booked:** All available time slots for suitable trucks are already taken on this date."]
 
 def _compile_truck_schedules(jobs):
