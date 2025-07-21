@@ -427,31 +427,67 @@ def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_sche
     return True
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, truck_operating_hours=None, prioritize_sailboats=True, **kwargs):
-    # ... (code at start of function) ...
+    try:
+        requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return [], "Error: Invalid date format.", [], False
+    
+    customer = get_customer_details(customer_id)
+    boat = get_boat_details(boat_id)
+    
+    if not customer: return [], "Invalid Customer ID.", ["Customer could not be found in the system."], False
+    if not boat: return [], "Sorry, no boat found for this customer.", ["A valid customer was found, but they do not have a boat linked to their account."], False
+    
+    ramp_obj = get_ramp_details(selected_ramp_id)
+    rules = BOOKING_RULES.get(boat.boat_type, {})
+    hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
+    j17_duration = timedelta(minutes=rules.get('crane_mins', 0))
+    needs_j17 = j17_duration.total_seconds() > 0
+    suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
+    
+    all_found_slots = []
+    # These two lines correctly define the variables before they are used.
+    search_start_date = kwargs.get('strict_start_date') or (requested_date - timedelta(days=crane_look_back_days))
+    search_end_date = kwargs.get('strict_end_date') or (requested_date + timedelta(days=crane_look_forward_days))
+    
+    all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, search_start_date, search_end_date) if ramp_obj else {}
+    compiled_schedule = _compile_truck_schedules(SCHEDULED_JOBS)
+
     for i in range((search_end_date - search_start_date).days + 1):
         check_date = search_start_date + timedelta(days=i)
         for truck in suitable_trucks:
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_name, truck_operating_hours)
             for window in windows:
                 p_time = window['start_time']
-                while p_time < window['end_time']:
+                while datetime.datetime.combine(check_date, p_time) + hauler_duration <= datetime.datetime.combine(check_date, window['end_time']):
                     slot_start_dt = datetime.datetime.combine(check_date, p_time)
-                    slot_end_dt = slot_start_dt + hauler_duration
-                    if not check_truck_availability_optimized(truck.truck_name, slot_start_dt, slot_end_dt, compiled_schedule):
-                        p_time = (slot_start_dt + timedelta(minutes=15)).time(); continue
+                    if not check_truck_availability_optimized(truck.truck_name, slot_start_dt, slot_start_dt + hauler_duration, compiled_schedule):
+                        p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=15)).time(); continue
                     if needs_j17 and not check_truck_availability_optimized("J17", slot_start_dt, slot_start_dt + j17_duration, compiled_schedule):
-                        p_time = (slot_start_dt + timedelta(minutes=15)).time(); continue
-
+                        p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=15)).time(); continue
+                    
                     all_found_slots.append({
                         'date': check_date, 'time': p_time, 'truck_id': truck.truck_name, 
                         'j17_needed': needs_j17, 'ramp_id': selected_ramp_id,
-                        'tide_rule_concise': window.get('tide_rule_concise'), 
+                        'tide_rule_concise': window.get('tide_rule_concise') if 'tide_rule_concise' in window else 'N/A', 
                         'high_tide_times': window.get('high_tide_times', [])
                     })
-                    p_time = (slot_start_dt + timedelta(minutes=30)).time()
+                    p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
 
     if not all_found_slots:
         return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
+    
+    all_found_slots.sort(key=lambda s: (abs(s['date'] - requested_date), s['time']))
+    
+    final_slots = []
+    seen_dates = set()
+    for slot in all_found_slots:
+        if len(final_slots) >= num_suggestions_to_find: break
+        if slot['date'] not in seen_dates:
+            final_slots.append(slot)
+            seen_dates.add(slot['date'])
+            
+    return final_slots, f"Found {len(final_slots)} best available slots.", [], False
     
     # This is a simplified scoring and sorting for demonstration. A real implementation would be more complex.
     all_found_slots.sort(key=lambda s: (abs(s['date'] - requested_date), s['time']))
