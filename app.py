@@ -931,7 +931,6 @@ initialize_session_state()
 # --- Main App Body ---
 st.title("ECM Logistics - V2")
 
-st.sidebar.subheader("DEBUG: Loaded Trucks")
 st.sidebar.json(ecm.ECM_TRUCKS)
 
 with st.container(border=True):
