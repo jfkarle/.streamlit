@@ -109,6 +109,8 @@ def load_all_data_from_sheets():
         trucks_resp = execute_query(conn.table("trucks").select("*"), ttl=0)
         ECM_TRUCKS.clear()
         ECM_TRUCKS.update({ row["truck_id"]: Truck(t_id=row["truck_id"], name=row.get("truck_name"), max_len=row.get("max_boat_length")) for row in trucks_resp.data })
+        # Map each truck_name → truck_id so we can key schedules by the numeric ID
+        name_to_id = {truck.truck_name: truck.truck_id for truck in ECM_TRUCKS.values()}
         
         ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
         ECM_RAMPS.clear()
