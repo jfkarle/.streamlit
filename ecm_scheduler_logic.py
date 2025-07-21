@@ -126,14 +126,16 @@ def load_all_data_from_sheets():
         schedules_resp = execute_query(conn.table("truck_schedules").select("*"), ttl=0)
         processed_schedules = {}
         for row in schedules_resp.data:
-            truck_name = row['truck_name']
-            # Ensure the day of the week is an INTEGER
-            day = int(row['day_of_week'])
-            start_time = datetime.datetime.strptime(row['start_time'], '%H:%M:%S').time()
-            end_time = datetime.datetime.strptime(row['end_time'], '%H:%M:%S').time()
-            if truck_name not in processed_schedules:
-                processed_schedules[truck_name] = {}
-            processed_schedules[truck_name][day] = (start_time, end_time)
+                truck_name = row["truck_name"]
+                truck_id   = name_to_id.get(truck_name)
+                if truck_id is None:
+                    continue   # skip any names we don’t recognize
+                day        = row["day_of_week"]
+                start_time = datetime.datetime.strptime(row["start_time"], '%H:%M:%S').time()
+                end_time   = datetime.datetime.strptime(row["end_time"],   '%H:%M:%S').time()
+                if truck_id not in processed_schedules:
+                    processed_schedules[truck_id] = {}
+                processed_schedules[truck_id][day] = (start_time, end_time)
         
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
