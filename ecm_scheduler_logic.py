@@ -308,6 +308,8 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
         resp = requests.get("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter", params=params, timeout=15)
         resp.raise_for_status()
         predictions = resp.json().get("predictions", [])
+        st.sidebar.subheader("🔍 NOAA raw predictions")
+        st.sidebar.write(predictions)
         grouped_tides = {}
         for tide in predictions:
             tide_dt = datetime.datetime.strptime(tide["t"], "%Y-%m-%d %H:%M"); date_key = tide_dt.date()
