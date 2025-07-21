@@ -117,7 +117,7 @@ def load_all_data_from_sheets():
             ECM_TRUCKS[t.truck_id] = t
 
         # Build a name → ID map so schedules can be keyed by numeric truck_id
-        name_to_id = {t.name: t.truck_id for t in ECM_TRUCKS.values()}
+        name_to_id = {t.truck_name: t.truck_id for t in ECM_TRUCKS.values()}
 
         # --- Ramps ---
         ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
