@@ -190,7 +190,7 @@ def load_all_data_from_sheets():
     except Exception as e:
         st.error(f"Error loading data: {e}")
         raise
-        
+
 def save_job(job_to_save):
     conn = get_db_connection()
     job_dict = job_to_save.__dict__
