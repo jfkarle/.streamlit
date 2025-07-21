@@ -451,6 +451,10 @@ def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, 
 
     # If we get here, it means trucks are on duty and tide windows are fine.
     return ["**All Slots Booked:** All available time slots for suitable trucks are already taken on this date."]
+
+
+
+
 def _compile_truck_schedules(jobs):
     schedule = {}
     for job in jobs:
