@@ -332,27 +332,71 @@ def calculate_ramp_windows(ramp, boat, tide_data, date):
     offset = timedelta(hours=offset_hours)
     return [{'start_time': (datetime.datetime.combine(date, t['time']) - offset).time(), 'end_time': (datetime.datetime.combine(date, t['time']) + offset).time()} for t in tide_data if t['type']=='H']
 
-def get_final_schedulable_ramp_times(ramp_obj, boat_obj, date_to_check, all_tides, truck_id, truck_hours_schedule):
+def get_final_schedulable_ramp_times(
+    ramp_obj,
+    boat_obj,
+    date_to_check,
+    all_tides,
+    truck_id,
+    truck_hours_schedule
+):
     day_of_week = date_to_check.weekday()
     truck_hours = truck_hours_schedule.get(truck_id, {}).get(day_of_week)
-    if not truck_hours: return []
-    truck_open_dt, truck_close_dt = datetime.datetime.combine(date_to_check, truck_hours[0]), datetime.datetime.combine(date_to_check, truck_hours[1])
-    if not ramp_obj: return [{'start_time': truck_hours[0], 'end_time': truck_hours[1], 'high_tide_times': [], 'tide_rule_concise': 'N/A'}]
+    if not truck_hours:
+        return []
+
+    # Build datetimes for the truck’s shift
+    truck_open_dt  = datetime.datetime.combine(date_to_check, truck_hours[0])
+    truck_close_dt = datetime.datetime.combine(date_to_check, truck_hours[1])
+
+    # If no ramp selected, allow full truck window
+    if not ramp_obj:
+        return [{
+            'start_time': truck_hours[0],
+            'end_time':   truck_hours[1],
+            'high_tide_times': [],
+            'tide_rule_concise': 'N/A'
+        }]
+
+    # Get today’s tide data and compute each HT ± offset window
     tide_data_for_day = all_tides.get(date_to_check, [])
-    tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
+    tidal_windows     = calculate_ramp_windows(
+        ramp_obj, boat_obj, tide_data_for_day, date_to_check
+    )
+
     ### DEBUG Hingham error
     if ramp_obj.ramp_name == "Hingham Harbor":
         st.sidebar.subheader("🔎 Hingham Tide Windows")
-        st.sidebar.write(tidal_windows)                # use 'tidal_windows' not 'tide_windows'
-        st.sidebar.write("Truck hours:", truck_hours)  # use the 'truck_hours' variable
+        st.sidebar.write(tidal_windows)
+        st.sidebar.write("Truck hours:", truck_hours)
     ### END Debug
-    final_windows = []
+
+    # Try each tide window in order, return on first that yields slots
     for t_win in tidal_windows:
-        tidal_start_dt, tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['start_time']), datetime.datetime.combine(date_to_check, t_win['end_time'])
-        overlap_start, overlap_end = max(tidal_start_dt, truck_open_dt), min(tidal_end_dt, truck_close_dt)
+        slots_for_this_tide = []
+
+        tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'])
+        tidal_end_dt   = datetime.datetime.combine(date_to_check, t_win['end_time'])
+
+        # Compute overlap with truck shift
+        overlap_start = max(tidal_start_dt, truck_open_dt)
+        overlap_end   = min(tidal_end_dt,   truck_close_dt)
+
         if overlap_start < overlap_end:
-            final_windows.append({'start_time': overlap_start.time(), 'end_time': overlap_end.time(), 'high_tide_times': [t['time'] for t in tide_data_for_day if t['type'] == 'H'], 'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)})
-    return final_windows
+            slots_for_this_tide.append({
+                'start_time'     : overlap_start.time(),
+                'end_time'       : overlap_end.time(),
+                'high_tide_times': [
+                    t['time'] for t in tide_data_for_day if t['type'] == 'H'
+                ],
+                'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
+            })
+
+        if slots_for_this_tide:
+            return slots_for_this_tide
+
+    # No window produced any slots
+    return []
 
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
     all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and t.max_boat_length is not None and boat_len <= t.max_boat_length]
