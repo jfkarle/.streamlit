@@ -362,43 +362,33 @@ def get_final_schedulable_ramp_times(
 
     # Get today’s tide data and compute each HT ± offset window
     tide_data_for_day = all_tides.get(date_to_check, [])
-    tidal_windows     = calculate_ramp_windows(
+    tidal_windows = calculate_ramp_windows(
         ramp_obj, boat_obj, tide_data_for_day, date_to_check
     )
+    
+    # This list will collect all valid slots from all of the day's tidal windows.
+    all_schedulable_slots = []
 
-    ### DEBUG Hingham error
-    if ramp_obj.ramp_name == "Hingham Harbor":
-        st.sidebar.subheader("⚓ Hingham Tide Debug")
-        st.sidebar.write("raw tide_data_for_day:", tide_data_for_day)
-        st.sidebar.write("computed tidal_windows:", tidal_windows)
-    ### END Debug
-
-    # Try each tide window in order, return on first that yields slots
+    # Iterate through every tidal window for the day.
     for t_win in tidal_windows:
-        slots_for_this_tide = []
-
         tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'])
         tidal_end_dt   = datetime.datetime.combine(date_to_check, t_win['end_time'])
 
-        # Compute overlap with truck shift
+        # Compute overlap with the truck's shift.
         overlap_start = max(tidal_start_dt, truck_open_dt)
         overlap_end   = min(tidal_end_dt,   truck_close_dt)
 
+        # If a valid overlap exists, add it to our list.
         if overlap_start < overlap_end:
-            slots_for_this_tide.append({
-                'start_time'     : overlap_start.time(),
-                'end_time'       : overlap_end.time(),
-                'high_tide_times': [
-                    t['time'] for t in tide_data_for_day if t['type'] == 'H'
-                ],
+            all_schedulable_slots.append({
+                'start_time'       : overlap_start.time(),
+                'end_time'         : overlap_end.time(),
+                'high_tide_times'  : [t['time'] for t in tide_data_for_day if t['type'] == 'H'],
                 'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
             })
 
-        if slots_for_this_tide:
-            return slots_for_this_tide
-
-    # No window produced any slots
-    return []
+    # Return the combined list of all valid slots.
+    return all_schedulable_slots
 
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
     all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and t.max_boat_length is not None and boat_len <= t.max_boat_length]
