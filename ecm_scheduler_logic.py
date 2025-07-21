@@ -366,9 +366,9 @@ def get_final_schedulable_ramp_times(
 
     ### DEBUG Hingham error
     if ramp_obj.ramp_name == "Hingham Harbor":
-        st.sidebar.subheader("🔎 Hingham Tide Windows")
-        st.sidebar.write(tidal_windows)
-        st.sidebar.write("Truck hours:", truck_hours)
+        st.sidebar.subheader("⚓ Hingham Tide Debug")
+        st.sidebar.write("raw tide_data_for_day:", tide_data_for_day)
+        st.sidebar.write("computed tidal_windows:", tidal_windows)
     ### END Debug
 
     # Try each tide window in order, return on first that yields slots
