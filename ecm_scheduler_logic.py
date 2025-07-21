@@ -396,15 +396,6 @@ def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
         return [t for t in all_suitable if t.truck_name == pref_truck_id]
     return all_suitable
 
-Of course. You are right. Let's break down the process with detailed debugging steps. This is the best way to find the final issue.
-
-I have rewritten the _diagnose_failure_reasons function in your ecm_scheduler_logic.py file to add extensive debugging output. It will now print the results of each step of the calculation into your app's sidebar.
-
-The Fix
-Please replace your entire _diagnose_failure_reasons function in ecm_scheduler_logic.py with the new version below.
-
-Python
-
 def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, truck_hours, manager_override, force_preferred_truck):
     """A modified version of the function with step-by-step debugging output."""
     st.sidebar.subheader("--- Failure Analysis ---")
