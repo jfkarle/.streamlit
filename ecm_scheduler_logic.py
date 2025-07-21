@@ -490,7 +490,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
     
     all_found_slots = []
-    # These two lines correctly define the variables before they are used.
     search_start_date = kwargs.get('strict_start_date') or (requested_date - timedelta(days=crane_look_back_days))
     search_end_date = kwargs.get('strict_end_date') or (requested_date + timedelta(days=crane_look_forward_days))
     
@@ -521,19 +520,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not all_found_slots:
         return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
     
-    all_found_slots.sort(key=lambda s: (abs(s['date'] - requested_date), s['time']))
-    
-    final_slots = []
-    seen_dates = set()
-    for slot in all_found_slots:
-        if len(final_slots) >= num_suggestions_to_find: break
-        if slot['date'] not in seen_dates:
-            final_slots.append(slot)
-            seen_dates.add(slot['date'])
-            
-    return final_slots, f"Found {len(final_slots)} best available slots.", [], False
-    
-    # This is a simplified scoring and sorting for demonstration. A real implementation would be more complex.
+    # This block now correctly sorts the slots before returning
     all_found_slots.sort(key=lambda s: (abs(s['date'] - requested_date), s['time']))
     
     final_slots = []
