@@ -751,7 +751,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
     
     # This block now correctly sorts the slots before returning
-    all_found_slots.sort(key=lambda s: (abs(s['date'] - requested_date), s['time']))
+    all_found_slots.sort(key=lambda s: (abs(s['date'] - requested_date), s.get('time') if isinstance(s.get('time'), datetime.time) else datetime.time.max))
     
     final_slots = []
     seen_dates = set()
