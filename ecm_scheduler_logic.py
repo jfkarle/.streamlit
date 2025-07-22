@@ -679,22 +679,40 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         check_date = search_start_date + timedelta(days=i)
         for truck in suitable_trucks:
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
+            
+            # --- START of REPLACED BLOCK ---
+            # This entire 'for window in windows:' loop is replaced with a more reliable structure.
             for window in windows:
-                p_time = window['start_time']
-                while datetime.datetime.combine(check_date, p_time) + hauler_duration <= datetime.datetime.combine(check_date, window['end_time']):
-                    slot_start_dt = datetime.datetime.combine(check_date, p_time)
+                # Initialize slot_start_dt with the window's start time
+                slot_start_dt = datetime.datetime.combine(check_date, window['start_time'])
+
+                while slot_start_dt + hauler_duration <= datetime.datetime.combine(check_date, window['end_time']):
+                    # Check truck availability for the current slot
                     if not check_truck_availability_optimized(truck.truck_name, slot_start_dt, slot_start_dt + hauler_duration, compiled_schedule):
-                        p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=15)).time(); continue
+                        # If unavailable, advance by 15 mins and check again
+                        slot_start_dt += timedelta(minutes=15)
+                        continue
+
+                    # Check crane availability if needed
                     if needs_j17 and not check_truck_availability_optimized("J17", slot_start_dt, slot_start_dt + j17_duration, compiled_schedule):
-                        p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=15)).time(); continue
+                        # If unavailable, advance by 15 mins and check again
+                        slot_start_dt += timedelta(minutes=15)
+                        continue
                     
+                    # If the slot is valid, append it to the list
                     all_found_slots.append({
-                        'date': check_date, 'time': p_time, 'truck_id': truck.truck_name, 
-                        'j17_needed': needs_j17, 'ramp_id': selected_ramp_id,
-                        'tide_rule_concise': window.get('tide_rule_concise') if 'tide_rule_concise' in window else 'N/A', 
+                        'date': check_date, 
+                        'time': slot_start_dt.time(), # Use the time from the datetime object
+                        'truck_id': truck.truck_name, 
+                        'j17_needed': needs_j17, 
+                        'ramp_id': selected_ramp_id,
+                        'tide_rule_concise': window.get('tide_rule_concise', 'N/A'), 
                         'high_tide_times': window.get('high_tide_times', [])
                     })
-                    p_time = (datetime.datetime.combine(check_date, p_time) + timedelta(minutes=30)).time()
+
+                    # Advance to the next 30-minute interval for the next potential slot
+                    slot_start_dt += timedelta(minutes=30)
+            # --- END of REPLACED BLOCK ---
 
     if not all_found_slots:
         return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
