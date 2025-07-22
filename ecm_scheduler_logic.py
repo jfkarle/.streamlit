@@ -117,8 +117,8 @@ def load_all_data_from_sheets():
             ECM_TRUCKS[t.truck_id] = t
         
         # DEBUG: Print ECM_TRUCKS after loading
-        st.sidebar.write("DEBUG: ECM_TRUCKS after loading:")
-        st.sidebar.json({k: t.truck_name for k, t in ECM_TRUCKS.items()})
+        DEBUG_MESSAGES.append("DEBUG: ECM_TRUCKS after loading:")
+        DEBUG_MESSAGES.append(json.dumps({k: t.truck_name for k, t in ECM_TRUCKS.items()}, indent=2))
 
         # Build a name → ID map so schedules can be keyed by numeric truck_id
         name_to_id = {t.truck_name: t.truck_id for t in ECM_TRUCKS.values()}
@@ -183,25 +183,25 @@ def load_all_data_from_sheets():
             processed_schedules.setdefault(truck_id, {})[day] = (start_time, end_time)
 
         # DEBUG: Print processed_schedules before update
-        st.sidebar.write("DEBUG: processed_schedules before update:")
+        DEBUG_MESSAGES.append("DEBUG: processed_schedules before update:")
         # Convert times to string for JSON serialization
         json_friendly_processed_schedules = {
             k: {d: f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for d, (s, e) in v.items()}
             for k, v in processed_schedules.items()
         }
-        st.sidebar.json(json_friendly_processed_schedules)
+        DEBUG_MESSAGES.append(json.dumps(json_friendly_processed_schedules, indent=2))
 
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
 
         # DEBUG: Print TRUCK_OPERATING_HOURS after update
-        st.sidebar.write("DEBUG: TRUCK_OPERATING_HOURS after update:")
+        DEBUG_MESSAGES.append("DEBUG: TRUCK_OPERATING_HOURS after update:")
         # Convert times to string for JSON serialization
         json_friendly_truck_operating_hours = {
             k: {d: f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for d, (s, e) in v.items()}
             for k, v in TRUCK_OPERATING_HOURS.items()
         }
-        st.sidebar.json(json_friendly_truck_operating_hours)
+        DEBUG_MESSAGES.append(json.dumps(json_friendly_truck_operating_hours, indent=2))
 
         st.toast(
             f"Loaded data for {len(ECM_TRUCKS)} trucks, "
@@ -330,8 +330,8 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
         resp = requests.get("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter", params=params, timeout=15)
         resp.raise_for_status()
         predictions = resp.json().get("predictions", [])
-        st.sidebar.subheader("🔍 NOAA raw predictions")
-        st.sidebar.write(predictions)
+        DEBUG_MESSAGES.append("🔍 NOAA raw predictions:")
+        DEBUG_MESSAGES.append(json.dumps(predictions, indent=2))
         grouped_tides = {}
         for tide in predictions:
             tide_dt = datetime.datetime.strptime(tide["t"], "%Y-%m-%d %H:%M"); date_key = tide_dt.date()
