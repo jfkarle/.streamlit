@@ -325,21 +325,63 @@ def get_monthly_tides_for_scituate(year, month):
 
 def fetch_noaa_tides_for_range(station_id, start_date, end_date):
     start_str, end_str = start_date.strftime("%Y%m%d"), end_date.strftime("%Y%m%d")
-    params = {"product": "predictions", "application": "ecm-boat-scheduler", "begin_date": start_str, "end_date": end_str, "datum": "MLLW", "station": station_id, "time_zone": "lst_ldt", "units": "english", "interval": "hilo", "format": "json"}
+    params = {
+        "product": "predictions",
+        "application": "ecm-boat-scheduler",
+        "begin_date": start_str,
+        "end_date": end_str,
+        "datum": "MLLW",
+        "station": station_id,
+        "time_zone": "lst_ldt",
+        "units": "english",
+        "interval": "hilo",
+        "format": "json"
+    }
+
+    DEBUG_MESSAGES.append(f"DEBUG: Fetching tides for station {station_id} from {start_str} to {end_str}")
+    DEBUG_MESSAGES.append(f"DEBUG: NOAA API URL params: {params}")
+
     try:
         resp = requests.get("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter", params=params, timeout=15)
-        resp.raise_for_status()
-        predictions = resp.json().get("predictions", [])
-        DEBUG_MESSAGES.append("🔍 NOAA raw predictions:")
+        resp.raise_for_status() # This will raise an HTTPError for bad responses (4xx or 5xx)
+
+        raw_json_response = resp.json()
+        DEBUG_MESSAGES.append("DEBUG: Raw NOAA API JSON response:")
+        DEBUG_MESSAGES.append(json.dumps(raw_json_response, indent=2))
+
+        predictions = raw_json_response.get("predictions", [])
+        DEBUG_MESSAGES.append("DEBUG: 'predictions' extracted from NOAA response:")
         DEBUG_MESSAGES.append(json.dumps(predictions, indent=2))
+
+        # Original logic:
+        # st.sidebar.subheader("🔍 NOAA raw predictions")
+        # st.sidebar.write(predictions)
+        DEBUG_MESSAGES.append("🔍 NOAA raw predictions:")
+        DEBUG_MESSAGES.append(json.dumps(predictions, indent=2)) # Replaced sidebar write with DEBUG_MESSAGES
+
         grouped_tides = {}
         for tide in predictions:
-            tide_dt = datetime.datetime.strptime(tide["t"], "%Y-%m-%d %H:%M"); date_key = tide_dt.date()
-            grouped_tides.setdefault(date_key, []).append({'type': tide["type"].upper(), 'time': tide_dt.time(), 'height': float(tide["v"])})
-        return grouped_tides
-    except Exception as e:
-        print(f"ERROR fetching tides for station {station_id}: {e}"); return {}
+            # Check if 't' key exists before parsing
+            if 't' in tide:
+                tide_dt = datetime.datetime.strptime(tide["t"], "%Y-%m-%d %H:%M"); date_key = tide_dt.date()
+                grouped_tides.setdefault(date_key, []).append({'type': tide["type"].upper(), 'time': tide_dt.time(), 'height': float(tide["v"])})
+            else:
+                DEBUG_MESSAGES.append(f"WARNING: Skipping tide entry due to missing 't' key: {tide}")
 
+        return grouped_tides
+    except requests.exceptions.Timeout:
+        DEBUG_MESSAGES.append(f"ERROR: NOAA API request timed out for station {station_id}")
+        return {}
+    except requests.exceptions.RequestException as e:
+        DEBUG_MESSAGES.append(f"ERROR: Failed to connect to NOAA API for station {station_id}: {e}")
+        return {}
+    except json.JSONDecodeError as e:
+        DEBUG_MESSAGES.append(f"ERROR: Failed to decode JSON from NOAA API for station {station_id}: {e}. Raw response text: {resp.text}")
+        return {}
+    except Exception as e:
+        DEBUG_MESSAGES.append(f"ERROR: General error fetching tides for station {station_id}: {e}")
+        return {}
+        
 def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide": return "Any Tide"
     if ramp.tide_calculation_method == "AnyTideWithDraftRule": return "Any Tide (<5' Draft)" if boat.draft_ft and boat.draft_ft < 5.0 else "3 hrs +/- High Tide (≥5' Draft)"
