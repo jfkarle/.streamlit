@@ -901,7 +901,7 @@ def show_settings_page():
 
 # --- Session State Initialization ---
 
-ecm.DEBUG_MESSAGES.clear()
+ecm.DEBUG_MESSAGES = []
 
 def initialize_session_state():
     defaults = {
