@@ -343,25 +343,27 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
 
     try:
         resp = requests.get("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter", params=params, timeout=15)
+
+        # --- ADD THESE NEW DEBUG LINES ---
+        DEBUG_MESSAGES.append(f"DEBUG: NOAA API Response Status Code: {resp.status_code}")
+        DEBUG_MESSAGES.append(f"DEBUG: NOAA API Raw Response Text (first 500 chars): {resp.text[:500]}")
+        # --- END NEW DEBUG LINES ---
+
         resp.raise_for_status() # This will raise an HTTPError for bad responses (4xx or 5xx)
 
         raw_json_response = resp.json()
-        DEBUG_MESSAGES.append("DEBUG: Raw NOAA API JSON response:")
+        DEBUG_MESSAGES.append("DEBUG: Raw NOAA API JSON response (from .json()):")
         DEBUG_MESSAGES.append(json.dumps(raw_json_response, indent=2))
 
         predictions = raw_json_response.get("predictions", [])
         DEBUG_MESSAGES.append("DEBUG: 'predictions' extracted from NOAA response:")
         DEBUG_MESSAGES.append(json.dumps(predictions, indent=2))
 
-        # Original logic:
-        # st.sidebar.subheader("🔍 NOAA raw predictions")
-        # st.sidebar.write(predictions)
         DEBUG_MESSAGES.append("🔍 NOAA raw predictions:")
         DEBUG_MESSAGES.append(json.dumps(predictions, indent=2)) # Replaced sidebar write with DEBUG_MESSAGES
 
         grouped_tides = {}
         for tide in predictions:
-            # Check if 't' key exists before parsing
             if 't' in tide:
                 tide_dt = datetime.datetime.strptime(tide["t"], "%Y-%m-%d %H:%M"); date_key = tide_dt.date()
                 grouped_tides.setdefault(date_key, []).append({'type': tide["type"].upper(), 'time': tide_dt.time(), 'height': float(tide["v"])})
@@ -373,6 +375,7 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
         DEBUG_MESSAGES.append(f"ERROR: NOAA API request timed out for station {station_id}")
         return {}
     except requests.exceptions.RequestException as e:
+        # This will catch HTTPError if raise_for_status() is triggered, or other request errors.
         DEBUG_MESSAGES.append(f"ERROR: Failed to connect to NOAA API for station {station_id}: {e}")
         return {}
     except json.JSONDecodeError as e:
