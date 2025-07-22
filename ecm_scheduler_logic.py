@@ -604,7 +604,12 @@ def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, 
         all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, req_date, req_date)
         tides_for_day = all_tides.get(req_date, [])
         DEBUG_MESSAGES.append("**Step 3: Fetched Tides** (High Tides for today)")
-        DEBUG_MESSAGES.append(json.dumps([t for t in tides_for_day if t['type'] == 'H'], indent=2))
+        # Convert time objects to string for JSON serialization
+        json_friendly_high_tides = [
+            {'type': t['type'], 'time': str(t['time']), 'height': t['height']}
+            for t in tides_for_day if t['type'] == 'H'
+        ]
+        DEBUG_MESSAGES.append(json.dumps(json_friendly_high_tides, indent=2))
 
         # Step 5: Check for overlap between tide windows and each truck's shift.
         final_windows_found = False
