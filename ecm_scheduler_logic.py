@@ -821,3 +821,68 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
         'all_boats': {'total': total_all_boats, 'scheduled': len(scheduled_customer_ids), 'launched': len(launched_customer_ids)},
         'ecm_boats': {'total': len(ecm_customer_ids), 'scheduled': len(scheduled_customer_ids.intersection(ecm_customer_ids)), 'launched': len(launched_customer_ids.intersection(ecm_customer_ids))}
     }
+
+
+def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, truck_hours):
+    """
+    Generates a specified number of random, valid jobs within a date range.
+    This is a developer tool for populating the schedule with test data.
+    """
+    if not LOADED_CUSTOMERS or not LOADED_BOATS:
+        return "Cannot generate jobs: Customer or Boat data is not loaded."
+
+    services_to_use = ["Launch", "Haul"] if service_type_filter == "All" else [service_type_filter]
+    customer_list = list(LOADED_CUSTOMERS.values())
+    date_range_days = (end_date - start_date).days
+    success_count = 0
+    failure_count = 0
+
+    for _ in range(num_to_gen):
+        try:
+            # 1. Get a random customer and their boat
+            random_customer = random.choice(customer_list)
+            customer_boats = [b for b in LOADED_BOATS.values() if b.customer_id == random_customer.customer_id]
+            if not customer_boats:
+                continue
+            random_boat = random.choice(customer_boats)
+
+            # 2. Get a random service and date
+            random_service = random.choice(services_to_use)
+            random_date = start_date + timedelta(days=random.randint(0, date_range_days))
+            
+            # 3. Get a random ramp if needed
+            random_ramp_id = None
+            if random_service in ["Launch", "Haul"]:
+                random_ramp_id = random.choice(list(ECM_RAMPS.keys()))
+
+            # 4. Find an available slot
+            slots, _, _, _ = find_available_job_slots(
+                customer_id=random_customer.customer_id,
+                boat_id=random_boat.boat_id,
+                service_type=random_service,
+                requested_date_str=random_date.strftime('%Y-%m-%d'),
+                selected_ramp_id=random_ramp_id,
+                force_preferred_truck=False, # Use any capable truck for random generation
+                num_suggestions_to_find=1,
+                truck_operating_hours=truck_hours
+            )
+
+            # 5. Confirm the job if a slot was found
+            if slots:
+                confirm_and_schedule_job(
+                    original_request={
+                        'customer_id': random_customer.customer_id,
+                        'boat_id': random_boat.boat_id,
+                        'service_type': random_service
+                    },
+                    selected_slot=slots[0]
+                )
+                success_count += 1
+            else:
+                failure_count += 1
+        except Exception:
+            failure_count += 1
+    
+    return f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
+
+
