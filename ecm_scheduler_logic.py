@@ -397,6 +397,8 @@ def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
     return all_suitable
 
 def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, truck_hours, manager_override, force_preferred_truck):
+    ### DEBUG
+    st.sidebar.write(f"truck_hours in diagnose: {truck_hours}")
     """A modified version of the function with step-by-step debugging output."""
     st.sidebar.subheader("--- Failure Analysis ---")
     st.sidebar.write(f"Debugging for: {req_date.strftime('%A, %Y-%m-%d')}")
@@ -462,6 +464,8 @@ def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_sche
     return True
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, truck_operating_hours=None, prioritize_sailboats=True, **kwargs):
+    ### DEBUG
+    st.sidebar.write(f"truck_hours received: {truck_operating_hours}")
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError:
