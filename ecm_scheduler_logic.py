@@ -543,11 +543,6 @@ def get_final_schedulable_ramp_times(
     
     all_schedulable_slots = []
 
-    # --- START OF DEBUG BLOCK ---
-    st.write("--- SCHEDULING CALCULATION (DEBUG) ---")
-    st.write(f"**Truck Shift:** `{truck_open_dt.strftime('%H:%M')}` to `{truck_close_dt.strftime('%H:%M')}`")
-    # --- END OF DEBUG BLOCK ---
-
     for t_win in tidal_windows:
         tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'])
         tidal_end_dt   = datetime.datetime.combine(date_to_check, t_win['end_time'])
@@ -557,20 +552,22 @@ def get_final_schedulable_ramp_times(
 
         overlap_start = max(tidal_start_dt, truck_open_dt)
         overlap_end   = min(tidal_end_dt,   truck_close_dt)
-        
-        # --- START OF DEBUG BLOCK ---
-        st.write(f"**Tide Window:** `{tidal_start_dt.strftime('%H:%M')}` to `{tidal_end_dt.strftime('%H:%M')}`")
-        st.write(f"**Overlap Found:** `{overlap_start.strftime('%H:%M')}` to `{overlap_end.strftime('%H:%M')}`")
-        st.write(f"**Comparison Result:** `{overlap_start < overlap_end}`")
-        st.write("---")
-        # --- END OF DEBUG BLOCK ---
 
         if overlap_start < overlap_end:
+            # Create a dictionary to hold the debug trace for this specific window
+            debug_trace = {
+                "Truck Shift": f"{truck_open_dt.strftime('%I:%M %p')} - {truck_close_dt.strftime('%I:%M %p')}",
+                "Tide Window": f"{tidal_start_dt.strftime('%I:%M %p')} - {tidal_end_dt.strftime('%I:%M %p')}",
+                "Overlap Found": f"{overlap_start.strftime('%I:%M %p')} - {overlap_end.strftime('%I:%M %p')}",
+                "Comparison": f"{overlap_start} < {overlap_end} = {overlap_start < overlap_end}"
+            }
+            
             all_schedulable_slots.append({
                 'start_time'       : overlap_start.time(),
                 'end_time'         : overlap_end.time(),
                 'high_tide_times'  : [t['time'] for t in tide_data_for_day if t['type'] == 'H'],
-                'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
+                'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj),
+                'debug_trace'      : debug_trace # Attach the debug info
             })
 
     return all_schedulable_slots
