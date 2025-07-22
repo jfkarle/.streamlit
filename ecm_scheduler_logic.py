@@ -193,6 +193,10 @@ def load_all_data_from_sheets():
             end_time   = datetime.datetime.strptime(row["end_time"],   '%H:%M:%S').time()
             processed_schedules.setdefault(truck_id, {})[day] = (start_time, end_time)
 
+        TRUCK_OPERATING_HOURS.clear()
+        TRUCK_OPERATING_HOURS.update(processed_schedules)
+
+        
         # Convert times to string for JSON serialization
         json_friendly_processed_schedules = {
             k: {d: f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for d, (s, e) in v.items()}
