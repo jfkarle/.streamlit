@@ -890,7 +890,9 @@ def show_settings_page():
                                 on_click=select_day,
                                 args=(day,),
                                 use_container_width=True,
-                                type="secondary" if st.session_state.selected_tide_day != day else "primary"
+                                # --- THIS LINE IS CORRECTED ---
+                                # It now safely checks for equality, which works even if 'selected_tide_day' is None.
+                                type="primary" if st.session_state.get('selected_tide_day') == day else "secondary"
                             )
             st.divider()
 
