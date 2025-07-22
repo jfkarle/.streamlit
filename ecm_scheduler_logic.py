@@ -137,7 +137,7 @@ def load_all_data_from_sheets():
                 name       = row.get("ramp_name"),
                 station    = row.get("noaa_station_id"),
                 tide_method= row.get("tide_calculation_method"),
-                offset     = row.get("tide_offset_hours1"),
+                offset     = row.get("tide_offset_hours"),
                 boats      = row.get("allowed_boat_types")
             )
             for row in ramps_resp.data
