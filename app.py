@@ -931,13 +931,11 @@ def initialize_session_state():
     if not st.session_state.get('data_loaded'):
         ecm.load_all_data_from_sheets()
         st.session_state.data_loaded = True
-        ### DEBUG
-        st.sidebar.write(ecm.TRUCK_OPERATING_HOURS)
         
 initialize_session_state()
 
 # --- Main App Body ---
-st.title("ECM Logistics - V2")
+st.title("ECM Logistics")
 
 with st.container(border=True):
     stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
