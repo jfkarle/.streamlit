@@ -434,7 +434,7 @@ def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, 
         return [f"**Boat Too Large:** No trucks in the fleet are rated for a boat of {boat.boat_length}ft."]
 
     # Step 2: Check which of those trucks are on duty.
-    trucks_on_duty = {t.truck_name: truck_hours.get(t.truck_name, {}).get(req_date.weekday()) for t in suitable_trucks}
+    trucks_on_duty = {t.truck_name: truck_hours.get(t.truck_id, {}).get(req_date.weekday()) for t in suitable_trucks}
     st.sidebar.write("**Step 2: Duty Status** (Should have time values)")
     # We convert time objects to strings for display
     st.sidebar.json({k: str(v) if v else "Off Duty" for k, v in trucks_on_duty.items()})
@@ -516,7 +516,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     for i in range((search_end_date - search_start_date).days + 1):
         check_date = search_start_date + timedelta(days=i)
         for truck in suitable_trucks:
-            windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_name, truck_operating_hours)
+            windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
             for window in windows:
                 p_time = window['start_time']
                 while datetime.datetime.combine(check_date, p_time) + hauler_duration <= datetime.datetime.combine(check_date, window['end_time']):
