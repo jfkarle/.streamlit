@@ -716,54 +716,81 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         for truck in suitable_trucks:
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
             
-            # --- START of REPLACED BLOCK ---
-            # This entire 'for window in windows:' loop is replaced with a more reliable structure.
             for window in windows:
-                # Initialize slot_start_dt with the window's start time
                 slot_start_dt = datetime.datetime.combine(check_date, window['start_time'])
 
                 while slot_start_dt + hauler_duration <= datetime.datetime.combine(check_date, window['end_time']):
-                    # Check truck availability for the current slot
                     if not check_truck_availability_optimized(truck.truck_name, slot_start_dt, slot_start_dt + hauler_duration, compiled_schedule):
-                        # If unavailable, advance by 15 mins and check again
                         slot_start_dt += timedelta(minutes=15)
                         continue
 
-                    # Check crane availability if needed
                     if needs_j17 and not check_truck_availability_optimized("J17", slot_start_dt, slot_start_dt + j17_duration, compiled_schedule):
-                        # If unavailable, advance by 15 mins and check again
                         slot_start_dt += timedelta(minutes=15)
                         continue
                     
-                    # If the slot is valid, append it to the list
                     all_found_slots.append({
                         'date': check_date, 
-                        'time': slot_start_dt.time(), # Use the time from the datetime object
+                        'time': slot_start_dt.time(),
                         'truck_id': truck.truck_name, 
                         'j17_needed': needs_j17, 
                         'ramp_id': selected_ramp_id,
                         'tide_rule_concise': window.get('tide_rule_concise', 'N/A'), 
-                        'high_tide_times': window.get('high_tide_times', [])
+                        'high_tide_times': window.get('high_tide_times', []),
+                        'debug_trace': window.get('debug_trace', {})
                     })
 
-                    # Advance to the next 30-minute interval for the next potential slot
                     slot_start_dt += timedelta(minutes=30)
-            # --- END of REPLACED BLOCK ---
 
-    if not all_found_slots:
-        return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
-    
-    # This block now correctly sorts the slots before returning
-    all_found_slots.sort(key=lambda s: (abs(s['date'] - requested_date), s.get('time') if isinstance(s.get('time'), datetime.time) else datetime.time.max))
-    
-    final_slots = []
-    seen_dates = set()
+    # --- New Unified Scoring System ---
     for slot in all_found_slots:
-        if len(final_slots) >= num_suggestions_to_find: break
-        if slot['date'] not in seen_dates:
-            final_slots.append(slot)
-            seen_dates.add(slot['date'])
-            
+        score = 0
+        score_trace = {}
+
+        # 1. Crane Efficiency Bonus (Highest Priority)
+        if needs_j17:
+            is_crane_at_ramp = any(
+                j.scheduled_start_datetime.date() == slot['date'] and
+                (j.pickup_ramp_id == slot.get('ramp_id') or j.dropoff_ramp_id == slot.get('ramp_id')) and
+                j.assigned_crane_truck_id == 'J17'
+                for j in SCHEDULED_JOBS
+            )
+            if is_crane_at_ramp:
+                crane_bonus = 1000
+                score += crane_bonus
+                score_trace['Crane Efficiency Bonus'] = f"+{crane_bonus} (Crane already at ramp)"
+
+        # 2. Sailboat Tide Prioritization Bonus
+        if boat.boat_type in ['Sailboat DT', 'Sailboat MT'] and prioritize_sailboats:
+            high_tides = slot.get('high_tide_times', [])
+            if high_tides:
+                noon_dt = datetime.datetime.combine(slot['date'], datetime.time(12, 0))
+                min_diff_seconds = min(abs((datetime.datetime.combine(slot['date'], t) - noon_dt).total_seconds()) for t in high_tides)
+                diff_hours = round(min_diff_seconds / 3600, 1)
+                tide_bonus = max(0, 100 - (diff_hours * 10))
+                score += tide_bonus
+                score_trace['Sailboat Tide Bonus'] = f"+{tide_bonus:.0f} (High tide {diff_hours}h from noon)"
+
+        # 3. Date Proximity Penalty (Tie-Breaker)
+        days_away = abs(slot['date'] - requested_date).days
+        if days_away > 0:
+            proximity_penalty = days_away * 5
+            score -= proximity_penalty
+            score_trace['Date Proximity Penalty'] = f"-{proximity_penalty} ({days_away} days away)"
+
+        slot['score'] = score
+        if 'debug_trace' in slot:
+            slot['debug_trace']['score_calculation'] = score_trace
+            slot['debug_trace']['FINAL_SCORE'] = score
+
+    # Sort all found slots by the new score in descending order
+    all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
+
+    # Return the top N suggestions from the sorted list
+    final_slots = all_found_slots[:num_suggestions_to_find]
+
+    if not final_slots:
+        return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
+
     return final_slots, f"Found {len(final_slots)} best available slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
