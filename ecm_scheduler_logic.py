@@ -1,4 +1,5 @@
 import csv
+import os
 import datetime
 import pandas as pd
 import calendar
@@ -323,7 +324,71 @@ def get_monthly_tides_for_scituate(year, month):
         print(f"Error fetching monthly tides: {e}")
         return None
 
+def _parse_annual_tide_file(filepath, begin_date, end_date):
+    """
+    Parses an annual NOAA tide prediction text file for a specific date range.
+    Returns data in the same format as fetch_noaa_tides_for_range's grouped_tides.
+    """
+    grouped_tides = {}
+    try:
+        with open(filepath, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or line.startswith('-'):
+                    continue # Skip empty lines, comments, and separator
+
+                parts = line.split()
+                if len(parts) < 4:
+                    DEBUG_MESSAGES.append(f"WARNING: Skipping malformed tide line in {filepath}: {line}")
+                    continue
+
+                try:
+                    # Example parts: ['2025/01/01', '03:08', 'AM', '9.56', 'H']
+                    date_str = parts[0] # e.g., '2025/01/01'
+                    time_str_am_pm = f"{parts[1]} {parts[2]}" # e.g., '03:08 AM'
+                    value_str = parts[3] # e.g., '9.56'
+                    type_str = parts[4] # e.g., 'H'
+
+                    tide_dt_obj = datetime.datetime.strptime(f"{date_str} {time_str_am_pm}", "%Y/%m/%d %I:%M %p")
+                    current_date = tide_dt_obj.date()
+
+                    # Only process data within the requested date range
+                    if begin_date <= current_date <= end_date:
+                        tide_info = {
+                            'type': type_str.upper(),
+                            'time': tide_dt_obj.time(),
+                            'height': float(value_str)
+                        }
+                        grouped_tides.setdefault(current_date, []).append(tide_info)
+
+                except (ValueError, IndexError) as e:
+                    DEBUG_MESSAGES.append(f"WARNING: Error parsing tide line in {filepath}: {line} - {e}")
+                    continue
+    except FileNotFoundError:
+        DEBUG_MESSAGES.append(f"ERROR: Local tide file not found: {filepath}")
+    except Exception as e:
+        DEBUG_MESSAGES.append(f"ERROR: General error reading local tide file {filepath}: {e}")
+
+    return grouped_tides
+
 def fetch_noaa_tides_for_range(station_id, start_date, end_date):
+    # Construct local file path
+    local_filepath = f"tide_data/{station_id}_annual.txt" # Adjust folder name if different
+
+    # --- NEW LOGIC: Try to read from local file first ---
+    if os.path.exists(local_filepath):
+        DEBUG_MESSAGES.append(f"DEBUG: Reading tides from local file: {local_filepath}")
+        local_tides = _parse_annual_tide_file(local_filepath, start_date, end_date)
+        if local_tides:
+            DEBUG_MESSAGES.append(f"DEBUG: Successfully loaded {len(local_tides)} days of tide data from local file.")
+            return local_tides
+        else:
+            DEBUG_MESSAGES.append(f"WARNING: Local tide file {local_filepath} found but yielded no data for range. Falling back to API.")
+    else:
+        DEBUG_MESSAGES.append(f"DEBUG: Local tide file not found: {local_filepath}. Proceeding with NOAA API call.")
+    # --- END NEW LOCAL FILE LOGIC ---
+
+    # --- Existing NOAA API call logic (modified slightly for consistency) ---
     start_str, end_str = start_date.strftime("%Y%m%d"), end_date.strftime("%Y%m%d")
     params = {
         "product": "predictions",
@@ -334,9 +399,7 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
         "station": station_id,
         "time_zone": "lst_ldt",
         "units": "english",
-        # Keep interval: "hilo" for now, as we confirm no data returned on that interval
-        # If this test still fails, try changing "interval": "hourly" or removing it
-        "interval": "hilo",
+        "interval": "hilo", # Keep hilo for now, as that's what the local files represent
         "format": "json"
     }
 
@@ -349,7 +412,7 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
         'Pragma': 'no-cache',
     }
 
-    DEBUG_MESSAGES.append(f"DEBUG: Fetching tides for station {station_id} from {start_str} to {end_str}")
+    DEBUG_MESSAGES.append(f"DEBUG: Attempting NOAA API call for station {station_id}...")
     DEBUG_MESSAGES.append(f"DEBUG: NOAA API URL params: {params}")
     DEBUG_MESSAGES.append(f"DEBUG: Request Headers sent: {headers}")
 
@@ -363,14 +426,13 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
 
         DEBUG_MESSAGES.append(f"DEBUG: NOAA API Response Status Code: {resp.status_code}")
         DEBUG_MESSAGES.append(f"DEBUG: NOAA API Response Headers: {dict(resp.headers)}")
-        DEBUG_MESSAGES.append(f"DEBUG: NOAA API Raw Response Text (full): {resp.text}") # Log full text to ensure no truncation issue
+        DEBUG_MESSAGES.append(f"DEBUG: NOAA API Raw Response Text (full): {resp.text}") # Log full text
 
-        resp.raise_for_status() # This will now likely pass if status code is 200
+        resp.raise_for_status()
 
-        # Check if response text is empty before trying to parse as JSON
         if not resp.text.strip():
             DEBUG_MESSAGES.append("WARNING: NOAA API returned 200 OK, but response body is empty. Cannot parse JSON.")
-            return {} # Return empty grouped_tides if response is empty
+            return {}
 
         raw_json_response = resp.json()
         DEBUG_MESSAGES.append("DEBUG: Raw NOAA API JSON response (from .json()):")
