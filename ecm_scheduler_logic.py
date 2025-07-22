@@ -375,18 +375,22 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
     # Construct local file path
     local_filepath = f"tide_data/{station_id}_annual.txt" # Adjust folder name if different
 
-    # --- NEW LOGIC: Try to read from local file first ---
+    # --- MODIFIED LOGIC ---
     if os.path.exists(local_filepath):
         DEBUG_MESSAGES.append(f"DEBUG: Reading tides from local file: {local_filepath}")
         local_tides = _parse_annual_tide_file(local_filepath, start_date, end_date)
+        
+        # This is the crucial change: only return if the local file actually had data for the range.
         if local_tides:
             DEBUG_MESSAGES.append(f"DEBUG: Successfully loaded {len(local_tides)} days of tide data from local file.")
-            return local_tides
+            return local_tides # Return the valid local data.
         else:
-            DEBUG_MESSAGES.append(f"WARNING: Local tide file {local_filepath} found but yielded no data for range. Falling back to API.")
+            # If the file exists but has no data for the date, log it and fall through to the API call.
+            DEBUG_MESSAGES.append(f"WARNING: Local file {local_filepath} found but yielded no data for range. Falling back to API.")
     else:
         DEBUG_MESSAGES.append(f"DEBUG: Local tide file not found: {local_filepath}. Proceeding with NOAA API call.")
-    # --- END NEW LOCAL FILE LOGIC ---
+    # --- END MODIFIED LOGIC ---
+
 
     # --- Existing NOAA API call logic (modified slightly for consistency) ---
     start_str, end_str = start_date.strftime("%Y%m%d"), end_date.strftime("%Y%m%d")
