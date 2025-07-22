@@ -11,6 +11,10 @@ from st_supabase_connection import SupabaseConnection, execute_query
 from datetime import timedelta, time
 from collections import Counter
 
+
+DEBUG_MESSAGES = []
+
+
 # --- DATA MODELS (CLASSES) ---
 class Truck:
     def __init__(self, t_id, name, max_len):
