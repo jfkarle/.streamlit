@@ -338,22 +338,27 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
         with open(filepath, 'r') as f:
             for line in f:
                 line = line.strip()
-                if not line or line.startswith('#') or line.startswith('-'):
-                    continue # Skip empty lines, comments, and separator
+                # More robustly skip header lines by only processing lines that start with the year.
+                if not line or not line[0].isdigit():
+                    continue
 
+                # Expected parts: ['2025/01/01', 'Wed', '12:01', 'AM', '8.81', '269', 'H']
                 parts = line.split()
-                if len(parts) < 4:
-                    DEBUG_MESSAGES.append(f"WARNING: Skipping malformed tide line in {filepath}: {line}")
+
+                if len(parts) < 6:
+                    DEBUG_MESSAGES.append(f"WARNING: Skipping malformed tide data line in {filepath}: {line}")
                     continue
 
                 try:
-                    # Example parts: ['2025/01/01', '03:08', 'AM', '9.56', 'H']
-                    date_str = parts[0] # e.g., '2025/01/01'
-                    time_str_am_pm = f"{parts[1]} {parts[2]}" # e.g., '03:08 AM'
-                    value_str = parts[3] # e.g., '9.56'
-                    type_str = parts[4] # e.g., 'H'
+                    # Correctly parse the data row based on the actual file format
+                    date_str = parts[0]
+                    time_str = parts[2]
+                    am_pm_str = parts[3]
+                    height_str = parts[4]
+                    type_str = parts[-1] # The 'H' or 'L' is the last element
 
-                    tide_dt_obj = datetime.datetime.strptime(f"{date_str} {time_str_am_pm}", "%Y/%m/%d %I:%M %p")
+                    datetime_to_parse = f"{date_str} {time_str} {am_pm_str}"
+                    tide_dt_obj = datetime.datetime.strptime(datetime_to_parse, "%Y/%m/%d %I:%M %p")
                     current_date = tide_dt_obj.date()
 
                     # Only process data within the requested date range
@@ -361,12 +366,12 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
                         tide_info = {
                             'type': type_str.upper(),
                             'time': tide_dt_obj.time(),
-                            'height': float(value_str)
+                            'height': float(height_str)
                         }
                         grouped_tides.setdefault(current_date, []).append(tide_info)
 
                 except (ValueError, IndexError) as e:
-                    DEBUG_MESSAGES.append(f"WARNING: Error parsing tide line in {filepath}: {line} - {e}")
+                    DEBUG_MESSAGES.append(f"WARNING: Error processing tide data line in {filepath}: '{line}' - {e}")
                     continue
     except FileNotFoundError:
         DEBUG_MESSAGES.append(f"ERROR: Local tide file not found: {filepath}")
