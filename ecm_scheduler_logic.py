@@ -666,15 +666,15 @@ def _compile_truck_schedules(jobs):
 
         # Process the hauling truck schedule
         hauler_id = getattr(job, 'assigned_hauling_truck_id', None)
-        # Add a check to ensure both start and end times are valid before appending
-        if hauler_id and job.scheduled_start_datetime and job.scheduled_end_datetime:
+        # This check is now more robust to prevent None values
+        if hauler_id is not None and job.scheduled_start_datetime is not None and job.scheduled_end_datetime is not None:
             schedule.setdefault(hauler_id, []).append((job.scheduled_start_datetime, job.scheduled_end_datetime))
 
         # Process the crane truck schedule
         crane_id = getattr(job, 'assigned_crane_truck_id', None)
         crane_end_time = getattr(job, 'j17_busy_end_datetime', None)
-        # Add a check to ensure both start and end times are valid before appending
-        if crane_id and job.scheduled_start_datetime and crane_end_time:
+        # This check is now more robust to prevent None values
+        if crane_id is not None and job.scheduled_start_datetime is not None and crane_end_time is not None:
             schedule.setdefault(crane_id, []).append((job.scheduled_start_datetime, crane_end_time))
             
     return schedule
