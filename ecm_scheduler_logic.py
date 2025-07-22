@@ -651,8 +651,7 @@ def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_sche
     return True
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, truck_operating_hours=None, prioritize_sailboats=True, **kwargs):
-    ### DEBUG
-    st.sidebar.write(f"truck_hours received: {truck_operating_hours}")
+    truck_operating_hours = truck_operating_hours or TRUCK_OPERATING_HOURS
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except ValueError:
