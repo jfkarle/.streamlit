@@ -643,11 +643,22 @@ def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, 
 def _compile_truck_schedules(jobs):
     schedule = {}
     for job in jobs:
-        if job.job_status != "Scheduled": continue
-        if hauler_id := getattr(job, 'assigned_hauling_truck_id', None):
+        if job.job_status != "Scheduled":
+            continue
+
+        # Process the hauling truck schedule
+        hauler_id = getattr(job, 'assigned_hauling_truck_id', None)
+        # Add a check to ensure both start and end times are valid before appending
+        if hauler_id and job.scheduled_start_datetime and job.scheduled_end_datetime:
             schedule.setdefault(hauler_id, []).append((job.scheduled_start_datetime, job.scheduled_end_datetime))
-        if (crane_id := getattr(job, 'assigned_crane_truck_id', None)) and hasattr(job, 'j17_busy_end_datetime') and job.j17_busy_end_datetime:
-            schedule.setdefault(crane_id, []).append((job.scheduled_start_datetime, job.j17_busy_end_datetime))
+
+        # Process the crane truck schedule
+        crane_id = getattr(job, 'assigned_crane_truck_id', None)
+        crane_end_time = getattr(job, 'j17_busy_end_datetime', None)
+        # Add a check to ensure both start and end times are valid before appending
+        if crane_id and job.scheduled_start_datetime and crane_end_time:
+            schedule.setdefault(crane_id, []).append((job.scheduled_start_datetime, crane_end_time))
+            
     return schedule
 
 def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_schedule):
