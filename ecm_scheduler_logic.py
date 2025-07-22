@@ -475,15 +475,41 @@ def get_concise_tide_rule(ramp, boat):
     return f"{float(ramp.tide_offset_hours1):g} hrs +/- HT" if ramp.tide_offset_hours1 else "Tide Rule N/A"
 
 def calculate_ramp_windows(ramp, boat, tide_data, date):
-    if ramp.tide_calculation_method == "AnyTide": return [{'start_time': time.min, 'end_time': time.max}]
-    if ramp.tide_calculation_method == "AnyTideWithDraftRule" and boat.draft_ft and boat.draft_ft < 5.0: return [{'start_time': time.min, 'end_time': time.max}]
+    if ramp.tide_calculation_method == "AnyTide":
+        return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
+    if ramp.tide_calculation_method == "AnyTideWithDraftRule" and boat.draft_ft and boat.draft_ft < 5.0:
+        return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
+
+    # Determine offset_hours based on method and draft
     if ramp.tide_calculation_method == "HoursAroundHighTide_WithDraftRule":
         offset_hours = 3.5 if boat.draft_ft and boat.draft_ft < 5.0 else 3.0
     else:
-        offset_hours = float(ramp.tide_offset_hours1 or 0)
-    if not tide_data or not offset_hours: return []
-    offset = timedelta(hours=offset_hours)
-    return [{'start_time': (datetime.datetime.combine(date, t['time']) - offset).time(), 'end_time': (datetime.datetime.combine(date, t['time']) + offset).time()} for t in tide_data if t['type']=='H']
+        # IMPORTANT: Do not treat 0 offset as 'no rule'. It means 0 hours around HT.
+        # Ensure it's a float; default to 0.0 if None
+        offset_hours = float(ramp.tide_offset_hours1) if ramp.tide_offset_hours1 is not None else 0.0
+
+    # If there's no tide data, we can't calculate windows around tides.
+    if not tide_data:
+        DEBUG_MESSAGES.append(f"DEBUG: No tide data available for {date} at ramp {ramp.ramp_name}.")
+        return []
+
+    # Calculate windows if there's tide data
+    offset = datetime.timedelta(hours=offset_hours)
+    
+    # Filter for High Tides ('H' type) and create windows
+    high_tide_windows = []
+    for t in tide_data:
+        if t['type'] == 'H':
+            tide_dt_combined = datetime.datetime.combine(date, t['time'])
+            window_start_time = (tide_dt_combined - offset).time()
+            window_end_time = (tide_dt_combined + offset).time()
+            high_tide_windows.append({'start_time': window_start_time, 'end_time': window_end_time})
+            DEBUG_MESSAGES.append(f"DEBUG: Calculated tide window for {t['time']}: {window_start_time} - {window_end_time} (Offset: {offset_hours}h)")
+
+    if not high_tide_windows:
+        DEBUG_MESSAGES.append(f"DEBUG: No high tides found in tide_data for {date} or no windows generated.")
+
+    return high_tide_windows
 
 def get_final_schedulable_ramp_times(
     ramp_obj,
