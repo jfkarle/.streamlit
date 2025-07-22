@@ -44,8 +44,7 @@ class Boat:
 
 class Job:
     def __init__(self, **kwargs):
-        # This internal helper is now smarter: it accepts existing datetime objects
-        # OR parses them if they are strings.
+        # This internal helper accepts existing datetime objects OR parses them if they are strings.
         def _parse_or_get_datetime(dt_value):
             if isinstance(dt_value, datetime.datetime):
                 return dt_value
@@ -60,7 +59,7 @@ class Job:
             if not int_string: return None
             try: return int(int_string)
             except (ValueError, TypeError): return None
-            
+
         self.job_id = _parse_int(kwargs.get("job_id"))
         self.customer_id = _parse_int(kwargs.get("customer_id"))
         self.boat_id = _parse_int(kwargs.get("boat_id"))
