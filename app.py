@@ -774,46 +774,51 @@ def show_settings_page():
         st.subheader("Truck & Crane Weekly Hours")
         st.info("NOTE: Changes made here are saved permanently to the database.")
 
-        schedule_to_edit = ecm.TRUCK_OPERATING_HOURS
-        truck_id = st.selectbox("Select a resource to edit:", list(schedule_to_edit.keys()))
+        # --- FIX: Use all truck names for selection and handle name/ID mapping ---
+
+        # Create a mapping from truck name to truck ID for easy lookup
+        name_to_id_map = {t.truck_name: t.truck_id for t in ecm.ECM_TRUCKS.values()}
         
-        if truck_id:
+        # Get a sorted list of all truck names to populate the selectbox
+        all_truck_names = sorted(list(name_to_id_map.keys()))
+
+        # The selectbox now shows user-friendly names for ALL trucks
+        selected_truck_name = st.selectbox("Select a resource to edit:", all_truck_names)
+
+        if selected_truck_name:
+            # Get the corresponding numeric ID for the selected name
+            selected_truck_id = name_to_id_map.get(selected_truck_name)
+
             st.markdown("---")
-            with st.form(f"form_{truck_id}"):
-                st.write(f"**Editing hours for {truck_id}**")
+            # Use the name for a unique form key, replacing invalid characters
+            with st.form(f"form_{selected_truck_name.replace('/', '_')}"):
+                st.write(f"**Editing hours for {selected_truck_name}**")
                 
-                # This dictionary will hold the new hours from the form inputs
                 new_hours = {}
-                
                 days_of_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                
                 for i, day_name in enumerate(days_of_week):
-                    # Get the current hours for this day from the loaded schedule
-                    current_hours = schedule_to_edit.get(truck_id, {}).get(i)
+                    # Use the truck's ID to safely look up its schedule, handling trucks with no schedule
+                    current_hours = ecm.TRUCK_OPERATING_HOURS.get(selected_truck_id, {}).get(i)
                     is_working = current_hours is not None
                     
-                    # Set default times for the time_input widgets
                     start_time, end_time = current_hours if is_working else (datetime.time(8, 0), datetime.time(16, 0))
-
-                    # Display a summary in the expander title
                     summary = f"{day_name}: {ecm.format_time_for_display(start_time)} - {ecm.format_time_for_display(end_time)}" if is_working else f"{day_name}: Off Duty"
                     
                     with st.expander(summary):
                         col1, col2, col3 = st.columns([1, 2, 2])
-                        working = col1.checkbox("Working", value=is_working, key=f"{truck_id}_{i}_working")
-                        
-                        new_start = col2.time_input("Start", value=start_time, key=f"{truck_id}_{i}_start", disabled=not working)
-                        new_end = col3.time_input("End", value=end_time, key=f"{truck_id}_{i}_end", disabled=not working)
-                        
-                        # Store the result for this day
+                        working = col1.checkbox("Working", value=is_working, key=f"{selected_truck_name}_{i}_working")
+                        new_start = col2.time_input("Start", value=start_time, key=f"{selected_truck_name}_{i}_start", disabled=not working)
+                        new_end = col3.time_input("End", value=end_time, key=f"{selected_truck_name}_{i}_end", disabled=not working)
                         new_hours[i] = (new_start, new_end) if working else None
                 
                 if st.form_submit_button("Save Hours"):
-                    # Call the new function to update the database
-                    success, message = ecm.update_truck_schedule(truck_id, new_hours)
+                    # Pass the truck NAME to the update function, as it expects
+                    success, message = ecm.update_truck_schedule(selected_truck_name, new_hours)
 
                     if success:
-                        # Also update the in-memory data to match, avoiding a full reload
-                        ecm.TRUCK_OPERATING_HOURS[truck_id] = new_hours
+                        # Reload all data to ensure consistency after the update
+                        ecm.load_all_data_from_sheets()
                         st.success(message)
                         st.rerun()
                     else:
