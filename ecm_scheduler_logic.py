@@ -420,24 +420,25 @@ def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
 
 def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, truck_hours, manager_override, force_preferred_truck):
     ### DEBUG
-    st.sidebar.write(f"truck_hours in diagnose: {truck_hours}")
+    DEBUG_MESSAGES.append(f"truck_hours in diagnose: {truck_hours}") # This might still be a complex object, consider json.dumps if needed
     """A modified version of the function with step-by-step debugging output."""
-    st.sidebar.subheader("--- Failure Analysis ---")
-    st.sidebar.write(f"Debugging for: {req_date.strftime('%A, %Y-%m-%d')}")
+    DEBUG_MESSAGES.append("--- Failure Analysis ---")
+    DEBUG_MESSAGES.append(f"Debugging for: {req_date.strftime('%A, %Y-%m-%d')}")
 
     # Step 1: Find all trucks suitable for the boat's size.
     suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
-    st.sidebar.write("**Step 1: Suitable Trucks**")
-    st.sidebar.json([t.truck_name for t in suitable_trucks])
+    DEBUG_MESSAGES.append("**Step 1: Suitable Trucks**")
+    DEBUG_MESSAGES.append(json.dumps([t.truck_name for t in suitable_trucks], indent=2))
 
     if not suitable_trucks:
         return [f"**Boat Too Large:** No trucks in the fleet are rated for a boat of {boat.boat_length}ft."]
 
     # Step 2: Check which of those trucks are on duty.
+    # CRITICAL FIX: Use t.truck_id for lookup in truck_hours
     trucks_on_duty = {t.truck_name: truck_hours.get(t.truck_id, {}).get(req_date.weekday()) for t in suitable_trucks}
-    st.sidebar.write("**Step 2: Duty Status** (Should have time values)")
+    DEBUG_MESSAGES.append("**Step 2: Duty Status** (Should have time values)")
     # We convert time objects to strings for display
-    st.sidebar.json({k: str(v) if v else "Off Duty" for k, v in trucks_on_duty.items()})
+    DEBUG_MESSAGES.append(json.dumps({k: str(v) if v else "Off Duty" for k, v in trucks_on_duty.items()}, indent=2))
     
     if not any(trucks_on_duty.values()):
         return [f"**No Trucks on Duty:** No suitable trucks are scheduled to work on {req_date.strftime('%A, %B %d')}."]
@@ -447,17 +448,18 @@ def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, 
         # Step 3: Fetch tide predictions from NOAA.
         all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, req_date, req_date)
         tides_for_day = all_tides.get(req_date, [])
-        st.sidebar.write("**Step 3: Fetched Tides** (High Tides for today)")
-        st.sidebar.json([t for t in tides_for_day if t['type'] == 'H'])
+        DEBUG_MESSAGES.append("**Step 3: Fetched Tides** (High Tides for today)")
+        DEBUG_MESSAGES.append(json.dumps([t for t in tides_for_day if t['type'] == 'H'], indent=2))
 
         # Step 5: Check for overlap between tide windows and each truck's shift.
         final_windows_found = False
-        st.sidebar.write("**Step 4 & 5: Overlap Calculation**")
+        DEBUG_MESSAGES.append("**Step 4 & 5: Overlap Calculation**")
         for truck in suitable_trucks:
             # Only check trucks that are actually on duty
             if trucks_on_duty.get(truck.truck_name):
-                final_windows = get_final_schedulable_ramp_times(ramp_obj, boat, req_date, all_tides, truck.truck_name, truck_hours)
-                st.sidebar.write(f" - Overlap for **{truck.truck_name}**: `{len(final_windows)}` valid window(s) found.")
+                # Ensure get_final_schedulable_ramp_times also receives truck.truck_id
+                final_windows = get_final_schedulable_ramp_times(ramp_obj, boat, req_date, all_tides, truck.truck_id, truck_hours)
+                DEBUG_MESSAGES.append(f" - Overlap for **{truck.truck_name}**: `{len(final_windows)}` valid window(s) found.")
                 if final_windows:
                     final_windows_found = True
         
@@ -466,7 +468,6 @@ def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, 
 
     # If we get here, it means trucks are on duty and tide windows are fine.
     return ["**All Slots Booked:** All available time slots for suitable trucks are already taken on this date."]
-
 
 
 
