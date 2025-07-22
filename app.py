@@ -925,6 +925,8 @@ def initialize_session_state():
     if not st.session_state.get('data_loaded'):
         ecm.load_all_data_from_sheets()
         st.session_state.data_loaded = True
+        ### DEBUG
+        st.sidebar.write(ecm.TRUCK_OPERATING_HOURS)
         
 initialize_session_state()
 
