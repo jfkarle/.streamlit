@@ -770,7 +770,8 @@ def show_settings_page():
         c1.number_input("Days to search in PAST", min_value=0, max_value=30, value=st.session_state.get('crane_look_back_days', 7), key="crane_look_back_days")
         c2.number_input("Days to search in FUTURE", min_value=7, max_value=180, value=st.session_state.get('crane_look_forward_days', 60), key="crane_look_forward_days")
 
-        with tab2:
+    # The 'with tab2:' block is now correctly indented at the same level as 'with tab1:'
+    with tab2:
         st.subheader("Truck & Crane Weekly Hours")
         st.info("NOTE: Changes made here are saved permanently to the database.")
 
@@ -815,7 +816,6 @@ def show_settings_page():
                         st.rerun()
                     else:
                         st.error(message)
-
 
     with tab3:
         st.subheader("QA & Data Generation Tools")
