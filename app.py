@@ -901,8 +901,6 @@ def show_settings_page():
 
 # --- Session State Initialization ---
 
-ecm.DEBUG_MESSAGES = []
-
 def initialize_session_state():
     defaults = {
         'data_loaded': False, 'info_message': "", 'current_job_request': None, 'found_slots': [],
