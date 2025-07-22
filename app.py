@@ -770,27 +770,21 @@ def show_settings_page():
         c1.number_input("Days to search in PAST", min_value=0, max_value=30, value=st.session_state.get('crane_look_back_days', 7), key="crane_look_back_days")
         c2.number_input("Days to search in FUTURE", min_value=7, max_value=180, value=st.session_state.get('crane_look_forward_days', 60), key="crane_look_forward_days")
 
-    with tab2:
+        with tab2:
         st.subheader("Truck & Crane Weekly Hours")
         st.info("NOTE: Changes made here are saved permanently to the database.")
 
-        # --- FIX: Use all truck names for selection and handle name/ID mapping ---
-
-        # Create a mapping from truck name to truck ID for easy lookup
+        # This logic ensures a single truck name is selected and mapped to a single ID.
         name_to_id_map = {t.truck_name: t.truck_id for t in ecm.ECM_TRUCKS.values()}
-        
-        # Get a sorted list of all truck names to populate the selectbox
         all_truck_names = sorted(list(name_to_id_map.keys()))
 
-        # The selectbox now shows user-friendly names for ALL trucks
+        # Ensure you are using st.selectbox, not st.multiselect
         selected_truck_name = st.selectbox("Select a resource to edit:", all_truck_names)
 
         if selected_truck_name:
-            # Get the corresponding numeric ID for the selected name
             selected_truck_id = name_to_id_map.get(selected_truck_name)
 
             st.markdown("---")
-            # Use the name for a unique form key, replacing invalid characters
             with st.form(f"form_{selected_truck_name.replace('/', '_')}"):
                 st.write(f"**Editing hours for {selected_truck_name}**")
                 
@@ -798,7 +792,7 @@ def show_settings_page():
                 days_of_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
                 
                 for i, day_name in enumerate(days_of_week):
-                    # Use the truck's ID to safely look up its schedule, handling trucks with no schedule
+                    # This line requires selected_truck_id to be a single, hashable value.
                     current_hours = ecm.TRUCK_OPERATING_HOURS.get(selected_truck_id, {}).get(i)
                     is_working = current_hours is not None
                     
@@ -813,16 +807,15 @@ def show_settings_page():
                         new_hours[i] = (new_start, new_end) if working else None
                 
                 if st.form_submit_button("Save Hours"):
-                    # Pass the truck NAME to the update function, as it expects
                     success, message = ecm.update_truck_schedule(selected_truck_name, new_hours)
 
                     if success:
-                        # Reload all data to ensure consistency after the update
                         ecm.load_all_data_from_sheets()
                         st.success(message)
                         st.rerun()
                     else:
                         st.error(message)
+
 
     with tab3:
         st.subheader("QA & Data Generation Tools")
