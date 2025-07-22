@@ -44,23 +44,34 @@ class Boat:
 
 class Job:
     def __init__(self, **kwargs):
-        def _parse_datetime(dt_string):
-            if not dt_string or not isinstance(dt_string, str): return None
-            try: return datetime.datetime.fromisoformat(dt_string.replace(" ", "T"))
-            except (ValueError, TypeError): return None
+        # This internal helper is now smarter: it accepts existing datetime objects
+        # OR parses them if they are strings.
+        def _parse_or_get_datetime(dt_value):
+            if isinstance(dt_value, datetime.datetime):
+                return dt_value
+            if isinstance(dt_value, str):
+                try:
+                    return datetime.datetime.fromisoformat(dt_value.replace(" ", "T"))
+                except (ValueError, TypeError):
+                    return None
+            return None # Return None for other types like None, int, etc.
+
         def _parse_int(int_string):
             if not int_string: return None
             try: return int(int_string)
             except (ValueError, TypeError): return None
+            
         self.job_id = _parse_int(kwargs.get("job_id"))
         self.customer_id = _parse_int(kwargs.get("customer_id"))
         self.boat_id = _parse_int(kwargs.get("boat_id"))
         self.service_type = kwargs.get("service_type")
-        self.scheduled_start_datetime = _parse_datetime(kwargs.get("scheduled_start_datetime"))
-        self.scheduled_end_datetime = _parse_datetime(kwargs.get("scheduled_end_datetime"))
+        # Use the new, more flexible helper function
+        self.scheduled_start_datetime = _parse_or_get_datetime(kwargs.get("scheduled_start_datetime"))
+        self.scheduled_end_datetime = _parse_or_get_datetime(kwargs.get("scheduled_end_datetime"))
         self.assigned_hauling_truck_id = kwargs.get("assigned_hauling_truck_id")
         self.assigned_crane_truck_id = kwargs.get("assigned_crane_truck_id")
-        self.j17_busy_end_datetime = _parse_datetime(kwargs.get("j17_busy_end_datetime"))
+        # Use the new, more flexible helper function
+        self.j17_busy_end_datetime = _parse_or_get_datetime(kwargs.get("j17_busy_end_datetime"))
         self.pickup_ramp_id = kwargs.get("pickup_ramp_id")
         self.dropoff_ramp_id = kwargs.get("dropoff_ramp_id")
         self.pickup_street_address = kwargs.get("pickup_street_address", "")
