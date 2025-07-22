@@ -7,10 +7,7 @@ import math
 import os
 import datetime
 import ecm_scheduler_logic as ecm
-
-### st.write("--- Session State ---")
-### st.write(st.session_state)
-### st.write("--- End Session State ---")
+import json
 
 #from reportlab.lib.pagesizes import letter
 import calendar
@@ -903,6 +900,9 @@ def show_settings_page():
 
 
 # --- Session State Initialization ---
+
+ecm.DEBUG_MESSAGES.clear()
+
 def initialize_session_state():
     defaults = {
         'data_loaded': False, 'info_message': "", 'current_job_request': None, 'found_slots': [],
@@ -932,8 +932,6 @@ initialize_session_state()
 
 # --- Main App Body ---
 st.title("ECM Logistics - V2")
-
-st.sidebar.json(ecm.ECM_TRUCKS)
 
 with st.container(border=True):
     stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
@@ -986,6 +984,8 @@ app_mode = st.sidebar.radio(
 # Call the new functions based on the selected mode
 if app_mode == "Schedule New Boat":
     show_scheduler_page()
+    with st.expander("Show Debug Log for Last Slot Search", expanded=False):
+    st.text_area("Debug Output:", "\n".join(ecm.DEBUG_MESSAGES), height=500, key="debug_log_text_area")
 elif app_mode == "Reporting":
     show_reporting_page()
 elif app_mode == "Settings":
