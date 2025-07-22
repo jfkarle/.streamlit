@@ -92,6 +92,12 @@ def get_db_connection():
         key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZXhyemxqdmFnaXdxc3RhcG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwODY0ODIsImV4cCI6MjA2NzY2MjQ4Mn0.hgWhtefyiEmGj5CERladOe3hMBM-rVnwMGNwrt8FT6Y"
     )
 
+Okay, I will edit the provided load_all_data_from_sheets function block to include the debug print statements.
+
+Here is the updated block of code for load_all_data_from_sheets:
+
+Python
+
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS
@@ -115,6 +121,10 @@ def load_all_data_from_sheets():
                 max_len = row.get("max_boat_length")
             )
             ECM_TRUCKS[t.truck_id] = t
+        
+        # DEBUG: Print ECM_TRUCKS after loading
+        st.sidebar.write("DEBUG: ECM_TRUCKS after loading:")
+        st.sidebar.json({k: t.truck_name for k, t in ECM_TRUCKS.items()})
 
         # Build a name → ID map so schedules can be keyed by numeric truck_id
         name_to_id = {t.truck_name: t.truck_id for t in ECM_TRUCKS.values()}
@@ -178,8 +188,26 @@ def load_all_data_from_sheets():
             end_time   = datetime.datetime.strptime(row["end_time"],   '%H:%M:%S').time()
             processed_schedules.setdefault(truck_id, {})[day] = (start_time, end_time)
 
+        # DEBUG: Print processed_schedules before update
+        st.sidebar.write("DEBUG: processed_schedules before update:")
+        # Convert times to string for JSON serialization
+        json_friendly_processed_schedules = {
+            k: {d: f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for d, (s, e) in v.items()}
+            for k, v in processed_schedules.items()
+        }
+        st.sidebar.json(json_friendly_processed_schedules)
+
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
+
+        # DEBUG: Print TRUCK_OPERATING_HOURS after update
+        st.sidebar.write("DEBUG: TRUCK_OPERATING_HOURS after update:")
+        # Convert times to string for JSON serialization
+        json_friendly_truck_operating_hours = {
+            k: {d: f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for d, (s, e) in v.items()}
+            for k, v in TRUCK_OPERATING_HOURS.items()
+        }
+        st.sidebar.json(json_friendly_truck_operating_hours)
 
         st.toast(
             f"Loaded data for {len(ECM_TRUCKS)} trucks, "
