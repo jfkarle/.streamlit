@@ -338,16 +338,32 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
         "format": "json"
     }
 
+    # Define common browser-like headers
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+    }
+
     DEBUG_MESSAGES.append(f"DEBUG: Fetching tides for station {station_id} from {start_str} to {end_str}")
     DEBUG_MESSAGES.append(f"DEBUG: NOAA API URL params: {params}")
+    DEBUG_MESSAGES.append(f"DEBUG: Request Headers sent: {headers}") # Log headers being sent
 
     try:
-        resp = requests.get("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter", params=params, timeout=15)
+        resp = requests.get(
+            "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter",
+            params=params,
+            headers=headers, # Pass the headers here
+            timeout=15
+        )
 
-        # --- ADD THESE NEW DEBUG LINES ---
         DEBUG_MESSAGES.append(f"DEBUG: NOAA API Response Status Code: {resp.status_code}")
+        DEBUG_MESSAGES.append(f"DEBUG: NOAA API Response Headers: {dict(resp.headers)}") # Log response headers
         DEBUG_MESSAGES.append(f"DEBUG: NOAA API Raw Response Text (first 500 chars): {resp.text[:500]}")
-        # --- END NEW DEBUG LINES ---
+
 
         resp.raise_for_status() # This will raise an HTTPError for bad responses (4xx or 5xx)
 
@@ -360,7 +376,7 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
         DEBUG_MESSAGES.append(json.dumps(predictions, indent=2))
 
         DEBUG_MESSAGES.append("🔍 NOAA raw predictions:")
-        DEBUG_MESSAGES.append(json.dumps(predictions, indent=2)) # Replaced sidebar write with DEBUG_MESSAGES
+        DEBUG_MESSAGES.append(json.dumps(predictions, indent=2))
 
         grouped_tides = {}
         for tide in predictions:
@@ -377,9 +393,12 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
     except requests.exceptions.RequestException as e:
         # This will catch HTTPError if raise_for_status() is triggered, or other request errors.
         DEBUG_MESSAGES.append(f"ERROR: Failed to connect to NOAA API for station {station_id}: {e}")
+        # Add a print of resp.text here too if it's not empty, in case it's a non-200 status.
+        if 'resp' in locals() and resp.status_code != 200:
+            DEBUG_MESSAGES.append(f"DEBUG: Non-200 response text in RequestException: {resp.text[:500]}")
         return {}
     except json.JSONDecodeError as e:
-        DEBUG_MESSAGES.append(f"ERROR: Failed to decode JSON from NOAA API for station {station_id}: {e}. Raw response text: {resp.text}")
+        DEBUG_MESSAGES.append(f"ERROR: Failed to decode JSON from NOAA API for station {station_id}: {e}. Raw response text: {resp.text[:500]}")
         return {}
     except Exception as e:
         DEBUG_MESSAGES.append(f"ERROR: General error fetching tides for station {station_id}: {e}")
