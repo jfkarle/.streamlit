@@ -92,12 +92,6 @@ def get_db_connection():
         key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZXhyemxqdmFnaXdxc3RhcG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwODY0ODIsImV4cCI6MjA2NzY2MjQ4Mn0.hgWhtefyiEmGj5CERladOe3hMBM-rVnwMGNwrt8FT6Y"
     )
 
-Okay, I will edit the provided load_all_data_from_sheets function block to include the debug print statements.
-
-Here is the updated block of code for load_all_data_from_sheets:
-
-Python
-
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS
