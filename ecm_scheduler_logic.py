@@ -78,7 +78,7 @@ class Job:
         self.dropoff_street_address = kwargs.get("dropoff_street_address", "")
         self.job_status = kwargs.get("job_status", "Scheduled")
         self.notes = kwargs.get("notes", "")
-
+        
 # --- CONFIGURATION AND GLOBAL CONSTANTS ---
 HOME_BASE_TOWN = "Pem"
 SOUTH_ROUTE = ["Han", "Nor", "Sci", "Mar", "Dux", "Kin", "Ply", "Bou", "San"]
