@@ -532,33 +532,34 @@ def get_final_schedulable_ramp_times(
     truck_close_dt = datetime.datetime.combine(date_to_check, truck_hours[1])
 
     if not ramp_obj:
-        return [{
-            'start_time': truck_hours[0],
-            'end_time':   truck_hours[1],
-            'high_tide_times': [],
-            'tide_rule_concise': 'N/A'
-        }]
+        return [{'start_time': truck_hours[0], 'end_time': truck_hours[1], 'high_tide_times': [], 'tide_rule_concise': 'N/A'}]
 
     tide_data_for_day = all_tides.get(date_to_check, [])
-    tidal_windows = calculate_ramp_windows(
-        ramp_obj, boat_obj, tide_data_for_day, date_to_check
-    )
+    tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
     
     all_schedulable_slots = []
+
+    # --- START OF DEBUG BLOCK ---
+    st.write("--- SCHEDULING CALCULATION (DEBUG) ---")
+    st.write(f"**Truck Shift:** `{truck_open_dt.strftime('%H:%M')}` to `{truck_close_dt.strftime('%H:%M')}`")
+    # --- END OF DEBUG BLOCK ---
 
     for t_win in tidal_windows:
         tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'])
         tidal_end_dt   = datetime.datetime.combine(date_to_check, t_win['end_time'])
 
-        # --- FIX STARTS HERE ---
-        # If the start time is after the end time, it means the window crosses midnight.
-        # Add one day to the end time to make the interval valid.
         if tidal_start_dt > tidal_end_dt:
             tidal_end_dt += datetime.timedelta(days=1)
-        # --- FIX ENDS HERE ---
 
         overlap_start = max(tidal_start_dt, truck_open_dt)
         overlap_end   = min(tidal_end_dt,   truck_close_dt)
+        
+        # --- START OF DEBUG BLOCK ---
+        st.write(f"**Tide Window:** `{tidal_start_dt.strftime('%H:%M')}` to `{tidal_end_dt.strftime('%H:%M')}`")
+        st.write(f"**Overlap Found:** `{overlap_start.strftime('%H:%M')}` to `{overlap_end.strftime('%H:%M')}`")
+        st.write(f"**Comparison Result:** `{overlap_start < overlap_end}`")
+        st.write("---")
+        # --- END OF DEBUG BLOCK ---
 
         if overlap_start < overlap_end:
             all_schedulable_slots.append({
