@@ -528,11 +528,9 @@ def get_final_schedulable_ramp_times(
     if not truck_hours:
         return []
 
-    # Build datetimes for the truck’s shift
     truck_open_dt  = datetime.datetime.combine(date_to_check, truck_hours[0])
     truck_close_dt = datetime.datetime.combine(date_to_check, truck_hours[1])
 
-    # If no ramp selected, allow full truck window
     if not ramp_obj:
         return [{
             'start_time': truck_hours[0],
@@ -541,25 +539,27 @@ def get_final_schedulable_ramp_times(
             'tide_rule_concise': 'N/A'
         }]
 
-    # Get today’s tide data and compute each HT ± offset window
     tide_data_for_day = all_tides.get(date_to_check, [])
     tidal_windows = calculate_ramp_windows(
         ramp_obj, boat_obj, tide_data_for_day, date_to_check
     )
     
-    # This list will collect all valid slots from all of the day's tidal windows.
     all_schedulable_slots = []
 
-    # Iterate through every tidal window for the day.
     for t_win in tidal_windows:
         tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'])
         tidal_end_dt   = datetime.datetime.combine(date_to_check, t_win['end_time'])
 
-        # Compute overlap with the truck's shift.
+        # --- FIX STARTS HERE ---
+        # If the start time is after the end time, it means the window crosses midnight.
+        # Add one day to the end time to make the interval valid.
+        if tidal_start_dt > tidal_end_dt:
+            tidal_end_dt += datetime.timedelta(days=1)
+        # --- FIX ENDS HERE ---
+
         overlap_start = max(tidal_start_dt, truck_open_dt)
         overlap_end   = min(tidal_end_dt,   truck_close_dt)
 
-        # If a valid overlap exists, add it to our list.
         if overlap_start < overlap_end:
             all_schedulable_slots.append({
                 'start_time'       : overlap_start.time(),
@@ -568,7 +568,6 @@ def get_final_schedulable_ramp_times(
                 'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
             })
 
-    # Return the combined list of all valid slots.
     return all_schedulable_slots
 
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
