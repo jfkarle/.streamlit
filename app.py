@@ -51,10 +51,16 @@ def format_tides_for_display(slot, truck_schedule):
     op_hours = truck_schedule.get(truck_id, {}).get(slot_date.weekday())
     if not op_hours: return "HT: " + " / ".join([ecm.format_time_for_display(t) for t in tide_times])
     op_open, op_close = op_hours[0], op_hours[1]
+
     def get_tide_relevance_score(tide_time):
-        tide_dt = datetime.datetime.combine(datetime.date.today(), tide_time)
-        open_dt, close_dt = datetime.datetime.combine(datetime.date.today(), op_open), datetime.datetime.combine(datetime.date.today(), op_close)
+        # Change these lines to make them timezone-aware (UTC)
+        # We use slot_date for the date component to ensure consistency with the job's date
+        tide_dt = datetime.datetime.combine(slot_date, tide_time, tzinfo=timezone.utc)
+        open_dt = datetime.datetime.combine(slot_date, op_open, tzinfo=timezone.utc)
+        close_dt = datetime.datetime.combine(slot_date, op_close, tzinfo=timezone.utc)
+
         return (0, abs((tide_dt - open_dt).total_seconds())) if open_dt <= tide_dt <= close_dt else (1, min(abs((tide_dt - open_dt).total_seconds()), abs((tide_dt - close_dt).total_seconds())))
+
     sorted_tides = sorted(tide_times, key=get_tide_relevance_score)
     if not sorted_tides: return ""
     primary_tide_str = ecm.format_time_for_display(sorted_tides[0])
@@ -89,6 +95,12 @@ def display_crane_day_calendar(crane_days_for_ramp):
                     font_weight = "bold" if is_candidate or is_today else "normal"
                     cols[i].markdown(f'<div style="padding:10px; border-radius:5px; border: 2px solid {border_color};background-color:{bg_color}; height: 60px;"><p style="text-align: right; font-weight: {font_weight}; color: black;">{day.day}</p></div>', unsafe_allow_html=True)
 
+You are absolutely correct to point that out again! My apologies for the oversight. The generate_daily_planner_pdf function is in your app.py file, and I need to provide the complete corrected block for you to replace, as it involves a logical correction beyond just timezone awareness.
+
+Here's the full generate_daily_planner_pdf function with the necessary corrections. You should replace the entire existing generate_daily_planner_pdf function in your app.py file with this updated version:
+
+Python
+
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
@@ -119,24 +131,48 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     high_tide_highlights, low_tide_highlights = [], []
     primary_high_tide = None
     if jobs_for_day:
-        ramp_id = getattr(jobs_for_day[0], 'pickup_ramp_id', None) or getattr(jobs_for_day[0], 'dropoff_ramp_id', None)
-        if ramp_id:
-            ramp_obj = ecm.get_ramp_details(ramp_id)
-            # Fetch tides for the specific day
-            tide_data_for_day = ecm.fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, report_date, report_date)
-            all_tides = tide_data_for_day.get(report_date, [])
-            
-            # Process the fetched tides
-            high_tides = [t for t in all_tides if t.get('type') == 'H']
-            if high_tides:
-                noon = datetime.datetime.combine(datetime.date.min, datetime.time(12,0))
-                primary_high_tide = min(high_tides, key=lambda t: abs(datetime.datetime.combine(datetime.date.min, t['time']) - noon))
+        # It's better to pick a ramp associated with the jobs for the day,
+        # or a primary ramp if no jobs exist for that day.
+        # For simplicity, let's assume if there are jobs, one of their ramps is sufficient.
+        # If no jobs for the day, tide info might not be as relevant or needs a default.
+        ramp_id_for_tides = None
+        if jobs_for_day:
+            # Try to get ramp from the first job, or a preferred ramp from boat
+            first_job = jobs_for_day[0]
+            if first_job.pickup_ramp_id:
+                ramp_id_for_tides = first_job.pickup_ramp_id
+            elif first_job.dropoff_ramp_id:
+                ramp_id_for_tides = first_job.dropoff_ramp_id
+            else: # Fallback if job has no ramp, use a common one or a default
+                # This might be too simplistic, consider a more robust fallback
+                # e.g., default to ScituateHarborJericho if no ramp is explicitly set for jobs
+                ramp_id_for_tides = "3000001" # Example: Cohasset Harbor (Parker Ave)
 
-            def round_time(t):
-                mins = t.hour * 60 + t.minute;rounded = int(round(mins / 15.0) * 15)
-                return datetime.time(min(23, rounded // 60), rounded % 60)
-            high_tide_highlights = [round_time(t['time']) for t in all_tides.get('H', [])]
-            low_tide_highlights = [round_time(t['time']) for t in all_tides.get('L', [])]
+        if ramp_id_for_tides:
+            ramp_obj = ecm.get_ramp_details(ramp_id_for_tides)
+            if ramp_obj:
+                # Fetch tides for the specific day
+                all_tides_for_date = ecm.fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, report_date, report_date)
+                tide_data_for_day = all_tides_for_date.get(report_date, []) # Get tides for the exact report_date
+                
+                # Process the fetched tides
+                high_tides_full_data = [t for t in tide_data_for_day if t.get('type') == 'H']
+                low_tides_full_data = [t for t in tide_data_for_day if t.get('type') == 'L']
+                
+                if high_tides_full_data:
+                    # Make noon_dt timezone-aware for correct comparison
+                    noon = datetime.datetime.combine(report_date, datetime.time(12,0), tzinfo=timezone.utc)
+                    
+                    # Create temporary aware datetimes for sorting, then use original time
+                    primary_high_tide = min(high_tides_full_data, key=lambda t: abs(datetime.datetime.combine(report_date, t['time'], tzinfo=timezone.utc) - noon))
+
+                def round_time(t):
+                    mins = t.hour * 60 + t.minute;rounded = int(round(mins / 15.0) * 15)
+                    return datetime.time(min(23, rounded // 60), rounded % 60)
+                
+                # Correctly access the 'time' from the full tide data
+                high_tide_highlights = [round_time(t['time']) for t in high_tides_full_data]
+                low_tide_highlights = [round_time(t['time']) for t in low_tides_full_data]
 
     c.setFont("Helvetica-Bold", 12);c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
     if primary_high_tide:
@@ -186,6 +222,8 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.line(margin, bottom_y, width - margin, bottom_y);c.line(margin, top_y, width - margin, top_y)
 
     for job in jobs_for_day:
+        # Ensure these are timezone-aware if they're used in comparisons
+        # However, .time() extracts the naive time part, so these are fine for display based on time only
         start_time, end_time = job.scheduled_start_datetime.time(), job.scheduled_end_datetime.time()
         if start_time < start_time_obj: start_time = start_time_obj
         y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
@@ -199,6 +237,8 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.setLineWidth(2);c.line(text_x, y0 - 45, text_x, y_end); c.line(text_x - 10, y_end, text_x + 10, y_end)
         if job.assigned_crane_truck_id and 'J17' in column_map:
             crane_col_index = column_map['J17'];crane_text_x = margin + time_col_width + (crane_col_index + 0.5) * col_width
+            # This line needs the .time() method to extract the time component for comparison
+            # to match the other time-only comparisons in this function.
             y_crane_end = get_y_for_time(job.j17_busy_end_datetime.time())
             c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
             c.setFont("Helvetica", 7);c.drawCentredString(crane_text_x, line2_y, ecm._abbreviate_town(job.dropoff_street_address))
