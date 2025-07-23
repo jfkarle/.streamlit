@@ -206,21 +206,38 @@ def load_all_data_from_sheets():
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
 
+        # --- NEW: PROACTIVELY GEOCDE COMMON LOCATIONS ---
+        DEBUG_MESSAGES.append("DEBUG: Pre-geocoding common locations...")
+        # Geocode Yard Address
+        _ = get_location_coords(address=YARD_ADDRESS)
+
+        # Geocode all ramps
+        for ramp_id, ramp_obj in ECM_RAMPS.items():
+            _ = get_location_coords(ramp_id=ramp_id)
         
-        # Convert times to string for JSON serialization
+        # Geocode all boat storage addresses
+        for boat_id, boat_obj in LOADED_BOATS.items():
+            if boat_obj.storage_address:
+                _ = get_location_coords(address=boat_obj.storage_address)
+        
+        # Geocode addresses from all jobs (pickup/dropoff streets)
+        for job in all_jobs: # Use the 'all_jobs' list that was just loaded
+            if job.pickup_street_address:
+                _ = get_location_coords(address=job.pickup_street_address)
+            if job.dropoff_street_address:
+                _ = get_location_coords(address=job.dropoff_street_address)
+        DEBUG_MESSAGES.append("DEBUG: Pre-geocoding complete.")
+        # --- END NEW BLOCK ---
+        
+        # Convert times to string for JSON serialization (this part is informational/for logging, not functional)
         json_friendly_processed_schedules = {
             k: {d: f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for d, (s, e) in v.items()}
             for k, v in processed_schedules.items()
         }
-
-
-        
-        # Convert times to string for JSON serialization
         json_friendly_truck_operating_hours = {
             k: {d: f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for d, (s, e) in v.items()}
             for k, v in TRUCK_OPERATING_HOURS.items()
         }
-
 
         st.toast(
             f"Loaded data for {len(ECM_TRUCKS)} trucks, "
