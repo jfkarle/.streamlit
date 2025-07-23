@@ -10,9 +10,17 @@ import streamlit as st
 from st_supabase_connection import SupabaseConnection, execute_query
 from datetime import timedelta, time, timezone
 from collections import Counter
-from geopy.geocoders import Nominatim
-from geopy.distance import geodesic # For "as the crow flies" distance
+import streamlit as st # Ensure this is imported to access st.secrets
+from geopy.geocoders import GoogleV3 # Change Nominatim to GoogleV3
 
+Maps_API_KEY = st.secrets.get("Maps_API_KEY")
+if not Maps_API_KEY:
+    DEBUG_MESSAGES.append("ERROR: Google Maps API Key not found in Streamlit Secrets. Geocoding and Travel Time will likely fail.")
+    # Optionally, raise an error or use a fallback here if the key is mandatory for app function
+
+_geolocator = GoogleV3(api_key=Maps_API_KEY, user_agent="ecm_boat_scheduler_app")
+
+_location_coords_cache = {} # Ensure this line is present here
 
 DEBUG_MESSAGES = []
 
@@ -23,9 +31,11 @@ class Truck:
         self.truck_id, self.truck_name, self.max_boat_length, self.is_crane = t_id, name, max_len, "Crane" in name
 
 class Ramp:
-    def __init__(self, r_id, name, station, tide_method="AnyTide", offset=None, boats=None):
+    def __init__(self, r_id, name, station, tide_method="AnyTide", offset=None, boats=None, latitude=None, longitude=None): # <--- ADD latitude, longitude
         self.ramp_id, self.ramp_name, self.noaa_station_id, self.tide_calculation_method = r_id, name, station, tide_method
         self.tide_offset_hours1, self.allowed_boat_types = offset, boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
+        self.latitude = float(latitude) if latitude is not None else None # Convert to float
+        self.longitude = float(longitude) if longitude is not None else None # Convert to float
 
 class Customer:
     def __init__(self, c_id, name):
@@ -33,7 +43,7 @@ class Customer:
         self.customer_name = name
 
 class Boat:
-    def __init__(self, b_id, c_id, b_type, b_len, draft, storage_addr, pref_ramp, pref_truck, is_ecm):
+    def __init__(self, b_id, c_id, b_type, b_len, draft, storage_addr, pref_ramp, pref_truck, is_ecm, storage_latitude=None, storage_longitude=None): # <--- ADD storage_latitude, storage_longitude
         self.boat_id = int(b_id)
         self.customer_id = int(c_id)
         self.boat_type = b_type
@@ -43,6 +53,8 @@ class Boat:
         self.preferred_ramp_id = pref_ramp
         self.preferred_truck_id = pref_truck
         self.is_ecm_boat = is_ecm
+        self.storage_latitude = float(storage_latitude) if storage_latitude is not None else None # Convert to float
+        self.storage_longitude = float(storage_longitude) if storage_longitude is not None else None # Convert to float
 
 class Job:
     def __init__(self, **kwargs):
@@ -66,12 +78,10 @@ class Job:
         self.customer_id = _parse_int(kwargs.get("customer_id"))
         self.boat_id = _parse_int(kwargs.get("boat_id"))
         self.service_type = kwargs.get("service_type")
-        # Use the new, more flexible helper function
         self.scheduled_start_datetime = _parse_or_get_datetime(kwargs.get("scheduled_start_datetime"))
         self.scheduled_end_datetime = _parse_or_get_datetime(kwargs.get("scheduled_end_datetime"))
         self.assigned_hauling_truck_id = kwargs.get("assigned_hauling_truck_id")
         self.assigned_crane_truck_id = kwargs.get("assigned_crane_truck_id")
-        # Use the new, more flexible helper function
         self.j17_busy_end_datetime = _parse_or_get_datetime(kwargs.get("j17_busy_end_datetime"))
         self.pickup_ramp_id = kwargs.get("pickup_ramp_id")
         self.dropoff_ramp_id = kwargs.get("dropoff_ramp_id")
@@ -79,7 +89,13 @@ class Job:
         self.dropoff_street_address = kwargs.get("dropoff_street_address", "")
         self.job_status = kwargs.get("job_status", "Scheduled")
         self.notes = kwargs.get("notes", "")
-        
+        # <--- ADD THESE NEW LINES ---
+        self.pickup_latitude = float(kwargs.get("pickup_latitude")) if kwargs.get("pickup_latitude") is not None else None
+        self.pickup_longitude = float(kwargs.get("pickup_longitude")) if kwargs.get("pickup_longitude") is not None else None
+        self.dropoff_latitude = float(kwargs.get("dropoff_latitude")) if kwargs.get("dropoff_longitude") is not None else None
+        self.dropoff_longitude = float(kwargs.get("dropoff_longitude")) if kwargs.get("dropoff_longitude") is not None else None
+        # <--- END NEW LINES ---
+
 # --- CONFIGURATION AND GLOBAL CONSTANTS ---
 HOME_BASE_TOWN = "Pem"
 SOUTH_ROUTE = ["Han", "Nor", "Sci", "Mar", "Dux", "Kin", "Ply", "Bou", "San"]
