@@ -303,6 +303,7 @@ def delete_job_from_db(job_id):
 # Initialize the geolocator globally to avoid re-initializing on every call
 # Use a specific user_agent string
 _geolocator = Nominatim(user_agent="ecm_boat_scheduler_app")
+_location_coords_cache = {} 
 
 def get_location_coords(address=None, ramp_id=None):
     """
