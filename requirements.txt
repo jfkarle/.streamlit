@@ -4,3 +4,4 @@ st-supabase-connection
 pandas
 requests
 reportlab
+PyPDF2
