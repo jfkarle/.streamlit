@@ -629,7 +629,7 @@ def show_reporting_page():
             st.markdown("---")
 
             # Display a row for each scheduled job
-            for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max):
+            for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max.replace(tzinfo=timezone.utc)):
                 customer = ecm.get_customer_details(j.customer_id)
                 if not customer:
                     continue # Skip this job if the customer can't be found
