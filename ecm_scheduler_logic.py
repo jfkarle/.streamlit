@@ -725,7 +725,15 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     
     all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, search_start_date, search_end_date) if ramp_obj else {}
     compiled_schedule = _compile_truck_schedules(SCHEDULED_JOBS)
-    print(f"DEBUG: Sample of compiled_schedule: {compiled_schedule}")
+    # print(f"DEBUG: Sample of compiled_schedule: {compiled_schedule}") # Commenting this out to avoid excessive log output
+
+    # --- START OF MISSING DEFINITION FIX ---
+    # Get all scheduled jobs for the current boat
+    existing_jobs_for_boat = [
+        j for j in SCHEDULED_JOBS
+        if j.boat_id == boat_id and j.job_status == "Scheduled"
+    ]
+    # --- END OF MISSING DEFINITION FIX ---
 
     for i in range((search_end_date - search_start_date).days + 1):
         check_date = search_start_date + timedelta(days=i)
@@ -735,27 +743,26 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             for window in windows:
                 slot_start_dt = datetime.datetime.combine(check_date, window['start_time'], tzinfo=timezone.utc)
                 while slot_start_dt + hauler_duration <= datetime.datetime.combine(check_date, window['end_time'], tzinfo=timezone.utc):
-                    # --- NEW CODE BLOCK START ---
+                    
                     is_too_soon = False
                     for existing_job in existing_jobs_for_boat:
                         # Ensure existing_job.scheduled_start_datetime is not None before comparison
-                        # Also, ensure we don't compare a job to itself if it's being rebooked/moved
-                        # This would require knowing the original job_id if this is a rebooking flow
-                        # For simplicity, if job_id is present in the request, exclude it from check
-                        current_job_id_being_rebooked = kwargs.get('original_job_id_being_rebooked') # Add this to kwargs if needed
+                        # Avoid self-comparison if this is a rebooking flow
+                        current_job_id_being_rebooked = kwargs.get('original_job_id_being_rebooked')
                         
                         if existing_job.scheduled_start_datetime and \
-                           existing_job.job_id != current_job_id_being_rebooked: # Avoid self-comparison
+                           existing_job.job_id != current_job_id_being_rebooked:
                             time_difference = abs(slot_start_dt - existing_job.scheduled_start_datetime)
                             if time_difference <= timedelta(days=30):
                                 is_too_soon = True
                                 DEBUG_MESSAGES.append(f"DEBUG: Slot for boat {boat_id} at {slot_start_dt} is within 30 days of existing job {existing_job.job_id} at {existing_job.scheduled_start_datetime}.")
-                                break # No need to check other existing jobs if one is too close
+                                break
 
                     if is_too_soon:
-                        slot_start_dt += timedelta(minutes=15) # Move to the next potential slot
-                        continue # Skip this slot, it's too close to another booking
-                    # --- NEW CODE BLOCK END ---if not check_truck_availability_optimized(truck.truck_name, slot_start_dt, slot_start_dt + hauler_duration, compiled_schedule):
+                        slot_start_dt += timedelta(minutes=15)
+                        continue
+
+                    if not check_truck_availability_optimized(truck.truck_name, slot_start_dt, slot_start_dt + hauler_duration, compiled_schedule):
                         slot_start_dt += timedelta(minutes=15)
                         continue
 
