@@ -491,38 +491,66 @@ def get_location_coords(address=None, ramp_id=None, job_id=None, job_type=None, 
     _location_coords_cache[cache_key] = coords
     return coords
 
-def calculate_travel_time(coords1, coords2):
+def calculate_travel_time(origin_coords, destination_coords):
     """
-    Estimates travel time in minutes based on "as the crow flies" distance.
-    This is a simplification; real travel time varies by roads, traffic, etc.
+    Calculates estimated travel time in minutes using Google Distance Matrix API.
     Args:
-        coords1 (tuple): (latitude, longitude) of start point.
-        coords2 (tuple): (latitude, longitude) of end point.
+        origin_coords (tuple): (latitude, longitude) of start point.
+        destination_coords (tuple): (latitude, longitude) of end point.
     Returns:
-        int: Estimated travel time in minutes.
+        int: Estimated travel time in minutes, or MIN_TRAVEL_TIME_MINUTES if API fails/no route.
     """
-    if not coords1 or not coords2:
-        return 0 # No travel time if coordinates are missing
+    MIN_TRAVEL_TIME_MINUTES = 10 # Define this constant here or globally
+    
+    # Use the correct API key variable name (Maps_API_KEY or Maps_API_KEY)
+    global Maps_API_KEY # Declare as global to access it
+    if not origin_coords or not destination_coords:
+        DEBUG_MESSAGES.append("WARNING: Missing coordinates for travel time calculation. Returning minimum travel time.")
+        return MIN_TRAVEL_TIME_MINUTES
+    
+    if not Maps_API_KEY: # Use Maps_API_KEY here
+        DEBUG_MESSAGES.append("ERROR: Google Maps API Key is missing for calculate_travel_time. Returning minimum travel time.")
+        return MIN_TRAVEL_TIME_MINUTES
 
-    distance_miles = geodesic(coords1, coords2).miles
+    API_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
     
-    # --- IMPORTANT: Calibrate this speed factor ---
-    # This is a crucial assumption. A common average driving speed for estimation.
-    # You'll need to adjust this based on typical speeds in your service area,
-    # considering urban vs. rural driving, average truck speed, etc.
-    # For example, if avg speed is 30 mph, then 1 mile takes 2 minutes.
-    AVERAGE_SPEED_MPH = 25 # Example: 25 miles per hour
-    
-    if AVERAGE_SPEED_MPH <= 0: return 0
+    params = {
+        "origins": f"{origin_coords[0]},{origin_coords[1]}",
+        "destinations": f"{destination_coords[0]},{destination_coords[1]}",
+        "key": Maps_API_KEY, # Use Maps_API_KEY here
+        "mode": "driving",
+        "units": "imperial",
+        "departure_time": "now" # This enables traffic-aware routing. Consider if you want this.
+    }
 
-    travel_time_hours = distance_miles / AVERAGE_SPEED_MPH
-    travel_time_minutes = int(travel_time_hours * 60)
-    
-    # Add a minimum travel time to account for setup/teardown or very short distances
-    MIN_TRAVEL_TIME_MINUTES = 10 
-    
-    return max(travel_time_minutes, MIN_TRAVEL_TIME_MINUTES)
+    try:
+        response = requests.get(API_URL, params=params, timeout=5)
+        response.raise_for_status()
+        data = response.json()
 
+        if data.get("status") == "OK" and data["rows"] and data["rows"][0]["elements"]:
+            element = data["rows"][0]["elements"][0]
+            if element.get("status") == "OK":
+                duration_seconds = element["duration"]["value"]
+                travel_time_minutes = int(duration_seconds / 60)
+                DEBUG_MESSAGES.append(f"DEBUG: Google Maps travel time from {origin_coords} to {destination_coords}: {travel_time_minutes} mins.")
+                return max(travel_time_minutes, MIN_TRAVEL_TIME_MINUTES)
+            else:
+                DEBUG_MESSAGES.append(f"WARNING: Google Distance Matrix API element status not OK for {origin_coords} to {destination_coords}. Status: {element.get('status')}. Message: {element.get('fare', {}).get('text')}")
+        else:
+            DEBUG_MESSAGES.append(f"WARNING: Google Distance Matrix API response not OK. Status: {data.get('status')}. Error Message: {data.get('error_message', 'No error message provided.')}")
+
+    except requests.exceptions.Timeout:
+        DEBUG_MESSAGES.append(f"ERROR: Google Distance Matrix API request timed out for {origin_coords} to {destination_coords}.")
+    except requests.exceptions.RequestException as e:
+        DEBUG_MESSAGES.append(f"ERROR: Error calling Google Distance Matrix API for {origin_coords} to {destination_coords}: {type(e).__name__}: {e}")
+    except json.JSONDecodeError:
+        DEBUG_MESSAGES.append(f"ERROR: Could not parse JSON from Google Distance Matrix API response for {origin_coords} to {destination_coords}.")
+    except Exception as e:
+        DEBUG_MESSAGES.append(f"ERROR: Unexpected error in calculate_travel_time: {type(e).__name__}: {e}")
+
+    DEBUG_MESSAGES.append(f"WARNING: Falling back to MIN_TRAVEL_TIME_MINUTES ({MIN_TRAVEL_TIME_MINUTES}) for {origin_coords} to {destination_coords}.")
+    return MIN_TRAVEL_TIME_MINUTES
 def get_customer_details(customer_id):
     return LOADED_CUSTOMERS.get(customer_id)
 def get_boat_details(boat_id):
