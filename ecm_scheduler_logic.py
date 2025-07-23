@@ -10,6 +10,8 @@ import streamlit as st
 from st_supabase_connection import SupabaseConnection, execute_query
 from datetime import timedelta, time, timezone
 from collections import Counter
+from geopy.geocoders import Nominatim
+from geopy.distance import geodesic # For "as the crow flies" distance
 
 
 DEBUG_MESSAGES = []
@@ -297,6 +299,91 @@ def delete_job_from_db(job_id):
         st.exception(e)
 
 # --- CORE HELPER FUNCTIONS ---
+
+# Initialize the geolocator globally to avoid re-initializing on every call
+# Use a specific user_agent string
+_geolocator = Nominatim(user_agent="ecm_boat_scheduler_app")
+
+def get_location_coords(address=None, ramp_id=None):
+    """
+    Returns (latitude, longitude) for a given address or ramp.
+    Uses a cache to avoid repeated geocoding requests.
+    """
+    cache_key = f"address:{address}" if address else f"ramp_id:{ramp_id}"
+    if cache_key in _location_coords_cache:
+        return _location_coords_cache[cache_key]
+
+    coords = None
+    if address:
+        try:
+            location = _geolocator.geocode(address + ", Pembroke, MA 02359") # Assume Pembroke if incomplete, or full address
+            if location:
+                coords = (location.latitude, location.longitude)
+        except Exception as e:
+            DEBUG_MESSAGES.append(f"ERROR: Geocoding address '{address}' failed: {e}")
+    elif ramp_id:
+        ramp_obj = get_ramp_details(ramp_id)
+        if ramp_obj and ramp_obj.ramp_name:
+            # You might need to refine ramp_name to a full address for better geocoding
+            full_ramp_address = f"{ramp_obj.ramp_name}, {HOME_BASE_TOWN}, MA" # Adjust as needed for ramp accuracy
+            try:
+                location = _geolocator.geocode(full_ramp_address)
+                if location:
+                    coords = (location.latitude, location.longitude)
+            except Exception as e:
+                DEBUG_MESSAGES.append(f"ERROR: Geocoding ramp '{ramp_obj.ramp_name}' failed: {e}")
+    
+    if coords:
+        _location_coords_cache[cache_key] = coords
+    else:
+        # Fallback for un-geocodable locations (e.g., return a default yard location)
+        DEBUG_MESSAGES.append(f"WARNING: Could not geocode {address or ramp_id}. Returning default yard coords.")
+        # Make sure YARD_ADDRESS is geocoded once and its coords stored as a constant
+        if 'YARD_COORDS' not in globals(): # Ensure YARD_COORDS is defined and geocoded once
+            try:
+                yard_location = _geolocator.geocode(YARD_ADDRESS)
+                globals()['YARD_COORDS'] = (yard_location.latitude, yard_location.longitude) if yard_location else (42.0833, -70.7681) # Fallback to Pembroke lat/lon
+            except Exception as e:
+                DEBUG_MESSAGES.append(f"ERROR: Initial geocoding of YARD_ADDRESS failed: {e}. Using hardcoded default.")
+                globals()['YARD_COORDS'] = (42.0833, -70.7681) # Hardcoded Pembroke Lat/Lon
+
+        coords = globals().get('YARD_COORDS', (42.0833, -70.7681)) # Fallback if YARD_COORDS somehow not set
+        _location_coords_cache[cache_key] = coords # Cache the fallback too
+
+    return coords
+
+def calculate_travel_time(coords1, coords2):
+    """
+    Estimates travel time in minutes based on "as the crow flies" distance.
+    This is a simplification; real travel time varies by roads, traffic, etc.
+    Args:
+        coords1 (tuple): (latitude, longitude) of start point.
+        coords2 (tuple): (latitude, longitude) of end point.
+    Returns:
+        int: Estimated travel time in minutes.
+    """
+    if not coords1 or not coords2:
+        return 0 # No travel time if coordinates are missing
+
+    distance_miles = geodesic(coords1, coords2).miles
+    
+    # --- IMPORTANT: Calibrate this speed factor ---
+    # This is a crucial assumption. A common average driving speed for estimation.
+    # You'll need to adjust this based on typical speeds in your service area,
+    # considering urban vs. rural driving, average truck speed, etc.
+    # For example, if avg speed is 30 mph, then 1 mile takes 2 minutes.
+    AVERAGE_SPEED_MPH = 25 # Example: 25 miles per hour
+    
+    if AVERAGE_SPEED_MPH <= 0: return 0
+
+    travel_time_hours = distance_miles / AVERAGE_SPEED_MPH
+    travel_time_minutes = int(travel_time_hours * 60)
+    
+    # Add a minimum travel time to account for setup/teardown or very short distances
+    MIN_TRAVEL_TIME_MINUTES = 10 
+    
+    return max(travel_time_minutes, MIN_TRAVEL_TIME_MINUTES)
+
 def get_customer_details(customer_id):
     return LOADED_CUSTOMERS.get(customer_id)
 def get_boat_details(boat_id):
