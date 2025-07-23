@@ -8,7 +8,7 @@ import random
 import json
 import streamlit as st
 from st_supabase_connection import SupabaseConnection, execute_query
-from datetime import timedelta, time
+from datetime import timedelta, time, timezone
 from collections import Counter
 
 
@@ -732,8 +732,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
             
             for window in windows:
-                slot_start_dt = datetime.datetime.combine(check_date, window['start_time'])
-
+                slot_start_dt = datetime.datetime.combine(check_date, window['start_time'], tzinfo=timezone.utc)
                 while slot_start_dt + hauler_duration <= datetime.datetime.combine(check_date, window['end_time']):
                     if not check_truck_availability_optimized(truck.truck_name, slot_start_dt, slot_start_dt + hauler_duration, compiled_schedule):
                         slot_start_dt += timedelta(minutes=15)
