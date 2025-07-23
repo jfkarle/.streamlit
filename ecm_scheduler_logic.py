@@ -125,6 +125,14 @@ def get_db_connection():
         key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZXhyemxqdmFnaXdxc3RhcG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwODY0ODIsImV4cCI6MjA2NzY2MjQ4Mn0.hgWhtefyiEmGj5CERladOe3hMBM-rVnwMGNwrt8FT6Y"
     )
 
+Okay, I see the load_all_data_from_sheets function you want to modify.
+
+You're specifically asking for help with point "C. Get Location" from my previous instructions, which focused on modifying the calls to get_location_coords within load_all_data_from_sheets to pass job_id, job_type, and boat_id to enable the database caching for job and boat locations.
+
+Here's the modified load_all_data_from_sheets function with the updated calls to get_location_coords:
+
+Python
+
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS
@@ -132,6 +140,7 @@ def load_all_data_from_sheets():
         conn = get_db_connection()
 
         # --- Jobs ---
+        # Select all columns, including new lat/lon columns, which will be passed to Job(**row)
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
         all_jobs = [Job(**row) for row in jobs_resp.data]
         for job in all_jobs:
@@ -161,6 +170,7 @@ def load_all_data_from_sheets():
         name_to_id = {t.truck_name: t.truck_id for t in ECM_TRUCKS.values()}
 
         # --- Ramps ---
+        # Select all columns, including new lat/lon columns, which will be passed to Ramp(**row)
         ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
         ECM_RAMPS.clear()
         ECM_RAMPS.update({
@@ -170,7 +180,9 @@ def load_all_data_from_sheets():
                 station    = row.get("noaa_station_id"),
                 tide_method= row.get("tide_calculation_method"),
                 offset     = row.get("tide_offset_hours"),
-                boats      = row.get("allowed_boat_types")
+                boats      = row.get("allowed_boat_types"),
+                latitude   = row.get("latitude"), # <--- Pass new lat/lon
+                longitude  = row.get("longitude")  # <--- Pass new lat/lon
             )
             for row in ramps_resp.data
         })
@@ -188,6 +200,7 @@ def load_all_data_from_sheets():
         })
 
         # --- Boats ---
+        # Select all columns, including new lat/lon columns, which will be passed to Boat(**row)
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
         LOADED_BOATS.clear()
         LOADED_BOATS.update({
@@ -200,7 +213,9 @@ def load_all_data_from_sheets():
                 storage_addr = row.get("storage_address", ""),
                 pref_ramp  = row.get("preferred_ramp", ""),
                 pref_truck = row.get("preferred_truck", ""),
-                is_ecm     = str(row.get("is_ecm_boat", "no")).lower() == 'yes'
+                is_ecm     = str(row.get("is_ecm_boat", "no")).lower() == 'yes',
+                storage_latitude = row.get("storage_latitude"), # <--- Pass new lat/lon
+                storage_longitude = row.get("storage_longitude") # <--- Pass new lat/lon
             )
             for row in boat_resp.data
             if row.get("boat_id")
@@ -224,24 +239,32 @@ def load_all_data_from_sheets():
 
         # --- NEW: PROACTIVELY GEOCDE COMMON LOCATIONS ---
         DEBUG_MESSAGES.append("DEBUG: Pre-geocoding common locations...")
-        # Geocode Yard Address
-        _ = get_location_coords(address=YARD_ADDRESS)
-
-        # Geocode all ramps
-        for ramp_id, ramp_obj in ECM_RAMPS.items():
-            _ = get_location_coords(ramp_id=ramp_id)
         
-        # Geocode all boat storage addresses
+        # Geocode Yard Address (already handled to set YARD_COORDS globally)
+        _ = get_location_coords(address=YARD_ADDRESS) 
+
+        # Geocode all ramps (passing ramp_id so get_location_coords can save to DB if needed)
+        for ramp_id, ramp_obj in ECM_RAMPS.items():
+            # If ramp object already has coords from DB load, get_location_coords will use them
+            # Otherwise, it will geocode and save to DB
+            if ramp_obj.latitude is None or ramp_obj.longitude is None: # Only try to geocode if missing
+                _ = get_location_coords(ramp_id=ramp_id) 
+        
+        # Geocode all boat storage addresses (passing boat_id so get_location_coords can save to DB if needed)
         for boat_id, boat_obj in LOADED_BOATS.items():
-            if boat_obj.storage_address:
-                _ = get_location_coords(address=boat_obj.storage_address)
+            if boat_obj.storage_address and (boat_obj.storage_latitude is None or boat_obj.storage_longitude is None): # Only try to geocode if missing
+                _ = get_location_coords(address=boat_obj.storage_address, boat_id=boat_obj.boat_id)
         
         # Geocode addresses from all jobs (pickup/dropoff streets)
-        for job in all_jobs: # Use the 'all_jobs' list that was just loaded
-            if job.pickup_street_address:
-                _ = get_location_coords(address=job.pickup_street_address)
-            if job.dropoff_street_address:
-                _ = get_location_coords(address=job.dropoff_street_address)
+        for job in all_jobs: 
+            # Only try to geocode if coordinates are missing for the job's pickup/dropoff
+            if job.pickup_street_address and (job.pickup_latitude is None or job.pickup_longitude is None):
+                _ = get_location_coords(address=job.pickup_street_address, job_id=job.job_id, job_type='pickup')
+            # If pickup is a ramp, its coords are handled by the 'ramps' loop above
+            
+            if job.dropoff_street_address and (job.dropoff_latitude is None or job.dropoff_longitude is None):
+                _ = get_location_coords(address=job.dropoff_street_address, job_id=job.job_id, job_type='dropoff')
+            # If dropoff is a ramp, its coords are handled by the 'ramps' loop above
         DEBUG_MESSAGES.append("DEBUG: Pre-geocoding complete.")
         # --- END NEW BLOCK ---
         
