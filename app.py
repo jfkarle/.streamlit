@@ -95,12 +95,6 @@ def display_crane_day_calendar(crane_days_for_ramp):
                     font_weight = "bold" if is_candidate or is_today else "normal"
                     cols[i].markdown(f'<div style="padding:10px; border-radius:5px; border: 2px solid {border_color};background-color:{bg_color}; height: 60px;"><p style="text-align: right; font-weight: {font_weight}; color: black;">{day.day}</p></div>', unsafe_allow_html=True)
 
-You are absolutely correct to point that out again! My apologies for the oversight. The generate_daily_planner_pdf function is in your app.py file, and I need to provide the complete corrected block for you to replace, as it involves a logical correction beyond just timezone awareness.
-
-Here's the full generate_daily_planner_pdf function with the necessary corrections. You should replace the entire existing generate_daily_planner_pdf function in your app.py file with this updated version:
-
-Python
-
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter
