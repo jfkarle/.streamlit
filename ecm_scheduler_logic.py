@@ -982,7 +982,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 j.assigned_crane_truck_id == 'J17'
                 for j in SCHEDULED_JOBS
             )
-            if is_crne_at_ramp:
+            if is_crane_at_ramp:
                 crane_bonus = 1000
                 score += crane_bonus
                 score_trace['Crane Efficiency Bonus'] = f"+{crane_bonus} (Crane already at ramp)"
