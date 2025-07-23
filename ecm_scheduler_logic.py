@@ -125,13 +125,7 @@ def get_db_connection():
         key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZXhyemxqdmFnaXdxc3RhcG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwODY0ODIsImV4cCI6MjA2NzY2MjQ4Mn0.hgWhtefyiEmGj5CERladOe3hMBM-rVnwMGNwrt8FT6Y"
     )
 
-Okay, I see the load_all_data_from_sheets function you want to modify.
-
-You're specifically asking for help with point "C. Get Location" from my previous instructions, which focused on modifying the calls to get_location_coords within load_all_data_from_sheets to pass job_id, job_type, and boat_id to enable the database caching for job and boat locations.
-
-Here's the modified load_all_data_from_sheets function with the updated calls to get_location_coords:
-
-Python
+# In ecm_scheduler_logic.py
 
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
@@ -181,8 +175,8 @@ def load_all_data_from_sheets():
                 tide_method= row.get("tide_calculation_method"),
                 offset     = row.get("tide_offset_hours"),
                 boats      = row.get("allowed_boat_types"),
-                latitude   = row.get("latitude"), # <--- Pass new lat/lon
-                longitude  = row.get("longitude")  # <--- Pass new lat/lon
+                latitude   = row.get("latitude"), # Pass new lat/lon from DB row
+                longitude  = row.get("longitude")  # Pass new lat/lon from DB row
             )
             for row in ramps_resp.data
         })
@@ -200,7 +194,7 @@ def load_all_data_from_sheets():
         })
 
         # --- Boats ---
-        # Select all columns, including new lat/lon columns, which will be passed to Boat(**row)
+        # Ensure 'select("*")' fetches the new lat/lon columns from Supabase
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
         LOADED_BOATS.clear()
         LOADED_BOATS.update({
@@ -214,8 +208,8 @@ def load_all_data_from_sheets():
                 pref_ramp  = row.get("preferred_ramp", ""),
                 pref_truck = row.get("preferred_truck", ""),
                 is_ecm     = str(row.get("is_ecm_boat", "no")).lower() == 'yes',
-                storage_latitude = row.get("storage_latitude"), # <--- Pass new lat/lon
-                storage_longitude = row.get("storage_longitude") # <--- Pass new lat/lon
+                storage_latitude = row.get("storage_latitude"), # Pass new lat/lon from DB row
+                storage_longitude = row.get("storage_longitude") # Pass new lat/lon from DB row
             )
             for row in boat_resp.data
             if row.get("boat_id")
@@ -240,31 +234,36 @@ def load_all_data_from_sheets():
         # --- NEW: PROACTIVELY GEOCDE COMMON LOCATIONS ---
         DEBUG_MESSAGES.append("DEBUG: Pre-geocoding common locations...")
         
-        # Geocode Yard Address (already handled to set YARD_COORDS globally)
+        # Geocode Yard Address (this call ensures YARD_COORDS is set and potentially cached)
+        # It relies on get_location_coords's internal logic to check if YARD_COORDS already exists
         _ = get_location_coords(address=YARD_ADDRESS) 
 
-        # Geocode all ramps (passing ramp_id so get_location_coords can save to DB if needed)
+        # Geocode all ramps:
+        # Pass ramp_id and existing lat/lon so get_location_coords can read from/write to DB if coords are missing.
         for ramp_id, ramp_obj in ECM_RAMPS.items():
-            # If ramp object already has coords from DB load, get_location_coords will use them
-            # Otherwise, it will geocode and save to DB
-            if ramp_obj.latitude is None or ramp_obj.longitude is None: # Only try to geocode if missing
-                _ = get_location_coords(ramp_id=ramp_id) 
+            _ = get_location_coords(ramp_id=ramp_id, initial_latitude=ramp_obj.latitude, initial_longitude=ramp_obj.longitude) 
         
-        # Geocode all boat storage addresses (passing boat_id so get_location_coords can save to DB if needed)
+        # Geocode all boat storage addresses:
+        # Pass boat_id and existing lat/lon so get_location_coords can read from/write to DB if coords are missing.
         for boat_id, boat_obj in LOADED_BOATS.items():
-            if boat_obj.storage_address and (boat_obj.storage_latitude is None or boat_obj.storage_longitude is None): # Only try to geocode if missing
-                _ = get_location_coords(address=boat_obj.storage_address, boat_id=boat_obj.boat_id)
+            if boat_obj.storage_address: # Only process if there's an address string
+                _ = get_location_coords(address=boat_obj.storage_address, boat_id=boat_obj.boat_id,
+                                        initial_latitude=boat_obj.storage_latitude, initial_longitude=boat_obj.storage_longitude)
         
         # Geocode addresses from all jobs (pickup/dropoff streets)
+        # Pass job_id, job_type and existing lat/lon so get_location_coords can read from/write to DB if coords are missing.
         for job in all_jobs: 
-            # Only try to geocode if coordinates are missing for the job's pickup/dropoff
-            if job.pickup_street_address and (job.pickup_latitude is None or job.pickup_longitude is None):
-                _ = get_location_coords(address=job.pickup_street_address, job_id=job.job_id, job_type='pickup')
-            # If pickup is a ramp, its coords are handled by the 'ramps' loop above
+            # Process pickup address/ramp (prioritize street address over ramp if both exist for geocoding)
+            if job.pickup_street_address: 
+                _ = get_location_coords(address=job.pickup_street_address, job_id=job.job_id, job_type='pickup',
+                                        initial_latitude=job.pickup_latitude, initial_longitude=job.pickup_longitude)
+            # If pickup is a ramp_id and no street address, it should have been covered by the 'ramps' loop.
             
-            if job.dropoff_street_address and (job.dropoff_latitude is None or job.dropoff_longitude is None):
-                _ = get_location_coords(address=job.dropoff_street_address, job_id=job.job_id, job_type='dropoff')
-            # If dropoff is a ramp, its coords are handled by the 'ramps' loop above
+            # Process dropoff address/ramp
+            if job.dropoff_street_address:
+                _ = get_location_coords(address=job.dropoff_street_address, job_id=job.job_id, job_type='dropoff',
+                                        initial_latitude=job.dropoff_latitude, initial_longitude=job.dropoff_longitude)
+            # If dropoff is a ramp_id and no street address, it should have been covered by the 'ramps' loop.
         DEBUG_MESSAGES.append("DEBUG: Pre-geocoding complete.")
         # --- END NEW BLOCK ---
         
@@ -287,7 +286,6 @@ def load_all_data_from_sheets():
     except Exception as e:
         st.error(f"Error loading data: {e}")
         raise
-
 def save_job(job_to_save):
     conn = get_db_connection()
     job_dict = job_to_save.__dict__
