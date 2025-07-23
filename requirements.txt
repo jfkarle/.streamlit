@@ -5,3 +5,4 @@ pandas
 requests
 reportlab
 PyPDF2
+geopy
