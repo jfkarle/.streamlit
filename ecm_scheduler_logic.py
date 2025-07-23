@@ -358,52 +358,137 @@ def delete_job_from_db(job_id):
 # Use a specific user_agent string
 _location_coords_cache = {} 
 
-def get_location_coords(address=None, ramp_id=None):
+def get_location_coords(address=None, ramp_id=None, job_id=None, job_type=None, boat_id=None, initial_latitude=None, initial_longitude=None):
     """
-    Returns (latitude, longitude) for a given address or ramp.
-    Uses a cache to avoid repeated geocoding requests.
+    Returns (latitude, longitude) for a given address/ramp/job location.
+    Prioritizes database lookup, then caches in-memory, then geocodes using GoogleV3 and saves to DB.
+    job_type can be 'pickup' or 'dropoff' for job-specific coordinates.
+    boat_id is used for context when geocoding boat.storage_address.
+    initial_latitude/initial_longitude: Pass existing lat/lon from loaded objects to prioritize.
     """
-    cache_key = f"address:{address}" if address else f"ramp_id:{ramp_id}"
+    conn = get_db_connection()
+
+    # Determine the entity type and its primary ID for DB lookups and caching
+    entity_type = None
+    entity_id = None
+    db_table = None
+    lat_col, lon_col = None, None
+    pk_col_name_in_db = None # The actual primary key column name in the database table
+
+    if ramp_id:
+        entity_type = "ramp"
+        entity_id = ramp_id
+        db_table = "ramps"
+        lat_col, lon_col = "latitude", "longitude"
+        pk_col_name_in_db = "ramp_id"
+    elif job_id and job_type in ['pickup', 'dropoff']:
+        entity_type = "job"
+        entity_id = job_id
+        db_table = "jobs"
+        lat_col, lon_col = f"{job_type}_latitude", f"{job_type}_longitude"
+        pk_col_name_in_db = "job_id"
+    elif boat_id: # For boat storage addresses, we need boat_id to save to the boats table
+        entity_type = "boat_storage"
+        entity_id = boat_id
+        db_table = "boats"
+        lat_col, lon_col = "storage_latitude", "storage_longitude"
+        pk_col_name_in_db = "boat_id"
+    elif address == YARD_ADDRESS:
+        entity_type = "yard" # Special case, usually not in a main data table
+        pass # No entity_id or db_table lookup for yard here, handled by global YARD_COORDS
+
+    cache_key = f"{entity_type}:{entity_id}:{job_type}" if entity_type else f"address:{address}"
     if cache_key in _location_coords_cache:
+        DEBUG_MESSAGES.append(f"DEBUG: Found {cache_key} in in-memory cache.")
         return _location_coords_cache[cache_key]
 
     coords = None
-    if address:
+
+    # 0. Check initial_latitude/longitude parameters first (from loaded objects)
+    if initial_latitude is not None and initial_longitude is not None:
+        coords = (float(initial_latitude), float(initial_longitude))
+        DEBUG_MESSAGES.append(f"DEBUG: Using initial coords for {cache_key}: {coords}")
+        _location_coords_cache[cache_key] = coords
+        return coords
+
+    # 1. Try to load from database (if applicable entity type)
+    if entity_type and entity_id and db_table and lat_col and lon_col and pk_col_name_in_db:
         try:
-            location = _geolocator.geocode(address + ", Pembroke, MA 02359") # Assume Pembroke if incomplete, or full address
-            if location:
-                coords = (location.latitude, location.longitude)
+            db_response = execute_query(conn.table(db_table).select(f"{lat_col}, {lon_col}").eq(pk_col_name_in_db, entity_id), ttl=60).data
+            if db_response and len(db_response) > 0 and db_response[0].get(lat_col) is not None and db_response[0].get(lon_col) is not None:
+                coords = (float(db_response[0][lat_col]), float(db_response[0][lon_col]))
+                DEBUG_MESSAGES.append(f"DEBUG: Loaded coords for {cache_key} from DB: {coords}")
+                _location_coords_cache[cache_key] = coords
+                return coords
         except Exception as e:
-            DEBUG_MESSAGES.append(f"ERROR: Geocoding address '{address}' failed: {e}")
+            DEBUG_MESSAGES.append(f"ERROR: Failed to load coords from DB for {cache_key}: {e}")
+
+    # 2. If not found in DB or cache, perform live geocoding using GoogleV3
+    address_to_geocode = None
+    if address: # This covers YARD_ADDRESS, and generic addresses
+        address_to_geocode = address
     elif ramp_id:
         ramp_obj = get_ramp_details(ramp_id)
         if ramp_obj and ramp_obj.ramp_name:
-            # You might need to refine ramp_name to a full address for better geocoding
-            full_ramp_address = f"{ramp_obj.ramp_name}, {HOME_BASE_TOWN}, MA" # Adjust as needed for ramp accuracy
-            try:
-                location = _geolocator.geocode(full_ramp_address)
-                if location:
-                    coords = (location.latitude, location.longitude)
-            except Exception as e:
-                DEBUG_MESSAGES.append(f"ERROR: Geocoding ramp '{ramp_obj.ramp_name}' failed: {e}")
-    
-    if coords:
-        _location_coords_cache[cache_key] = coords
+            address_to_geocode = f"{ramp_obj.ramp_name}, MA, USA" # Google V3 prefers more complete addresses
+    elif boat_id: 
+        boat_obj = get_boat_details(boat_id)
+        if boat_obj and boat_obj.storage_address:
+            address_to_geocode = boat_obj.storage_address
+    elif job_id: # For jobs, need to get the specific pickup/dropoff string address or ramp name
+        job_obj = get_job_details(job_id) # Need to load job details here
+        if job_obj:
+            if job_type == 'pickup':
+                address_to_geocode = job_obj.pickup_street_address
+                if not address_to_geocode and job_obj.pickup_ramp_id: # Fallback to ramp name if no street address
+                    ramp_details = get_ramp_details(job_obj.pickup_ramp_id)
+                    address_to_geocode = ramp_details.ramp_name + ", MA, USA" if ramp_details else None
+            elif job_type == 'dropoff':
+                address_to_geocode = job_obj.dropoff_street_address
+                if not address_to_geocode and job_obj.dropoff_ramp_id: # Fallback to ramp name if no street address
+                    ramp_details = get_ramp_details(job_obj.dropoff_ramp_id)
+                    address_to_geocode = ramp_details.ramp_name + ", MA, USA" if ramp_details else None
+
+    if address_to_geocode and Maps_API_KEY: # Only attempt if there's an address string and API key
+        try:
+            location = _geolocator.geocode(address_to_geocode, timeout=10) # Set timeout for external call
+            if location:
+                coords = (location.latitude, location.longitude)
+                DEBUG_MESSAGES.append(f"DEBUG: Geocoded '{address_to_geocode}' (Google) successfully: {coords}")
+                
+                # 3. Save to database (if applicable entity type)
+                if coords and entity_type and entity_id and db_table and lat_col and lon_col and pk_col_name_in_db:
+                    try:
+                        update_data = {lat_col: coords[0], lon_col: coords[1]}
+                        conn.table(db_table).update(update_data).eq(pk_col_name_in_db, entity_id).execute()
+                        DEBUG_MESSAGES.append(f"DEBUG: Saved geocoded coords to DB for {cache_key}.")
+                    except Exception as db_e:
+                        DEBUG_MESSAGES.append(f"ERROR: Failed to save geocoded coords to DB for {cache_key}: {db_e}")
+            else:
+                DEBUG_MESSAGES.append(f"WARNING: Google Geocoding for '{address_to_geocode}' returned no results. Status: {location.raw.get('status') if location and location.raw else 'UNKNOWN'}")
+        except Exception as e:
+            DEBUG_MESSAGES.append(f"ERROR: Google Geocoding '{address_to_geocode}' failed: {type(e).__name__}: {e}")
     else:
-        # Fallback for un-geocodable locations (e.g., return a default yard location)
-        DEBUG_MESSAGES.append(f"WARNING: Could not geocode {address or ramp_id}. Returning default yard coords.")
-        # Make sure YARD_ADDRESS is geocoded once and its coords stored as a constant
-        if 'YARD_COORDS' not in globals(): # Ensure YARD_COORDS is defined and geocoded once
+        DEBUG_MESSAGES.append(f"WARNING: No address to geocode or missing API key for {cache_key}.")
+
+    # 4. Fallback if geocoding failed (using previously geocoded YARD_COORDS or hardcoded)
+    if not coords:
+        DEBUG_MESSAGES.append(f"WARNING: Could not determine valid coords for {cache_key}. Returning default yard coords.")
+        # Ensure YARD_COORDS is geocoded once on startup or first use.
+        if 'YARD_COORDS' not in globals() or globals()['YARD_COORDS'] is None:
+            DEBUG_MESSAGES.append(f"DEBUG: Attempting to geocode YARD_ADDRESS for fallback (using GoogleV3).")
             try:
-                yard_location = _geolocator.geocode(YARD_ADDRESS)
-                globals()['YARD_COORDS'] = (yard_location.latitude, yard_location.longitude) if yard_location else (42.0833, -70.7681) # Fallback to Pembroke lat/lon
+                yard_location = _geolocator.geocode(YARD_ADDRESS, timeout=10)
+                globals()['YARD_COORDS'] = (yard_location.latitude, yard_location.longitude) if yard_location else (42.0833, -70.7681) # Pembroke default
+                DEBUG_MESSAGES.append(f"DEBUG: YARD_COORDS set to: {globals()['YARD_COORDS']}")
             except Exception as e:
-                DEBUG_MESSAGES.append(f"ERROR: Initial geocoding of YARD_ADDRESS failed: {e}. Using hardcoded default.")
-                globals()['YARD_COORDS'] = (42.0833, -70.7681) # Hardcoded Pembroke Lat/Lon
+                DEBUG_MESSAGES.append(f"ERROR: Initial geocoding of YARD_ADDRESS for fallback failed: {e}. Using hardcoded default.")
+                globals()['YARD_COORDS'] = (42.0833, -70.7681)
 
         coords = globals().get('YARD_COORDS', (42.0833, -70.7681)) # Fallback if YARD_COORDS somehow not set
-        _location_coords_cache[cache_key] = coords # Cache the fallback too
-
+    
+    # Cache in-memory regardless of source (DB, live geocode, or fallback)
+    _location_coords_cache[cache_key] = coords
     return coords
 
 def calculate_travel_time(coords1, coords2):
