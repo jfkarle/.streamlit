@@ -539,7 +539,8 @@ def calculate_ramp_windows(ramp, boat, tide_data, date):
     high_tide_windows = []
     for t in tide_data:
         if t['type'] == 'H':
-            tide_dt_combined = datetime.datetime.combine(date, t['time'])
+            # Changed this line to make the combined datetime timezone-aware (UTC)
+            tide_dt_combined = datetime.datetime.combine(date, t['time'], tzinfo=timezone.utc)
             window_start_time = (tide_dt_combined - offset).time()
             window_end_time = (tide_dt_combined + offset).time()
             high_tide_windows.append({'start_time': window_start_time, 'end_time': window_end_time})
@@ -824,7 +825,7 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
             pickup_addr = get_ramp_details(pickup_rid).ramp_name if pickup_rid else ""
             dropoff_addr = boat.storage_address
         
-        start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'])
+        start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'], tzinfo=timezone.utc)
         rules = BOOKING_RULES.get(boat.boat_type, {})
         crane_is_required = rules.get('crane_mins', 0) > 0
         hauler_end_dt = start_dt + timedelta(minutes=rules.get('truck_mins', 90))
