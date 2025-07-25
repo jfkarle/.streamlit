@@ -364,27 +364,6 @@ def generate_progress_report_pdf(stats, analysis):
     buffer.seek(0)
     return buffer
 
-#### NEW CANCEL, REBOOK, PARK FUNCTINOALITY
-
-# PASTE THE FOLLOWING TWO FUNCTIONS HERE
-
-You are absolutely right. My apologies. I misinterpreted your previous message "a" as a typo and I should have understood that you were indicating there was a new error. Thank you for uploading the files again for review.
-
-I have found the error in the new code. The SyntaxError is gone, but I introduced a new potential runtime error in the show_scheduler_page function I provided for your app.py file.
-
-The Error
-The issue is in the new "Conflict Warning" section. In this line:
-customer_name = ecm.get_customer_details(conflict_job.customer_id).customer_name
-
-If for any reason the customer associated with the conflicting job couldn't be found, the ecm.get_customer_details() function would return None. The code would then try to get .customer_name from None, causing the application to crash with an AttributeError.
-
-The Solution
-I have corrected the show_scheduler_page function to handle this possibility safely.
-
-Please replace the show_scheduler_page function in your app.py file with the complete, corrected version below.
-
-Python
-
 def show_scheduler_page():
     """
     Displays the entire Schedule New Boat page and handles the new interactive conflict warning.
