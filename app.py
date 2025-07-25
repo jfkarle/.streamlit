@@ -692,11 +692,57 @@ def show_reporting_page():
 
     with tab1:
         st.subheader("Scheduled Jobs Overview")
-        # (omitted for brevity - no changes here)
+        if ecm.SCHEDULED_JOBS:
+            cols = st.columns((2, 1, 2, 1, 1, 3))
+            fields = ["Date/Time", "Service", "Customer", "Haul Truck", "Crane", "Actions"]
+            for col, field in zip(cols, fields):
+                col.markdown(f"**{field}**")
+            st.markdown("---")
 
+            sorted_jobs = sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max.replace(tzinfo=datetime.timezone.utc))
+            for j in sorted_jobs:
+                customer = ecm.get_customer_details(j.customer_id)
+                if not customer:
+                    continue # SAFETY CHECK
+
+                cols = st.columns((2, 1, 2, 1, 1, 3))
+                if j.scheduled_start_datetime:
+                    cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p"))
+                else:
+                    cols[0].warning("No Date Set")
+
+                cols[1].write(j.service_type)
+                cols[2].write(customer.customer_name)
+                cols[3].write(j.assigned_hauling_truck_id or "—")
+                cols[4].write(j.assigned_crane_truck_id or "—")
+
+                with cols[5]:
+                    if st.session_state.get('job_to_cancel') == j.job_id:
+                        st.warning("Are you sure?")
+                        btn_cols = st.columns(2)
+                        btn_cols[0].button("✅ Yes, Cancel", key=f"confirm_cancel_{j.job_id}", on_click=cancel_job_confirmed, use_container_width=True, type="primary")
+                        btn_cols[1].button("❌ No", key=f"deny_cancel_{j.job_id}", on_click=clear_cancel_prompt, use_container_width=True)
+                    else:
+                        btn_cols = st.columns(3)
+                        btn_cols[0].button("Move", key=f"move_{j.job_id}", on_click=move_job, args=(j.job_id,), use_container_width=True)
+                        btn_cols[1].button("Park", key=f"park_{j.job_id}", on_click=park_job, args=(j.job_id,), use_container_width=True)
+                        btn_cols[2].button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
+        else:
+            st.write("No jobs scheduled.")
+    
     with tab2:
         st.subheader("Crane Day Candidate Calendar")
-        # (omitted for brevity - no changes here)
+        st.info("Note: This calendar is not yet populated with data.")
+        # The logic below is safe but will show nothing until CANDIDATE_CRANE_DAYS is populated
+        ramp_options = list(ecm.CANDIDATE_CRANE_DAYS.keys())
+        if ramp_options:
+            ramp = st.selectbox("Select a ramp:", ramp_options, key="cal_ramp_sel")
+            if ramp and ecm.CANDIDATE_CRANE_DAYS.get(ramp):
+                display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp])
+            else:
+                st.write("No crane day data for this ramp.")
+        else:
+            st.warning("No crane day data available.")
 
     with tab3:
         st.subheader("Scheduling Progress Report")
@@ -713,22 +759,48 @@ def show_reporting_page():
         st.subheader("Download Formatted PDF Report")
         if st.button("📊 Generate PDF Report"):
             with st.spinner("Generating your report..."):
-                # Call both analysis functions
                 dist_analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
                 eff_analysis = ecm.perform_efficiency_analysis(ecm.SCHEDULED_JOBS)
-                
-                # Pass all data to the PDF generator
                 pdf_buffer = generate_progress_report_pdf(stats, dist_analysis, eff_analysis)
                 st.download_button(label="📥 Download Report (.pdf)", data=pdf_buffer, file_name=f"progress_report_{datetime.date.today()}.pdf", mime="application/pdf")
 
     with tab4:
         st.subheader("Generate Daily Planner PDF")
-        # (omitted for brevity - no changes here)
+        selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
+        if st.button("📤 Generate PDF", key="generate_daily_pdf_button"):
+            jobs_today = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime and j.scheduled_start_datetime.date() == selected_date]
+            if not jobs_today:
+                st.warning("No jobs scheduled for that date.")
+            else:
+                pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
+                st.download_button(label="📥 Download Planner", data=pdf_buffer.getvalue(), file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf", key="download_daily_planner_button")
 
     with tab5:
         st.subheader("🅿️ Parked Jobs")
-        # (omitted for brevity - no changes here)
+        st.info("These jobs have been removed from the schedule and are waiting to be re-booked.")
+        if ecm.PARKED_JOBS:
+            cols = st.columns((2, 2, 1, 2))
+            fields = ["Customer", "Boat", "Service", "Actions"]
+            for col, field in zip(cols, fields):
+                col.markdown(f"**{field}**")
+            st.markdown("---")
 
+            for job_id, job in ecm.PARKED_JOBS.items():
+                customer = ecm.get_customer_details(job.customer_id)
+                boat = ecm.get_boat_details(job.boat_id)
+                
+                # --- THIS IS THE CORRECTED PART ---
+                if not customer or not boat:
+                    continue # SAFETY CHECK: Skip this job if customer or boat data is missing
+
+                cols = st.columns((2, 2, 1, 2))
+                cols[0].write(customer.customer_name)
+                cols[1].write(f"{boat.boat_length}' {boat.boat_type}")
+                cols[2].write(job.service_type)
+                with cols[3]:
+                    st.button("Reschedule", key=f"reschedule_{job.job_id}", on_click=reschedule_parked_job, args=(job.job_id,), use_container_width=True)
+        else:
+            st.write("No jobs are currently parked.")
 def show_settings_page():
     st.header("Application Settings")
     tab_list = ["Scheduling Rules", "Truck Schedules", "Developer Tools", "Tide Charts"]
