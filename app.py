@@ -546,12 +546,16 @@ def show_scheduler_page():
             nav_cols[3].write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_")
         st.markdown("---")
         
-        cols = st.columns(3)
+                cols = st.columns(3)
         for i, slot in enumerate(st.session_state.found_slots[page_index : page_index + slots_per_page]):
             with cols[i % 3]:
                 with st.container(border=True):
-                    if st.session_state.search_requested_date and slot['date'] == st.session_state.search_requested_date:
-                        st.success("⭐ Requested Date")
+                    
+                    # --- NEW: Display Score with st.metric ---
+                    score_val = int(round(slot.get('debug_trace', {}).get('FINAL_SCORE', 0)))
+                    st.metric(label="Efficiency Score", value=score_val)
+                    st.markdown("---") # Visual separator
+                    # --- END NEW ---
 
                     ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
                     st.markdown(f"""
@@ -563,12 +567,13 @@ def show_scheduler_page():
                     st.caption(f"Tide Rule: {slot.get('tide_rule_concise', 'N/A')}")
                     st.markdown(format_tides_for_display(slot, st.session_state.truck_operating_hours), unsafe_allow_html=True)
                     
-                    # This is the new block that adds the clickable expander
                     if 'debug_trace' in slot:
                         with st.expander("Show Calculation Details"):
                             st.json(slot['debug_trace'])
                     
                     st.button("Select this slot", key=f"select_slot_{page_index + i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
+
+
     
     elif st.session_state.selected_slot:
         slot = st.session_state.selected_slot
