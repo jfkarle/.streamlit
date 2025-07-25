@@ -1143,6 +1143,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     return all_found_slots, f"Found {len(all_found_slots)} potential slots.", [], False
 
+
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
     try:
         customer = get_customer_details(original_request['customer_id'])
