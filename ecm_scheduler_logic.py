@@ -1093,9 +1093,10 @@ def find_same_service_conflict(boat_id, new_service_type, requested_date, all_sc
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, 
                              selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, 
                              manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, 
-                             truck_operating_hours=None, prioritize_sailboats=True, # Existing flag
-                             ramp_tide_blackout_enabled=True, # NEW FLAG
-                             scituate_powerboat_priority_enabled=True, # NEW FLAG
+                             truck_operating_hours=None, prioritize_sailboats=True, 
+                             ramp_tide_blackout_enabled=True, 
+                             scituate_powerboat_priority_enabled=True,
+                             is_bulk_job=False,
                              **kwargs):
     """
     Finds the best available job slots efficiently.
