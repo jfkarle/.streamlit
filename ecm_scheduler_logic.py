@@ -1423,7 +1423,8 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
                 selected_ramp_id=random_ramp_id,
                 force_preferred_truck=False, # Use any capable truck for random generation
                 num_suggestions_to_find=1,
-                truck_operating_hours=truck_hours
+                truck_operating_hours=truck_hours,
+                is_bulk_job=True # <--- ADD THIS HERE for random job generation
             )
 
             # 5. Confirm the job if a slot was found
