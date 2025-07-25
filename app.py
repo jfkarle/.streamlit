@@ -810,18 +810,35 @@ def show_settings_page():
         st.subheader("Scheduling Defaults")
         st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=10, value=st.session_state.get('num_suggestions', 3), step=1)
         
-        # --- NEW TOGGLE SWITCH ---
         st.markdown("---")
         st.subheader("Advanced Logic")
+        
+        # Existing Sailboat Priority Toggle
         st.toggle(
             "Prioritize Sailboats on Prime Tide Days",
             value=st.session_state.get('sailboat_priority_enabled', True),
             key='sailboat_priority_enabled',
             help="When enabled, the scheduler will give a large bonus to sailboats on days with favorable high tides, making them 'outbid' powerboats for those slots. When disabled, all boats are treated equally."
         )
-        # --- END OF NEW SWITCH ---
 
-        st.markdown("---")
+        # NEW TOGGLE 1: Optimize Ramp Blackout by Tide
+        st.toggle(
+            "Optimize Ramp Blackout by Tide",
+            value=st.session_state.get('ramp_tide_blackout_enabled', True), # Default to True or False as preferred
+            key='ramp_tide_blackout_enabled',
+            help="When enabled, ramps that rely on high tide will be 'blacked out' for a given day if none of their high tide windows significantly overlap with collective truck operating hours. This can improve search speed and prevent unusable suggestions."
+        )
+
+        # NEW TOGGLE 2: Prioritize Scituate Powerboats on Low Tide Days
+        st.toggle(
+            "Prioritize Scituate Powerboats on Low Tide Days",
+            value=st.session_state.get('scituate_powerboat_priority_enabled', True), # Default to True or False as preferred
+            key='scituate_powerboat_priority_enabled',
+            help="When enabled, powerboat jobs at the Scituate ramp will receive a high priority bonus if a low tide occurs between 10 AM and 2 PM, optimizing for efficient powerboat movements during low tide periods."
+        )
+        
+        st.markdown("---") # Add a separator if desired for visual grouping
+
         st.subheader("Crane Job Search Window")
         c1,c2 = st.columns(2)
         c1.number_input("Days to search in PAST", min_value=0, max_value=30, value=st.session_state.get('crane_look_back_days', 7), key="crane_look_back_days")
@@ -985,6 +1002,8 @@ def initialize_session_state():
         'job_to_cancel': None,
         'selected_tide_day': None, 
         'sailboat_priority_enabled': True,
+        'ramp_tide_blackout_enabled': True, # Add this
+        'scituate_powerboat_priority_enabled': True, # Add this
         'last_seasonal_job': None
     }
     
