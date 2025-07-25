@@ -9,15 +9,15 @@ import datetime
 import ecm_scheduler_logic as ecm
 import json
 
-#from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter
 import calendar
-#from reportlab.lib import colors
+from reportlab.lib import colors
 from io import BytesIO
-#from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-#from reportlab.lib.styles import getSampleStyleSheet
-#from reportlab.graphics.shapes import Drawing
-#from reportlab.graphics.charts.barcharts import VerticalBarChart
-#from reportlab.graphics.charts.piecharts import Pie
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.barcharts import VerticalBarChart
+from reportlab.graphics.charts.piecharts import Pie
 
 st.set_page_config(layout="wide")
 
