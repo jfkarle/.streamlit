@@ -1215,6 +1215,39 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
     except Exception as e:
         return None, f"An error occurred: {e}"
 
+def analyze_job_distribution(scheduled_jobs, all_boats, all_ramps):
+    """
+    Analyzes the distribution of scheduled jobs by day of the week and by ramp
+    to provide data for PDF report charts.
+    """
+    # --- Analysis by Day of Week ---
+    day_counts = Counter()
+    day_map = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+    for job in scheduled_jobs:
+        if job.scheduled_start_datetime:
+            day_of_week = job.scheduled_start_datetime.weekday()
+            day_counts[day_map[day_of_week]] += 1
+    
+    # --- Analysis by Ramp ---
+    ramp_counts = Counter()
+    for job in scheduled_jobs:
+        # To avoid double-counting a transport job, we prioritize the dropoff ramp
+        ramp_to_count = job.dropoff_ramp_id or job.pickup_ramp_id
+        if ramp_to_count and ramp_to_count in all_ramps:
+            ramp_name = all_ramps[ramp_to_count].ramp_name
+            # Abbreviate long ramp names for the chart
+            if len(ramp_name) > 15:
+                ramp_name = ramp_name.split()[0]
+            ramp_counts[ramp_name] += 1
+    
+    # Create the analysis dictionary to return
+    analysis = {
+        'by_day': dict(day_counts),
+        'by_ramp': dict(ramp_counts)
+    }
+    
+    return analysis
+
 def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
     today = datetime.date.today()
     total_all_boats = len(all_boats)
