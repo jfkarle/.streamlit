@@ -546,7 +546,7 @@ def show_scheduler_page():
             nav_cols[3].write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_")
         st.markdown("---")
         
-                cols = st.columns(3)
+        cols = st.columns(3)
         for i, slot in enumerate(st.session_state.found_slots[page_index : page_index + slots_per_page]):
             with cols[i % 3]:
                 with st.container(border=True):
