@@ -1031,12 +1031,10 @@ def find_same_service_conflict(boat_id, new_service_type, requested_date, all_sc
                     return job # Return the specific job that is causing the conflict
     return None
 
-def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, truck_operating_hours=None, prioritize_sailboats=True, **kwargs):
+def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, truck_operating_hours=None, prioritize_sailboats=True, is_bulk_job=False, **kwargs):
     """
-    Finds the best available job slots efficiently by finding the first valid slot per day
-    and then applying a comprehensive scoring model.
-    -- MODIFIED to restrict crane bonus to a +/- 7 day window.
-    -- REMOVED the hard-coded 'is_too_soon' 30-day filter.
+    Finds the best available job slots efficiently.
+    -- MODIFIED with 'is_bulk_job' flag to change scoring behavior for the bulk scheduler.
     """
     truck_operating_hours = truck_operating_hours or TRUCK_OPERATING_HOURS
     try:
@@ -1066,32 +1064,20 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     crane_days_at_ramp = set()
     if needs_j17 and selected_ramp_id:
-        crane_days_at_ramp = {
-            j.scheduled_start_datetime.date()
-            for j in SCHEDULED_JOBS
-            if j.assigned_crane_truck_id == 'J17' and j.scheduled_start_datetime and
-               (j.pickup_ramp_id == selected_ramp_id or j.dropoff_ramp_id == selected_ramp_id)
-        }
+        crane_days_at_ramp = { j.scheduled_start_datetime.date() for j in SCHEDULED_JOBS if j.assigned_crane_truck_id == 'J17' and j.scheduled_start_datetime and (j.pickup_ramp_id == selected_ramp_id or j.dropoff_ramp_id == selected_ramp_id) }
 
     all_found_slots = []
-    # Stop searching after finding a reasonable number of potential slots to score
     SEARCH_LIMIT = 25
     
-    # Iterate through each day in the search range
     for day_offset in range((search_end_date - search_start_date).days + 1):
         check_date = search_start_date + timedelta(days=day_offset)
-
-        # Iterate through each suitable truck
         for truck in suitable_trucks:
             truck_hours = truck_operating_hours.get(truck.truck_id, {}).get(check_date.weekday())
             if not truck_hours: continue
-
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours)
-
             for window in windows:
                 proposed_start_dt = datetime.datetime.combine(check_date, window['start_time']).replace(tzinfo=timezone.utc)
                 window_end_dt = datetime.datetime.combine(check_date, window['end_time']).replace(tzinfo=timezone.utc)
-                
                 new_job_pickup_coords = get_location_coords(address=boat.storage_address) if service_type == "Launch" else get_location_coords(ramp_id=selected_ramp_id)
                 last_job_info = daily_truck_last_location.get(truck.truck_id, {}).get(check_date)
                 truck_available_from = datetime.datetime.combine(check_date, truck_hours[0], tzinfo=timezone.utc)
@@ -1099,42 +1085,24 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 if last_job_info:
                     truck_available_from = max(truck_available_from, last_job_info[0])
                     truck_current_coords = last_job_info[1]
-                
                 deadhead_travel = timedelta(minutes=calculate_travel_time(truck_current_coords, new_job_pickup_coords))
                 actual_start_dt = max(proposed_start_dt, truck_available_from + deadhead_travel)
-
                 if actual_start_dt + hauler_duration <= window_end_dt:
-                    # The 'is_too_soon' check has been removed from here. It is now handled in the UI.
                     if check_truck_availability_optimized(truck.truck_name, actual_start_dt, actual_start_dt + hauler_duration, compiled_schedule):
                         if not needs_j17 or check_truck_availability_optimized("J17", actual_start_dt, actual_start_dt + j17_duration, compiled_schedule):
-                            all_found_slots.append({
-                                'date': check_date, 'time': actual_start_dt.time(), 'truck_id': truck.truck_name,
-                                'j17_needed': needs_j17, 'ramp_id': selected_ramp_id,
-                                'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
-                                'high_tide_times': window.get('high_tide_times', []),
-                                'debug_trace': {'deadhead_travel_minutes': deadhead_travel.total_seconds() / 60}
-                            })
-        
-        if len(all_found_slots) >= SEARCH_LIMIT:
+                            all_found_slots.append({'date': check_date, 'time': actual_start_dt.time(), 'truck_id': truck.truck_name, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id, 'tide_rule_concise': window.get('tide_rule_concise', 'N/A'), 'high_tide_times': window.get('high_tide_times', []), 'debug_trace': {'deadhead_travel_minutes': deadhead_travel.total_seconds() / 60}})
+        if len(all_found_slots) >= SEARCH_LIMIT and is_bulk_job:
             break
 
-    # --- SCORING LOGIC (Applied to the list of found slots) ---
     ideal_start_time = time(8, 0)
-    ideal_end_time = time(15, 0)
-
     for slot in all_found_slots:
         score = 0
         score_trace = {}
-        crane_bonus_applied = False
-
-        # --- MODIFIED CRANE BONUS LOGIC ---
-        # Only apply the large bonus if the crane day is within +/- 7 days of the requested date.
         if needs_j17 and slot['date'] in crane_days_at_ramp and abs((slot['date'] - requested_date).days) <= 7:
             days_diff = abs((slot['date'] - requested_date).days)
-            crane_bonus = 1000 - (days_diff * 50) # Bonus is higher the closer to the crane day
+            crane_bonus = 1000 - (days_diff * 50)
             score += crane_bonus
             score_trace['Crane Proximity Bonus'] = f"+{crane_bonus:.0f}"
-            crane_bonus_applied = True
         
         slot_deadhead_minutes = slot.get('debug_trace', {}).get('deadhead_travel_minutes', 0)
         score -= slot_deadhead_minutes * 2
@@ -1145,11 +1113,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         score += max(0, 200 - (minutes_from_ideal_start * 0.5))
         score_trace['Start Time Bonus'] = f"+{max(0, 200 - (minutes_from_ideal_start * 0.5)):.0f}"
 
-        # General penalty for being far from the requested date. This is now more influential
-        # when the crane bonus is not applied.
-        days_away = abs((slot['date'] - requested_date).days)
-        score -= days_away * 10
-        score_trace['Date Proximity Penalty'] = f"-{days_away * 10}"
+        # --- THIS IS THE KEY CHANGE ---
+        # Only penalize distance from the requested date for interactive user searches,
+        # not for bulk jobs where we just want the most efficient slot.
+        if not is_bulk_job:
+            days_away = abs((slot['date'] - requested_date).days)
+            score -= days_away * 10
+            score_trace['Date Proximity Penalty'] = f"-{days_away * 10}"
 
         slot['score'] = score
         if 'debug_trace' in slot:
@@ -1158,16 +1128,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             
     all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
 
-    # Filter for the number of suggestions requested by the user in the UI settings
-    if len(all_found_slots) > num_suggestions_to_find:
-        final_slots = all_found_slots[:num_suggestions_to_find]
-    else:
-        final_slots = all_found_slots
-
-    if not final_slots:
+    if not all_found_slots:
         return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
 
-    # Return the full list of found slots for pagination in the UI
     return all_found_slots, f"Found {len(all_found_slots)} potential slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
