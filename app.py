@@ -8,7 +8,7 @@ import os
 import datetime
 import ecm_scheduler_logic as ecm
 import json
-
+from datetime import timezone
 from reportlab.lib.pagesizes import letter
 import calendar
 from reportlab.lib import colors
@@ -1058,6 +1058,3 @@ elif app_mode == "Reporting":
 elif app_mode == "Settings":
     # Just call the function. That's it.
     show_settings_page()
-
-
-
