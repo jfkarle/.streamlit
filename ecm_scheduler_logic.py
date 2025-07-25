@@ -1248,6 +1248,85 @@ def analyze_job_distribution(scheduled_jobs, all_boats, all_ramps):
     
     return analysis
 
+def perform_efficiency_analysis(scheduled_jobs):
+    """
+    Performs an in-depth analysis of fleet efficiency based on scheduled jobs.
+    """
+    if not scheduled_jobs:
+        return {}
+
+    # 1. Group jobs by date and then by truck
+    daily_truck_schedules = {}
+    for job in scheduled_jobs:
+        if not job.scheduled_start_datetime or not job.assigned_hauling_truck_id:
+            continue
+        job_date = job.scheduled_start_datetime.date()
+        truck_id = job.assigned_hauling_truck_id
+        
+        daily_truck_schedules.setdefault(job_date, {}).setdefault(truck_id, []).append(job)
+
+    # 2. Initialize metrics
+    total_truck_days = 0
+    low_utilization_days = 0
+    excellent_timing_days = 0
+    poor_timing_days = 0
+    total_deadhead_minutes = 0
+    total_on_clock_minutes = 0
+    total_productive_minutes = 0
+    
+    # 3. Analyze each truck's daily performance
+    for date, trucks in daily_truck_schedules.items():
+        for truck_id, jobs in trucks.items():
+            total_truck_days += 1
+            
+            # Sort jobs chronologically for the day
+            jobs.sort(key=lambda j: j.scheduled_start_datetime)
+            num_jobs = len(jobs)
+            
+            # Metric 1: Truck Day Utilization
+            if num_jobs <= 2:
+                low_utilization_days += 1
+            
+            first_job_start = jobs[0].scheduled_start_datetime
+            last_job_end = jobs[-1].scheduled_end_datetime
+            
+            # Metric 2: Job Timing Efficiency
+            if first_job_start.time() < datetime.time(9, 0) and num_jobs >= 3 and last_job_end.time() <= datetime.time(15, 0):
+                excellent_timing_days += 1
+            if first_job_start.time() >= datetime.time(13, 0):
+                poor_timing_days += 1
+
+            # Metric 3 & 4: Proximity and Other Efficiency Metrics
+            day_on_clock_minutes = (last_job_end - first_job_start).total_seconds() / 60
+            total_on_clock_minutes += day_on_clock_minutes
+
+            day_productive_minutes = sum((j.scheduled_end_datetime - j.scheduled_start_datetime).total_seconds() / 60 for j in jobs)
+            total_productive_minutes += day_productive_minutes
+
+            # Deadhead Calculation
+            # Leg 1: From yard to the first job
+            yard_coords = get_location_coords(address=YARD_ADDRESS)
+            first_pickup_coords = get_location_coords(address=jobs[0].pickup_street_address, ramp_id=jobs[0].pickup_ramp_id)
+            total_deadhead_minutes += calculate_travel_time(yard_coords, first_pickup_coords)
+
+            # Intermediate Legs: From dropoff of job N to pickup of job N+1
+            for i in range(num_jobs - 1):
+                prev_job_dropoff_coords = get_location_coords(address=jobs[i].dropoff_street_address, ramp_id=jobs[i].dropoff_ramp_id)
+                next_job_pickup_coords = get_location_coords(address=jobs[i+1].pickup_street_address, ramp_id=jobs[i+1].pickup_ramp_id)
+                total_deadhead_minutes += calculate_travel_time(prev_job_dropoff_coords, next_job_pickup_coords)
+
+    # 4. Compile final analysis
+    analysis = {
+        "total_truck_days": total_truck_days,
+        "low_utilization_days": low_utilization_days,
+        "excellent_timing_days": excellent_timing_days,
+        "poor_timing_days": poor_timing_days,
+        "avg_jobs_per_day": len(scheduled_jobs) / total_truck_days if total_truck_days > 0 else 0,
+        "avg_deadhead_per_day": total_deadhead_minutes / total_truck_days if total_truck_days > 0 else 0,
+        "efficiency_percent": (total_productive_minutes / total_on_clock_minutes * 100) if total_on_clock_minutes > 0 else 0,
+    }
+    return analysis
+
 def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
     today = datetime.date.today()
     total_all_boats = len(all_boats)
