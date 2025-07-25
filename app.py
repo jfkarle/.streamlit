@@ -328,22 +328,6 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     buffer.seek(0)
     return buffer
 
-
-
-
-
-
-
-
-
-
-
-Tools
-
-Gemini can make mistakes, so double-check it
-
-
-
 def show_scheduler_page():
     """
     Displays the entire Schedule New Boat page and handles the new interactive conflict warning.
