@@ -286,6 +286,7 @@ def load_all_data_from_sheets():
     except Exception as e:
         st.error(f"Error loading data: {e}")
         raise
+        
 def save_job(job_to_save):
     conn = get_db_connection()
     job_dict = job_to_save.__dict__
@@ -831,38 +832,96 @@ def get_final_schedulable_ramp_times(
     date_to_check,
     all_tides,
     truck_id,
-    truck_hours_schedule
+    truck_hours_schedule,
+    ramp_tide_blackout_enabled=True # NEW FLAG - ensure this is in your function signature
 ):
     day_of_week = date_to_check.weekday()
-    truck_hours = truck_hours_schedule.get(truck_id, {}).get(day_of_week)
-    if not truck_hours:
+    
+    # NEW: Determine the collective operating hours for ALL suitable trucks on this day
+    # Find the earliest start and latest end among all working trucks for the day
+    earliest_truck_start = datetime.time(23, 59) # Max possible time
+    latest_truck_end = datetime.time(0, 0)     # Min possible time
+    any_truck_working_today = False
+
+    for t_id, t_hours_daily in truck_hours_schedule.items(): # Iterate through all trucks' daily schedules
+        if t_hours := t_hours_daily.get(day_of_week):
+            any_truck_working_today = True
+            earliest_truck_start = min(earliest_truck_start, t_hours[0])
+            latest_truck_end = max(latest_truck_end, t_hours[1])
+
+    # If no truck is working at all, then no slots are available anyway
+    if not any_truck_working_today:
+        DEBUG_MESSAGES.append(f"DEBUG: No trucks working on {date_to_check.strftime('%Y-%m-%d')}. Returning empty slots.")
         return []
 
-    truck_open_dt  = datetime.datetime.combine(date_to_check, truck_hours[0])
-    truck_close_dt = datetime.datetime.combine(date_to_check, truck_hours[1])
+    # Get the specific truck's hours for the individual slot calculation later
+    specific_truck_hours = truck_hours_schedule.get(truck_id, {}).get(day_of_week)
+    if not specific_truck_hours:
+        # This particular truck is not working, so it cannot fulfill a slot
+        return []
+
+    # Combine the earliest start and latest end into collective truck shift
+    collective_truck_open_dt = datetime.datetime.combine(date_to_check, earliest_truck_start, tzinfo=timezone.utc)
+    collective_truck_close_dt = datetime.datetime.combine(date_to_check, latest_truck_end, tzinfo=timezone.utc)
+
 
     if not ramp_obj:
-        return [{'start_time': truck_hours[0], 'end_time': truck_hours[1], 'high_tide_times': [], 'tide_rule_concise': 'N/A'}]
+        # If no ramp object, then it's an "AnyTide" implicitly for pickup/dropoff at address,
+        # so availability is just constrained by truck hours.
+        return [{'start_time': specific_truck_hours[0], 'end_time': specific_truck_hours[1], 'high_tide_times': [], 'tide_rule_concise': 'N/A'}]
 
+    # Fetch tidal windows
     tide_data_for_day = all_tides.get(date_to_check, [])
     tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
     
-    all_schedulable_slots = []
-
+    # Filter tidal windows: only keep those that overlap with *any* truck's collective operating hours
+    filtered_tidal_windows = []
     for t_win in tidal_windows:
-        tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'])
-        tidal_end_dt   = datetime.datetime.combine(date_to_check, t_win['end_time'])
+        tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
+        tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
 
+        # Handle wrap-around midnight if window crosses midnight (e.g., 11 PM to 3 AM next day)
         if tidal_start_dt > tidal_end_dt:
             tidal_end_dt += datetime.timedelta(days=1)
 
-        overlap_start = max(tidal_start_dt, truck_open_dt)
-        overlap_end   = min(tidal_end_dt,   truck_close_dt)
+        # Check for overlap between tide window and collective truck shift
+        overlap_start = max(tidal_start_dt, collective_truck_open_dt)
+        overlap_end = min(tidal_end_dt, collective_truck_close_dt)
 
         if overlap_start < overlap_end:
-            # Create a dictionary to hold the debug trace for this specific window
+            # If there's any overlap, this is a potentially usable window for the ramp
+            filtered_tidal_windows.append(t_win)
+        else:
+            DEBUG_MESSAGES.append(f"DEBUG: Tide window {t_win['start_time']}-{t_win['end_time']} at {ramp_obj.ramp_name} does NOT overlap with collective truck hours {earliest_truck_start}-{latest_truck_end} on {date_to_check}. Skipping this tide window.")
+
+    # --- INSERT THE NEW BLACKOUT LOGIC HERE ---
+    # NEW: Apply the blackout logic based on the toggle switch
+    if ramp_tide_blackout_enabled and not filtered_tidal_windows and \
+       ramp_obj.tide_calculation_method != "AnyTide" and \
+       not (ramp_obj.tide_calculation_method == "AnyTideWithDraftRule" and boat_obj.draft_ft and boat_obj.draft_ft < 5.0):
+        
+        DEBUG_MESSAGES.append(f"DEBUG: Ramp {ramp_obj.ramp_name} (ID: {ramp_obj.ramp_id}) is effectively 'blacked out' on {date_to_check} due to no viable tide windows overlapping truck hours (Ramp Blackout enabled).")
+        return [] # Black out this ramp for the day
+    # --- END NEW BLACKOUT LOGIC ---
+
+
+    all_schedulable_slots = []
+    # Now, generate slots based on the specific truck's hours and the filtered tidal windows
+    specific_truck_open_dt = datetime.datetime.combine(date_to_check, specific_truck_hours[0], tzinfo=timezone.utc)
+    specific_truck_close_dt = datetime.datetime.combine(date_to_check, specific_truck_hours[1], tzinfo=timezone.utc)
+
+    for t_win in filtered_tidal_windows: # Use the filtered windows
+        tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
+        tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
+        if tidal_start_dt > tidal_end_dt:
+            tidal_end_dt += datetime.timedelta(days=1)
+
+        overlap_start = max(tidal_start_dt, specific_truck_open_dt)
+        overlap_end = min(tidal_end_dt, specific_truck_close_dt)
+
+        if overlap_start < overlap_end:
             debug_trace = {
-                "Truck Shift": f"{truck_open_dt.strftime('%I:%M %p')} - {truck_close_dt.strftime('%I:%M %p')}",
+                "Truck Shift": f"{specific_truck_open_dt.strftime('%I:%M %p')} - {specific_truck_close_dt.strftime('%I:%M %p')}",
                 "Tide Window": f"{tidal_start_dt.strftime('%I:%M %p')} - {tidal_end_dt.strftime('%I:%M %p')}",
                 "Overlap Found": f"{overlap_start.strftime('%I:%M %p')} - {overlap_end.strftime('%I:%M %p')}",
                 "Comparison": f"{overlap_start} < {overlap_end} = {overlap_start < overlap_end}"
@@ -872,12 +931,12 @@ def get_final_schedulable_ramp_times(
                 'start_time'       : overlap_start.time(),
                 'end_time'         : overlap_end.time(),
                 'high_tide_times'  : [t['time'] for t in tide_data_for_day if t['type'] == 'H'],
+                'low_tide_times'   : [t['time'] for t in tide_data_for_day if t['type'] == 'L'], # NEW: Pass low tide times
                 'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj),
-                'debug_trace'      : debug_trace # Attach the debug info
+                'debug_trace'      : debug_trace
             })
 
     return all_schedulable_slots
-
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
     all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and t.max_boat_length is not None and boat_len <= t.max_boat_length]
     if force_preferred and pref_truck_id and any(t.truck_name == pref_truck_id for t in all_suitable):
@@ -1031,7 +1090,13 @@ def find_same_service_conflict(boat_id, new_service_type, requested_date, all_sc
                     return job # Return the specific job that is causing the conflict
     return None
 
-def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, truck_operating_hours=None, prioritize_sailboats=True, is_bulk_job=False, **kwargs):
+def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, 
+                             selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, 
+                             manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, 
+                             truck_operating_hours=None, prioritize_sailboats=True, # Existing flag
+                             ramp_tide_blackout_enabled=True, # NEW FLAG
+                             scituate_powerboat_priority_enabled=True, # NEW FLAG
+                             **kwargs):
     """
     Finds the best available job slots efficiently.
     -- MODIFIED with a 'Density Bonus' to prioritize filling up existing workdays during bulk scheduling.
