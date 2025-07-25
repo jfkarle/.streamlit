@@ -1011,15 +1011,6 @@ def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_sche
         if start_dt < busy_end and end_dt > busy_start: return False
     return True
 
-Of course. Here are the complete, modified Python functions based on your requests.
-
-You will need to replace the existing functions in your files with these new versions. I have also created one new helper function that you will need to add.
-
-In ecm_scheduler_logic.py
-First, add this new helper function to your ecm_scheduler_logic.py file. You can place it near the other helper functions like get_job_details.
-
-Python
-
 def find_same_service_conflict(boat_id, new_service_type, requested_date, all_scheduled_jobs):
     """
     Checks if the same service is already scheduled for a boat within a 30-day window.
@@ -1039,9 +1030,6 @@ def find_same_service_conflict(boat_id, new_service_type, requested_date, all_sc
                 if abs(job.scheduled_start_datetime.date() - requested_date) <= thirty_days:
                     return job # Return the specific job that is causing the conflict
     return None
-Next, replace the entire find_available_job_slots function in ecm_scheduler_logic.py with this updated version. This new version removes the old is_too_soon filter and implements the new +/- 7 day crane bonus logic.
-
-Python
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, truck_operating_hours=None, prioritize_sailboats=True, **kwargs):
     """
