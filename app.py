@@ -262,67 +262,126 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
 def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     """
     Generates a multi-page PDF progress report with stats, charts, and tables.
-    NOW INCLUDES A NEW FLEET EFFICIENCY PAGE.
+    INCLUDES RESTORED ORIGINAL PAGES AND A NEW, ENHANCED FLEET EFFICIENCY PAGE.
     """
     buffer = BytesIO()
     from reportlab.lib.pagesizes import letter
     from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.graphics.shapes import Drawing
     from reportlab.graphics.charts.barcharts import VerticalBarChart
 
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     story = []
     styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='Justify', alignment=1)) # Justify alignment for text
 
-    # --- Page 1: Title and Executive Summary ---
-    # (omitted for brevity - no changes here)
+    # --- Page 1: Executive Summary (RESTORED) ---
+    story.append(Paragraph("ECM Season Progress Report", styles['h1']))
+    story.append(Paragraph(f"Generated on: {datetime.date.today().strftime('%B %d, %Y')}", styles['Normal']))
+    story.append(Spacer(1, 24))
+    story.append(Paragraph("Executive Summary", styles['h2']))
+    story.append(Spacer(1, 12))
 
-    # --- Page 2: Scheduling Analytics ---
-    # (omitted for brevity - no changes here)
+    total_boats = stats['all_boats']['total']
+    scheduled_boats = stats['all_boats']['scheduled']
+    launched_boats = stats['all_boats']['launched']
+    percent_scheduled = (scheduled_boats / total_boats * 100) if total_boats > 0 else 0
+    percent_launched = (launched_boats / total_boats * 100) if total_boats > 0 else 0
 
-    # --- NEW Page 3: Fleet Efficiency Analytics ---
+    summary_data = [
+        ['Metric', 'Value'],
+        ['Total Boats in Fleet:', f'{total_boats}'],
+        ['Boats Scheduled:', f'{scheduled_boats} ({percent_scheduled:.0f}%)'],
+        ['Boats Launched (to date):', f'{launched_boats} ({percent_launched:.0f}%)'],
+        ['Boats Remaining to Schedule:', f'{total_boats - scheduled_boats}'],
+    ]
+    summary_table = Table(summary_data, colWidths=[200, 100])
+    summary_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
+    ]))
+    story.append(summary_table)
+    story.append(Spacer(1, 24))
+
+    # --- Page 2: Scheduling Analytics (RESTORED) ---
+    story.append(PageBreak())
+    story.append(Paragraph("Scheduling Analytics", styles['h2']))
+    story.append(Spacer(1, 12))
+
+    if dist_analysis.get('by_day'):
+        story.append(Paragraph("Jobs by Day of Week", styles['h3']))
+        drawing = Drawing(400, 200)
+        day_data = [tuple(v for k,v in sorted(dist_analysis['by_day'].items()))]
+        day_names = [k for k,v in sorted(dist_analysis['by_day'].items())]
+        bc = VerticalBarChart()
+        bc.x = 50; bc.y = 50; bc.height = 125; bc.width = 300
+        bc.data = day_data
+        bc.categoryAxis.categoryNames = day_names
+        drawing.add(bc)
+        story.append(drawing)
+        story.append(Spacer(1, 12))
+
+    # --- Page 3: Fleet Efficiency Report (NEW & ENHANCED) ---
     story.append(PageBreak())
     story.append(Paragraph("Fleet Efficiency Report", styles['h2']))
     story.append(Spacer(1, 12))
     
-    if eff_analysis:
-        low_util_pct = (eff_analysis['low_utilization_days'] / eff_analysis['total_truck_days'] * 100) if eff_analysis['total_truck_days'] > 0 else 0
-        
-        eff_data = [
-            [Paragraph("<b>Metric</b>", styles['Normal']), Paragraph("<b>Value</b>", styles['Normal'])],
-            ["Avg. Jobs Per Truck Per Day:", f"{eff_analysis['avg_jobs_per_day']:.2f}"],
-            ["Overall Driver Efficiency:", f"{eff_analysis['efficiency_percent']:.1f}%"],
-            [Paragraph("<i>↳ % of 'on-the-clock' time spent on productive jobs</i>", styles['Italic']), ""],
-            ["Avg. Travel Time Between Jobs:", f"{eff_analysis['avg_deadhead_per_day']:.0f} minutes"],
-            [Paragraph("<i>↳ Unproductive (empty) travel time</i>", styles['Italic']), ""],
-            ["Truck Days with Low Utilization:", f"{eff_analysis['low_utilization_days']} of {eff_analysis['total_truck_days']} ({low_util_pct:.0f}%)"],
-            [Paragraph("<i>↳ Days with 2 or fewer jobs assigned</i>", styles['Italic']), ""],
-            ["Days with Excellent Timing:", f"{eff_analysis['excellent_timing_days']}"],
-            [Paragraph("<i>↳ Early start (before 9AM), >=3 jobs, early finish (by 3PM)</i>", styles['Italic']), ""],
-        ]
-        
-        eff_table = Table(eff_data, colWidths=[300, 150])
-        eff_table.setStyle(TableStyle([
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('VALIGN', (0,0), (-1,-1), 'TOP'),
-            ('SPAN', (1,2), (1,3)), # Span cells for italic descriptions
-            ('SPAN', (1,4), (1,5)),
-            ('SPAN', (1,6), (1,7)),
-            ('SPAN', (1,8), (1,9)),
-        ]))
-        story.append(eff_table)
+    if eff_analysis and eff_analysis.get("total_truck_days", 0) > 0:
+        story.append(Paragraph("<b><u>Truck Day Utilization</u></b>", styles['h3']))
+        low_util_pct = (eff_analysis['low_utilization_days'] / eff_analysis['total_truck_days'] * 100)
+        story.append(Paragraph(f"<b>Days with Low Utilization (≤ 2 jobs):</b> {eff_analysis['low_utilization_days']} of {eff_analysis['total_truck_days']} total truck-days ({low_util_pct:.0f}%)", styles['Normal']))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph("<i><b>Insight:</b> This is the most critical metric to watch. A high percentage indicates that trucks are frequently dispatched for only one or two jobs, leading to inefficiency. The goal is to reduce this number by scheduling more clustered, multi-job days.</i>", styles['Italic']))
+        story.append(Spacer(1, 24))
+
+        story.append(Paragraph("<b><u>Travel Efficiency</u></b>", styles['h3']))
+        story.append(Paragraph(f"<b>Average Travel Time Between Jobs (Deadhead):</b> {eff_analysis['avg_deadhead_per_day']:.0f} minutes per day", styles['Normal']))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph("<i><b>Insight:</b> This measures the average time drivers spend traveling empty between the yard and the first job, and between subsequent jobs. Lowering this number by creating geographically logical routes (e.g., Scituate -> Marshfield) directly reduces fuel costs and wasted driver time.</i>", styles['Italic']))
+        story.append(Spacer(1, 24))
+
+        story.append(Paragraph("<b><u>Productivity and Timing</u></b>", styles['h3']))
+        story.append(Paragraph(f"<b>Overall Driver Efficiency:</b> {eff_analysis['efficiency_percent']:.1f}%", styles['Normal']))
+        story.append(Paragraph("<i>↳ This is the percentage of a driver's 'on-the-clock' time (from first job start to last job end) that is spent actively working on a job. A higher number is better.</i>", styles['Italic']))
+        story.append(Spacer(1, 12))
+        story.append(Paragraph(f"<b>Days with Excellent Timing:</b> {eff_analysis['excellent_timing_days']}", styles['Normal']))
+        story.append(Paragraph("<i>↳ These are ideal days: starting before 9 AM, completing 3+ jobs, and finishing by 3 PM. This is the target for a highly productive day.</i>", styles['Italic']))
+
     else:
-        story.append(Paragraph("No efficiency data available to report.", styles['Normal']))
+        story.append(Paragraph("Not enough job data exists to generate an efficiency report.", styles['Normal']))
 
-
-    # --- Page 4+: Detailed List ---
+    # --- Page 4+: Detailed Boat Status (RESTORED) ---
     story.append(PageBreak())
     story.append(Paragraph("Detailed Boat Status", styles['h2']))
     story.append(Spacer(1, 12))
-    # (omitted for brevity - no changes here)
+
+    table_data = [["Customer Name", "Boat Details", "ECM?", "Scheduling Status"]]
+    for boat in ecm.LOADED_BOATS.values():
+        cust = ecm.get_customer_details(boat.customer_id)
+        if not cust: continue
+        services = [j.service_type for j in ecm.SCHEDULED_JOBS if j.customer_id == cust.customer_id and j.job_status == "Scheduled"]
+        status = "Launched" if "Launch" in services else (f"Scheduled ({', '.join(services)})" if services else "Not Scheduled")
+        table_data.append([
+            Paragraph(cust.customer_name, styles['Normal']),
+            Paragraph(f"{boat.boat_length}' {boat.boat_type}", styles['Normal']),
+            "Yes" if boat.is_ecm_boat else "No",
+            status
+        ])
+
+    detail_table = Table(table_data, colWidths=[150, 150, 50, 150])
+    detail_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+        ('BACKGROUND', (0,1), (-1,-1), colors.beige),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
+    ]))
+    story.append(detail_table)
 
     doc.build(story)
     buffer.seek(0)
