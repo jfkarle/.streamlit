@@ -536,11 +536,9 @@ def show_scheduler_page():
                 st.rerun()
 
     if st.session_state.found_slots and not st.session_state.selected_slot:
-        # This block is now correctly indented
         st.subheader("Please select your preferred slot:")
         total_slots, page_index, slots_per_page = len(st.session_state.found_slots), st.session_state.slot_page_index, 3
 
-        # --- This navigation part is unchanged ---
         nav_cols = st.columns([1, 1, 5, 1, 1])
         nav_cols[0].button("⬅️ Prev", on_click=lambda: st.session_state.update(slot_page_index=page_index - slots_per_page), disabled=(page_index == 0), use_container_width=True)
         nav_cols[1].button("Next ➡️", on_click=lambda: st.session_state.update(slot_page_index=page_index + slots_per_page), disabled=(page_index + slots_per_page >= total_slots), use_container_width=True)
@@ -548,17 +546,13 @@ def show_scheduler_page():
             nav_cols[3].write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_")
         st.markdown("---")
         
-        # --- The results display loop has been rebuilt ---
         cols = st.columns(3)
         for i, slot in enumerate(st.session_state.found_slots[page_index : page_index + slots_per_page]):
             with cols[i % 3]:
-                # Use a container to recreate the card effect
                 with st.container(border=True):
-                    # Display special message for the requested date
                     if st.session_state.search_requested_date and slot['date'] == st.session_state.search_requested_date:
                         st.success("⭐ Requested Date")
 
-                    # Display the main slot info using st.write
                     ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
                     st.markdown(f"""
                     **Date:** {slot['date'].strftime('%a, %b %d, %Y')}  
@@ -574,7 +568,6 @@ def show_scheduler_page():
                         with st.expander("Show Calculation Details"):
                             st.json(slot['debug_trace'])
                     
-                    # Put the button at the bottom of the card
                     st.button("Select this slot", key=f"select_slot_{page_index + i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
     
     elif st.session_state.selected_slot:
