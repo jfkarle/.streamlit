@@ -1034,7 +1034,7 @@ def find_same_service_conflict(boat_id, new_service_type, requested_date, all_sc
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5, manager_override=False, crane_look_back_days=7, crane_look_forward_days=60, truck_operating_hours=None, prioritize_sailboats=True, is_bulk_job=False, **kwargs):
     """
     Finds the best available job slots efficiently.
-    -- MODIFIED with 'is_bulk_job' flag to change scoring behavior for the bulk scheduler.
+    -- MODIFIED with a 'Density Bonus' to prioritize filling up existing workdays during bulk scheduling.
     """
     truck_operating_hours = truck_operating_hours or TRUCK_OPERATING_HOURS
     try:
@@ -1088,9 +1088,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 deadhead_travel = timedelta(minutes=calculate_travel_time(truck_current_coords, new_job_pickup_coords))
                 actual_start_dt = max(proposed_start_dt, truck_available_from + deadhead_travel)
                 if actual_start_dt + hauler_duration <= window_end_dt:
-                    if check_truck_availability_optimized(truck.truck_name, actual_start_dt, actual_start_dt + hauler_duration, compiled_schedule):
+                    if check_truck_availability_optimized(truck.truck_id, actual_start_dt, actual_start_dt + hauler_duration, compiled_schedule):
                         if not needs_j17 or check_truck_availability_optimized("J17", actual_start_dt, actual_start_dt + j17_duration, compiled_schedule):
-                            all_found_slots.append({'date': check_date, 'time': actual_start_dt.time(), 'truck_id': truck.truck_name, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id, 'tide_rule_concise': window.get('tide_rule_concise', 'N/A'), 'high_tide_times': window.get('high_tide_times', []), 'debug_trace': {'deadhead_travel_minutes': deadhead_travel.total_seconds() / 60}})
+                            all_found_slots.append({'date': check_date, 'time': actual_start_dt.time(), 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id, 'tide_rule_concise': window.get('tide_rule_concise', 'N/A'), 'high_tide_times': window.get('high_tide_times', []), 'debug_trace': {'deadhead_travel_minutes': deadhead_travel.total_seconds() / 60}})
         if len(all_found_slots) >= SEARCH_LIMIT and is_bulk_job:
             break
 
@@ -1098,6 +1098,19 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     for slot in all_found_slots:
         score = 0
         score_trace = {}
+        
+        # --- NEW: DENSITY BONUS for bulk jobs ---
+        if is_bulk_job:
+            # Check if this truck is already working on this day
+            is_working_day = False
+            for start, end in compiled_schedule.get(slot['truck_id'], []):
+                if start.date() == slot['date']:
+                    is_working_day = True
+                    break
+            if is_working_day:
+                score += 400  # Large bonus for adding a job to an existing workday
+                score_trace['Density Bonus'] = "+400"
+
         if needs_j17 and slot['date'] in crane_days_at_ramp and abs((slot['date'] - requested_date).days) <= 7:
             days_diff = abs((slot['date'] - requested_date).days)
             crane_bonus = 1000 - (days_diff * 50)
@@ -1113,9 +1126,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         score += max(0, 200 - (minutes_from_ideal_start * 0.5))
         score_trace['Start Time Bonus'] = f"+{max(0, 200 - (minutes_from_ideal_start * 0.5)):.0f}"
 
-        # --- THIS IS THE KEY CHANGE ---
-        # Only penalize distance from the requested date for interactive user searches,
-        # not for bulk jobs where we just want the most efficient slot.
         if not is_bulk_job:
             days_away = abs((slot['date'] - requested_date).days)
             score -= days_away * 10
