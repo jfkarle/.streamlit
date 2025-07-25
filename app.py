@@ -579,7 +579,7 @@ def show_scheduler_page():
                 st.error(f"Failed to confirm job: {message}")
     return
                 
-ef show_reporting_page():
+def show_reporting_page():
     """
     Displays the entire Reporting dashboard, including all original tabs and
     interactive job management with a confirmation step for cancellation.
