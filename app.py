@@ -566,16 +566,17 @@ def show_scheduler_page():
                 st.session_state.slot_page_index = 0
                 
                 slots, msg, reasons, _ = ecm.find_available_job_slots(
-                    **st.session_state.current_job_request, 
+                    **st.session_state.current_job_request,
                     num_suggestions_to_find=st.session_state.get('num_suggestions', 25),
-                    force_preferred_truck=(not relax_truck), 
-                    manager_override=manager_override
+                    force_preferred_truck=(not relax_truck),
+                    manager_override=manager_override,
+                    # --- ADD THESE NEW PARAMETERS HERE ---
+                    prioritize_sailboats=st.session_state.get('sailboat_priority_enabled', True),
+                    ramp_tide_blackout_enabled=st.session_state.get('ramp_tide_blackout_enabled', True),
+                    scituate_powerboat_priority_enabled=st.session_state.get('scituate_powerboat_priority_enabled', True),
+                    is_bulk_job=False # For individual scheduling from the UI, it's not a bulk job
+                    # --- END NEW PARAMETERS ---
                 )
-                st.session_state.info_message = msg
-                st.session_state.found_slots = slots
-                st.session_state.selected_slot = None
-                st.session_state.failure_reasons = reasons
-                st.rerun()
 
     # --- SLOT DISPLAY AND PAGINATION ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
