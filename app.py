@@ -262,6 +262,14 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
 def generate_progress_report_pdf(stats, analysis):
     """Generates a multi-page PDF progress report with stats, charts, and tables."""
     buffer = BytesIO()
+    # These imports were moved into the function from the top of the file in the last step
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
+
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     story = []
     styles = getSampleStyleSheet()
@@ -344,7 +352,8 @@ def generate_progress_report_pdf(stats, analysis):
         table_data.append([
             Paragraph(cust.customer_name, styles['Normal']),
             Paragraph(f"{boat.boat_length}' {boat.boat_type}", styles['Normal']),
-            "Yes" if cust.is_ecm_customer else "No",
+            # --- THIS IS THE CORRECTED LINE ---
+            "Yes" if boat.is_ecm_boat else "No",
             status
         ])
 
