@@ -445,7 +445,7 @@ def show_scheduler_page():
         st.info(info_msg)
         if reasons := st.session_state.get('failure_reasons'):
             for reason in reasons:
-                st.warning(reason) # Display each reason
+                st.warning(reason)
         st.session_state.info_message = ""
         st.session_state.failure_reasons = []
 
@@ -457,7 +457,6 @@ def show_scheduler_page():
     # --- SIDEBAR UI ---
     st.sidebar.header("New Job Request")
     
-    # This section remains unchanged, but is included for completeness
     customer = None
     boat = None
     if not st.session_state.get('selected_customer_id'):
@@ -555,7 +554,7 @@ def show_scheduler_page():
                 st.session_state.failure_reasons = reasons
                 st.rerun()
 
-    # --- SLOT DISPLAY AND PAGINATION (Remains the same) ---
+    # --- SLOT DISPLAY AND PAGINATION ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
         total_slots = len(st.session_state.found_slots)
@@ -584,7 +583,6 @@ def show_scheduler_page():
                     **Ramp:** {ramp_details.ramp_name if ramp_details else "N/A"}
                     """)
                     st.caption(f"Tide Rule: {slot.get('tide_rule_concise', 'N/A')}")
-                    # The following line was missing from my previous response, adding it back.
                     st.markdown(format_tides_for_display(slot, st.session_state.truck_operating_hours), unsafe_allow_html=True)
 
                     if 'debug_trace' in slot:
