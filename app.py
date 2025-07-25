@@ -259,10 +259,12 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
 
 #### Detailed report generation
 
-def generate_progress_report_pdf(stats, analysis):
-    """Generates a multi-page PDF progress report with stats, charts, and tables."""
+def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
+    """
+    Generates a multi-page PDF progress report with stats, charts, and tables.
+    NOW INCLUDES A NEW FLEET EFFICIENCY PAGE.
+    """
     buffer = BytesIO()
-    # These imports were moved into the function from the top of the file in the last step
     from reportlab.lib.pagesizes import letter
     from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
@@ -275,103 +277,72 @@ def generate_progress_report_pdf(stats, analysis):
     styles = getSampleStyleSheet()
 
     # --- Page 1: Title and Executive Summary ---
-    story.append(Paragraph("ECM Season Progress Report", styles['h1']))
-    story.append(Paragraph(f"Generated on: {datetime.date.today().strftime('%B %d, %Y')}", styles['Normal']))
-    story.append(Spacer(1, 24))
+    # (omitted for brevity - no changes here)
 
-    story.append(Paragraph("Executive Summary", styles['h2']))
-    story.append(Spacer(1, 12))
+    # --- Page 2: Scheduling Analytics ---
+    # (omitted for brevity - no changes here)
 
-    # Overall Stats
-    total_boats = stats['all_boats']['total']
-    scheduled_boats = stats['all_boats']['scheduled']
-    launched_boats = stats['all_boats']['launched']
-    percent_scheduled = (scheduled_boats / total_boats * 100) if total_boats > 0 else 0
-    percent_launched = (launched_boats / total_boats * 100) if total_boats > 0 else 0
-
-    summary_data = [
-        ['Metric', 'Value'],
-        ['Total Boats in Fleet:', f'{total_boats}'],
-        ['Boats Scheduled:', f'{scheduled_boats} ({percent_scheduled:.0f}%)'],
-        ['Boats Launched (to date):', f'{launched_boats} ({percent_launched:.0f}%)'],
-        ['Boats Remaining to Schedule:', f'{total_boats - scheduled_boats}'],
-    ]
-    summary_table = Table(summary_data, colWidths=[200, 100])
-    summary_table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
-    ]))
-    story.append(summary_table)
-    story.append(Spacer(1, 24))
-
-    # --- Page 2: Analytics ---
+    # --- NEW Page 3: Fleet Efficiency Analytics ---
     story.append(PageBreak())
-    story.append(Paragraph("Scheduling Analytics", styles['h2']))
+    story.append(Paragraph("Fleet Efficiency Report", styles['h2']))
     story.append(Spacer(1, 12))
+    
+    if eff_analysis:
+        low_util_pct = (eff_analysis['low_utilization_days'] / eff_analysis['total_truck_days'] * 100) if eff_analysis['total_truck_days'] > 0 else 0
+        
+        eff_data = [
+            [Paragraph("<b>Metric</b>", styles['Normal']), Paragraph("<b>Value</b>", styles['Normal'])],
+            ["Avg. Jobs Per Truck Per Day:", f"{eff_analysis['avg_jobs_per_day']:.2f}"],
+            ["Overall Driver Efficiency:", f"{eff_analysis['efficiency_percent']:.1f}%"],
+            [Paragraph("<i>↳ % of 'on-the-clock' time spent on productive jobs</i>", styles['Italic']), ""],
+            ["Avg. Travel Time Between Jobs:", f"{eff_analysis['avg_deadhead_per_day']:.0f} minutes"],
+            [Paragraph("<i>↳ Unproductive (empty) travel time</i>", styles['Italic']), ""],
+            ["Truck Days with Low Utilization:", f"{eff_analysis['low_utilization_days']} of {eff_analysis['total_truck_days']} ({low_util_pct:.0f}%)"],
+            [Paragraph("<i>↳ Days with 2 or fewer jobs assigned</i>", styles['Italic']), ""],
+            ["Days with Excellent Timing:", f"{eff_analysis['excellent_timing_days']}"],
+            [Paragraph("<i>↳ Early start (before 9AM), >=3 jobs, early finish (by 3PM)</i>", styles['Italic']), ""],
+        ]
+        
+        eff_table = Table(eff_data, colWidths=[300, 150])
+        eff_table.setStyle(TableStyle([
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('SPAN', (1,2), (1,3)), # Span cells for italic descriptions
+            ('SPAN', (1,4), (1,5)),
+            ('SPAN', (1,6), (1,7)),
+            ('SPAN', (1,8), (1,9)),
+        ]))
+        story.append(eff_table)
+    else:
+        story.append(Paragraph("No efficiency data available to report.", styles['Normal']))
 
-    # Jobs by Day Chart
-    if analysis['by_day']:
-        story.append(Paragraph("Jobs by Day of Week", styles['h3']))
-        drawing = Drawing(400, 200)
-        day_data = [tuple(v for k,v in sorted(analysis['by_day'].items()))]
-        day_names = [k for k,v in sorted(analysis['by_day'].items())]
-        bc = VerticalBarChart()
-        bc.x = 50;bc.y = 50; bc.height = 125; bc.width = 300
-        bc.data = day_data
-        bc.categoryAxis.categoryNames = day_names
-        drawing.add(bc)
-        story.append(drawing)
-        story.append(Spacer(1, 12))
 
-    # Jobs by Ramp Chart
-    if analysis['by_ramp']:
-        story.append(Paragraph("Jobs by Ramp", styles['h3']))
-        drawing = Drawing(400, 200)
-        ramp_data = [tuple(v for k,v in sorted(analysis['by_ramp'].items()))]
-        ramp_names = [k for k,v in sorted(analysis['by_ramp'].items())]
-        bc_ramp = VerticalBarChart()
-        bc_ramp.x = 50;bc_ramp.y = 50; bc_ramp.height = 125; bc_ramp.width = 300
-        bc_ramp.data = ramp_data
-        bc_ramp.categoryAxis.categoryNames = ramp_names
-        bc_ramp.categoryAxis.labels.angle = 45 # Angle labels to fit
-        drawing.add(bc_ramp)
-        story.append(drawing)
-
-    # --- Page 3+: Detailed List ---
+    # --- Page 4+: Detailed List ---
     story.append(PageBreak())
     story.append(Paragraph("Detailed Boat Status", styles['h2']))
     story.append(Spacer(1, 12))
-
-    table_data = [["Customer Name", "Boat Details", "ECM?", "Scheduling Status"]]
-    for boat in ecm.LOADED_BOATS.values():
-        cust = ecm.get_customer_details(boat.customer_id)
-        if not cust: continue
-        services = [j.service_type for j in ecm.SCHEDULED_JOBS if j.customer_id == cust.customer_id and j.job_status == "Scheduled"]
-        status = "Launched" if "Launch" in services else (f"Scheduled ({', '.join(services)})" if services else "Not Scheduled")
-        table_data.append([
-            Paragraph(cust.customer_name, styles['Normal']),
-            Paragraph(f"{boat.boat_length}' {boat.boat_type}", styles['Normal']),
-            # --- THIS IS THE CORRECTED LINE ---
-            "Yes" if boat.is_ecm_boat else "No",
-            status
-        ])
-
-    detail_table = Table(table_data, colWidths=[150, 150, 50, 150])
-    detail_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.grey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0,0), (-1,0), 12),
-        ('BACKGROUND', (0,1), (-1,-1), colors.beige),
-        ('GRID', (0,0), (-1,-1), 1, colors.black)
-    ]))
-    story.append(detail_table)
+    # (omitted for brevity - no changes here)
 
     doc.build(story)
     buffer.seek(0)
     return buffer
+
+
+
+
+
+
+
+
+
+
+
+Tools
+
+Gemini can make mistakes, so double-check it
+
+
 
 def show_scheduler_page():
     """
@@ -624,7 +595,7 @@ def show_scheduler_page():
                 st.error(f"Failed to confirm job: {message}")
     return
                 
-def show_reporting_page():
+ef show_reporting_page():
     """
     Displays the entire Reporting dashboard, including all original tabs and
     interactive job management with a confirmation step for cancellation.
@@ -678,56 +649,11 @@ def show_reporting_page():
 
     with tab1:
         st.subheader("Scheduled Jobs Overview")
-        if ecm.SCHEDULED_JOBS:
-            # Header for the jobs list
-            cols = st.columns((2, 1, 2, 1, 1, 3))
-            fields = ["Date/Time", "Service", "Customer", "Haul Truck", "Crane", "Actions"]
-            for col, field in zip(cols, fields):
-                col.markdown(f"**{field}**")
-            st.markdown("---")
+        # (omitted for brevity - no changes here)
 
-            # Display a row for each scheduled job
-            for j in sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max.replace(tzinfo=timezone.utc)):
-                customer = ecm.get_customer_details(j.customer_id)
-                if not customer:
-                    continue # Skip this job if the customer can't be found
-                
-                cols = st.columns((2, 1, 2, 1, 1, 3))
-                
-                # Check if the datetime exists before trying to format it
-                if j.scheduled_start_datetime:
-                    cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p"))
-                else:
-                    cols[0].warning("No Date Set") # Show a warning for bad data
-
-                cols[1].write(j.service_type)
-                cols[2].write(customer.customer_name)
-                cols[3].write(j.assigned_hauling_truck_id or "—")
-                cols[4].write(j.assigned_crane_truck_id or "—")
-
-                # Actions column with cancel confirmation logic
-                with cols[5]:
-                    if st.session_state.get('job_to_cancel') == j.job_id:
-                        st.warning("Are you sure?")
-                        btn_cols = st.columns(2)
-                        btn_cols[0].button("✅ Yes, Cancel", key=f"confirm_cancel_{j.job_id}", on_click=cancel_job_confirmed, use_container_width=True, type="primary")
-                        btn_cols[1].button("❌ No", key=f"deny_cancel_{j.job_id}", on_click=clear_cancel_prompt, use_container_width=True)
-                    else:
-                        btn_cols = st.columns(3)
-                        btn_cols[0].button("Move", key=f"move_{j.job_id}", on_click=move_job, args=(j.job_id,), use_container_width=True)
-                        btn_cols[1].button("Park", key=f"park_{j.job_id}", on_click=park_job, args=(j.job_id,), use_container_width=True)
-                        btn_cols[2].button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
-        else:
-            st.write("No jobs scheduled.")
-    
     with tab2:
         st.subheader("Crane Day Candidate Calendar")
-        ramp_options = list(ecm.CANDIDATE_CRANE_DAYS.keys())
-        if ramp_options:
-            ramp = st.selectbox("Select a ramp:", ramp_options, key="cal_ramp_sel")
-            if ramp: display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp])
-        else:
-            st.warning("No crane day data available.")
+        # (omitted for brevity - no changes here)
 
     with tab3:
         st.subheader("Scheduling Progress Report")
@@ -744,63 +670,21 @@ def show_reporting_page():
         st.subheader("Download Formatted PDF Report")
         if st.button("📊 Generate PDF Report"):
             with st.spinner("Generating your report..."):
-                analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
-                pdf_buffer = generate_progress_report_pdf(stats, analysis)
+                # Call both analysis functions
+                dist_analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
+                eff_analysis = ecm.perform_efficiency_analysis(ecm.SCHEDULED_JOBS)
+                
+                # Pass all data to the PDF generator
+                pdf_buffer = generate_progress_report_pdf(stats, dist_analysis, eff_analysis)
                 st.download_button(label="📥 Download Report (.pdf)", data=pdf_buffer, file_name=f"progress_report_{datetime.date.today()}.pdf", mime="application/pdf")
 
     with tab4:
         st.subheader("Generate Daily Planner PDF")
-        selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
-        if st.button("📤 Generate PDF", key="generate_daily_pdf_button"):
-            jobs_today = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime.date() == selected_date]
-            if not jobs_today:
-                st.warning("No jobs scheduled for that date.")
-            else:
-                pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
-                st.download_button(label="📥 Download Planner", data=pdf_buffer.getvalue(), file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf", key="download_daily_planner_button")
-
-        st.markdown("---")
-        st.subheader("Export Multi-Day Planner")
-        dcol1, dcol2 = st.columns(2)
-        with dcol1:
-            start_date = st.date_input("Start Date", value=datetime.date.today(), key="multi_start_date")
-        with dcol2:
-            end_date = st.date_input("End Date", value=datetime.date.today() + datetime.timedelta(days=5), key="multi_end_date")
-        if st.button("📤 Generate Multi-Day Planner PDF", key="generate_multi_pdf_button"):
-            if start_date > end_date:
-                st.error("Start date must be before or equal to end date.")
-            else:
-                jobs_in_range = [j for j in ecm.SCHEDULED_JOBS if start_date <= j.scheduled_start_datetime.date() <= end_date]
-                if not jobs_in_range:
-                    st.warning("No jobs scheduled in this date range.")
-                else:
-                    merged_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
-                    st.download_button(label="📥 Download Multi-Day Planner", data=merged_pdf, file_name=f"Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf", key="download_multi_planner_button")
+        # (omitted for brevity - no changes here)
 
     with tab5:
         st.subheader("🅿️ Parked Jobs")
-        st.info("These jobs have been removed from the schedule and are waiting to be re-booked. Reschedule them from here.")
-        if ecm.PARKED_JOBS:
-            # Header
-            cols = st.columns((2, 2, 1, 2))
-            fields = ["Customer", "Boat", "Service", "Actions"]
-            for col, field in zip(cols, fields):
-                col.markdown(f"**{field}**")
-            st.markdown("---")
-
-            # Parked Job Rows
-            for job_id, job in ecm.PARKED_JOBS.items():
-                customer = ecm.get_customer_details(job.customer_id)
-                boat = ecm.get_boat_details(job.boat_id)
-                cols = st.columns((2, 2, 1, 2))
-                cols[0].write(customer.customer_name)
-                cols[1].write(f"{boat.boat_length}' {boat.boat_type}")
-                cols[2].write(job.service_type)
-                with cols[3]:
-                    st.button("Reschedule", key=f"reschedule_{job.job_id}", on_click=reschedule_parked_job, args=(job.job_id,), use_container_width=True)
-        else:
-            st.write("No jobs are currently parked.")
-
+        # (omitted for brevity - no changes here)
 
 def show_settings_page():
     st.header("Application Settings")
