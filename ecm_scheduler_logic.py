@@ -580,6 +580,22 @@ def _abbreviate_town(address):
         if town in address_lower: return abbr
     return address.title().split(',')[0][:3]
 
+def _round_time_to_nearest_quarter_hour(dt):
+    """Rounds a datetime object UP to the nearest 15-minute interval."""
+    if not isinstance(dt, datetime.datetime):
+        return dt # Return as is if not a datetime object
+
+    # If the time is already on a perfect 15-minute mark, do nothing
+    if dt.minute % 15 == 0 and dt.second == 0 and dt.microsecond == 0:
+        return dt
+
+    # Calculate the number of minutes to add to round up
+    minutes_to_add = (15 - dt.minute % 15)
+    rounded_dt = dt + datetime.timedelta(minutes=minutes_to_add)
+    
+    # Set seconds and microseconds to zero for a clean time
+    return rounded_dt.replace(second=0, microsecond=0)
+
 def format_time_for_display(time_obj):
     return time_obj.strftime('%I:%M %p').lstrip('0') if isinstance(time_obj, datetime.time) else "InvalidTime"
 
