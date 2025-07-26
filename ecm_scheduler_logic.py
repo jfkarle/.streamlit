@@ -1117,11 +1117,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              ramp_tide_blackout_enabled=True,
                              scituate_powerboat_priority_enabled=True,
                              is_bulk_job=False,
-                             dynamic_duration_enabled=True, # <-- New parameter
+                             dynamic_duration_enabled=True,
+                             # --- NEW PARAMETERS to enforce a date range ---
+                             search_start_date=None,
+                             search_end_date=None,
                              **kwargs):
     """
     Finds the best available job slots efficiently.
-    -- CORRECTED to toggle between dynamic and static job durations. --
+    -- CORRECTED to respect a passed-in search date range. --
     """
     truck_operating_hours = truck_operating_hours or TRUCK_OPERATING_HOURS
     try:
@@ -1140,8 +1143,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     needs_j17 = j17_duration.total_seconds() > 0
     suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
 
-    search_start_date = requested_date - timedelta(days=crane_look_back_days)
-    search_end_date = requested_date + timedelta(days=crane_look_forward_days)
+    # --- THIS LOGIC IS NOW CONDITIONAL ---
+    # If a specific search range isn't provided, create one. Otherwise, use the provided range.
+    if search_start_date is None:
+        search_start_date = requested_date - timedelta(days=crane_look_back_days)
+    if search_end_date is None:
+        search_end_date = requested_date + timedelta(days=crane_look_forward_days)
+    # --- END OF NEW LOGIC ---
 
     all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, search_start_date, search_end_date) if ramp_obj else {}
     compiled_schedule, daily_truck_last_location = _compile_truck_schedules(SCHEDULED_JOBS)
@@ -1189,16 +1197,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
                 actual_start_dt = max(proposed_start_dt, hauler_available_from, crane_available_from)
 
-                # --- NEW LOGIC with Toggle ---
                 if dynamic_duration_enabled:
-                    # DYNAMIC: Total duration includes travel time
                     hauler_total_duration = hauler_duration + hauler_travel
                     j17_total_duration = j17_duration + crane_travel
                 else:
-                    # STATIC: Total duration is just the fixed on-site time
                     hauler_total_duration = hauler_duration
                     j17_total_duration = j17_duration
-                # --- END NEW LOGIC ---
 
                 hauler_end_dt = _round_time_to_nearest_quarter_hour(actual_start_dt + hauler_total_duration)
                 j17_end_dt = _round_time_to_nearest_quarter_hour(actual_start_dt + j17_total_duration) if needs_j17 else None
@@ -1217,7 +1221,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
         if len(all_found_slots) >= SEARCH_LIMIT and is_bulk_job: break
     
-    # Scoring logic remains the same
     ideal_start_time = time(8, 0)
     for slot in all_found_slots:
         score = 0; score_trace = {}
@@ -1430,7 +1433,6 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
         return "Cannot generate jobs: Customer or Boat data is not loaded."
 
     services_to_use = ["Launch", "Haul"] if service_type_filter == "All" else [service_type_filter]
-    # Use a copy of the list that we can modify
     customer_list = list(LOADED_CUSTOMERS.values())
     
     success_count = 0
@@ -1439,68 +1441,54 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
 
     for i in range(num_to_gen):
         if not customer_list:
-            break # Stop if we run out of customers
+            break
 
         job_scheduled_for_this_attempt = False
         last_day_reasons = []
 
-        # 1. Get a random customer and their boat
         random_customer = random.choice(customer_list)
-        customer_list.remove(random_customer) # Don't pick the same customer twice
+        customer_list.remove(random_customer)
         customer_boats = [b for b in LOADED_BOATS.values() if b.customer_id == random_customer.customer_id]
         if not customer_boats:
             failure_count += 1
             continue
         random_boat = random.choice(customer_boats)
         random_service = random.choice(services_to_use)
-
-        # 2. Iterate through every day in the provided range
-        for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
-            random_ramp_id = None
-            if random_service in ["Launch", "Haul"]:
-                random_ramp_id = random.choice(list(ECM_RAMPS.keys()))
-
-            slots, msg, reasons, _ = find_available_job_slots(
-                customer_id=random_customer.customer_id,
-                boat_id=random_boat.boat_id,
-                service_type=random_service,
-                requested_date_str=single_date.strftime('%Y-%m-%d'),
-                selected_ramp_id=random_ramp_id,
-                force_preferred_truck=False,
-                num_suggestions_to_find=1,
-                truck_operating_hours=truck_hours,
-                is_bulk_job=True
-            )
-
-            # 3. If a slot is found, schedule it and move to the next customer
-            if slots:
-                confirm_and_schedule_job(
-                    original_request={'customer_id': random_customer.customer_id, 'boat_id': random_boat.boat_id, 'service_type': random_service},
-                    selected_slot=slots[0]
-                )
-                success_count += 1
-                job_scheduled_for_this_attempt = True
-                break # Stop searching for this boat and move to the next one
-            else:
-                # Store the reasons for failure on the last day, in case the whole range fails
-                last_day_reasons = reasons
         
-        # 4. If after checking all days, no slot was found, log the failure
-        if not job_scheduled_for_this_attempt:
+        # --- THIS CALL IS CORRECTED ---
+        # It now passes the start_date and end_date to constrain the search
+        slots, msg, reasons, _ = find_available_job_slots(
+            customer_id=random_customer.customer_id,
+            boat_id=random_boat.boat_id,
+            service_type=random_service,
+            requested_date_str=start_date.strftime('%Y-%m-%d'), # Use start_date as the initial request
+            selected_ramp_id=random.choice(list(ECM_RAMPS.keys())) if random_service in ["Launch", "Haul"] else None,
+            force_preferred_truck=False,
+            num_suggestions_to_find=1,
+            truck_operating_hours=truck_hours,
+            is_bulk_job=True,
+            search_start_date=start_date, # Pass the constrained start date
+            search_end_date=end_date     # Pass the constrained end date
+        )
+
+        if slots:
+            confirm_and_schedule_job(
+                original_request={'customer_id': random_customer.customer_id, 'boat_id': random_boat.boat_id, 'service_type': random_service},
+                selected_slot=slots[0]
+            )
+            success_count += 1
+        else:
             failure_count += 1
             if first_failure_details is None:
-                random_ramp = get_ramp_details(random_ramp_id)
                 job_details = (
                     f"Attempted to schedule:\n"
                     f"  - Customer: {random_customer.customer_name}\n"
                     f"  - Boat: {random_boat.boat_length}' {random_boat.boat_type}\n"
                     f"  - Service: {random_service} within range {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
                 )
-                # Use the failure reasons from the very last day we checked
-                failure_analysis = "\n".join(last_day_reasons)
-                first_failure_details = f"\n\n--- Analysis of First Failure ---\n{job_details}\n\nFailure reason on the last attempted day ({end_date.strftime('%A')}):\n{failure_analysis}"
-
-    # --- Construct Final Summary Message ---
+                failure_analysis = "\n".join(reasons)
+                first_failure_details = f"\n\n--- Analysis of First Failure ---\n{job_details}\n\n{failure_analysis}"
+    
     summary = f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
     if first_failure_details:
         summary += first_failure_details
