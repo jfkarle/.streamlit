@@ -645,7 +645,7 @@ if customer and st.session_state.get('selected_boat_id'):
                 st.rerun()
             else: 
                 st.error(f"Failed to confirm job: {message}")
-    return
+        return
                 
 def show_reporting_page():
     """
