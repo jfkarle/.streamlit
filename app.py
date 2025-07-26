@@ -924,26 +924,25 @@ def show_settings_page():
 
     with tab3:
         st.subheader("QA & Data Generation Tools")
-        st.write("This tool creates random, valid jobs to populate the calendar for testing.")
+        st.write("This tool creates random, valid jobs to populate the calendar for testing, packing them as close to the target date as possible.")
+        
         num_jobs_to_gen = st.number_input("Number of jobs to generate:", min_value=1, max_value=100, value=25, step=1)
         service_type_input = st.selectbox("Type of jobs to create:", ["All", "Launch", "Haul", "Transport"])
-        dcol1, dcol2 = st.columns(2)
-        start_date_input = dcol1.date_input("Start of date range:", datetime.date(2025, 4, 15))
-        end_date_input = dcol2.date_input("End of date range:", datetime.date(2025, 7, 1))
+        
+        # Changed from a date range to a single target date
+        target_date_input = st.date_input("Target Date:", datetime.date(2025, 10, 15))
+        
         if st.button("Generate Random Jobs"):
-            if start_date_input > end_date_input:
-                st.error("Start date cannot be after end date.")
-            else:
-                with st.spinner(f"Generating {num_jobs_to_gen} jobs..."):
-                   summary = ecm.generate_random_jobs(
-                        num_jobs_to_gen, 
-                        start_date_input, 
-                        end_date_input, 
-                        service_type_input, 
-                        st.session_state.truck_operating_hours
-                    )
-                st.success(summary)
-                st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
+            with st.spinner(f"Generating {num_jobs_to_gen} jobs..."):
+               summary = ecm.generate_random_jobs(
+                    num_jobs_to_gen, 
+                    target_date_input, 
+                    service_type_input, 
+                    st.session_state.truck_operating_hours
+                )
+            # Display the summary message, which may include failure analysis
+            st.success(summary)
+            st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
 
     with tab4:
         st.subheader("Monthly Tide Chart for Scituate Harbor")
