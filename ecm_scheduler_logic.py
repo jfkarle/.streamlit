@@ -954,7 +954,9 @@ def get_final_schedulable_ramp_times(
                 'low_tide_times': [t['time'] for t in tide_data_for_day if t['type'] == 'L'],
                 'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
             })
-    
+
+    return all_schedulable_slots
+
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
     all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and t.max_boat_length is not None and boat_len <= t.max_boat_length]
     if force_preferred and pref_truck_id and any(t.truck_name == pref_truck_id for t in all_suitable):
