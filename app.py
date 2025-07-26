@@ -960,7 +960,6 @@ def show_settings_page():
         num_jobs_to_gen = st.number_input("Number of jobs to generate:", min_value=1, max_value=100, value=25, step=1)
         service_type_input = st.selectbox("Type of jobs to create:", ["All", "Launch", "Haul", "Transport"])
         
-        # Changed from a date range to a single target date
         target_date_input = st.date_input("Target Date:", datetime.date(2025, 10, 15))
         
         if st.button("Generate Random Jobs"):
@@ -969,9 +968,10 @@ def show_settings_page():
                     num_jobs_to_gen, 
                     target_date_input, 
                     service_type_input, 
-                    st.session_state.truck_operating_hours
+                    st.session_state.truck_operating_hours,
+                    # --- THIS LINE IS ADDED ---
+                    dynamic_duration_enabled=st.session_state.get('dynamic_duration_enabled', False)
                 )
-            # Display the summary message, which may include failure analysis
             st.success(summary)
             st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
 
