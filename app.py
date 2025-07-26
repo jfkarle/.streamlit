@@ -36,8 +36,15 @@ def create_gauge(value, max_value, label):
     else:
         angle = percent * 180
         rads = math.radians(angle - 90)
-        x, y = 50 + 40 * math.cos(rads), 50 + 40 * math.sin(rads)
-        d = f"M 10 50 A 40 40 0 0 1 {x} {y}"
+        x = 50 + 40 * math.cos(rads)
+        y = 50 + 40 * math.sin(rads)
+        
+        # --- THIS IS THE FIX ---
+        # Determine if the arc should be drawn the "long way" (for >50%)
+        large_arc_flag = 1 if percent > 0.5 else 0
+        
+        # Update the SVG path to use the new dynamic flag
+        d = f"M 10 50 A 40 40 0 {large_arc_flag} 1 {x} {y}"
 
     fill_color = "#F44336"
     if percent >= 0.4: fill_color = "#FFC107"
