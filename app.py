@@ -25,16 +25,25 @@ st.set_page_config(layout="wide")
 
 def create_gauge(value, max_value, label):
     """Generates an SVG string for a semi-circle gauge chart that displays an absolute value."""
-    if max_value == 0: percent = 0
-    else: percent = min(max(value / max_value, 0), 1)
-    angle = percent * 180
-    rads = math.radians(angle - 90)
-    x, y = 50 + 40 * math.cos(rads), 50 + 40 * math.sin(rads)
-    d = f"M 10 50 A 40 40 0 0 1 {x} {y}"
+    if max_value == 0: 
+        percent = 0
+    else: 
+        percent = min(max(value / max_value, 0), 1)
+
+    # If the value is zero, create an empty path so no colored arc is drawn.
+    if value == 0:
+        d = ""
+    else:
+        angle = percent * 180
+        rads = math.radians(angle - 90)
+        x, y = 50 + 40 * math.cos(rads), 50 + 40 * math.sin(rads)
+        d = f"M 10 50 A 40 40 0 0 1 {x} {y}"
+
     fill_color = "#F44336"
     if percent >= 0.4: fill_color = "#FFC107"
     if percent >= 0.8: fill_color = "#4CAF50"
     main_text, sub_label = str(value), f"{label.upper()} OF {max_value}"
+    
     return f'''
     <svg viewBox="0 0 100 65" style="width: 150px;height: 97px; overflow: visible;">
         <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="#e0e0e0" stroke-width="10" fill="none" />
@@ -1078,8 +1087,13 @@ with st.container(border=True):
     with col2:
         st.subheader("ECM Boats")
         c1, c2 = st.columns(2)
-        with c1: st.metric(label="Scheduled", value=stats['ecm_boats']['scheduled'], delta=f"/ {stats['ecm_boats']['total']} Total", delta_color="off")
-        with c2: st.metric(label="Launched (to date)", value=stats['ecm_boats']['launched'], delta=f"/ {stats['ecm_boats']['scheduled']} Sched.", delta_color="off")
+        with c1:
+            # Use gauge for ECM Scheduled
+            st.markdown(create_gauge(stats['ecm_boats']['scheduled'], stats['ecm_boats']['total'], "Scheduled"), unsafe_allow_html=True)
+        with c2:
+            # Use gauge for ECM Launched
+            st.markdown(create_gauge(stats['ecm_boats']['launched'], stats['ecm_boats']['total'], "Launched"), unsafe_allow_html=True)
+
 st.markdown("---")
 
 # PASTE THIS REPLACEMENT BLOCK AT THE END OF YOUR FILE
