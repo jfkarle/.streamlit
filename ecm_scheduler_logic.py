@@ -58,16 +58,29 @@ class Boat:
 
 class Job:
     def __init__(self, **kwargs):
-        # This internal helper accepts existing datetime objects OR parses them if they are strings.
+        # This internal helper now ensures all datetimes are timezone-aware (UTC).
         def _parse_or_get_datetime(dt_value):
+            dt = None # Start with a null datetime
             if isinstance(dt_value, datetime.datetime):
-                return dt_value
-            if isinstance(dt_value, str):
+                dt = dt_value
+            elif isinstance(dt_value, str):
                 try:
-                    return datetime.datetime.fromisoformat(dt_value.replace(" ", "T"))
+                    # Parse the string, replacing space with T for ISO compatibility
+                    dt = datetime.datetime.fromisoformat(dt_value.replace(" ", "T"))
                 except (ValueError, TypeError):
-                    return None
-            return None # Return None for other types like None, int, etc.
+                    return None # Return None if parsing fails
+
+            # If we successfully parsed or received a datetime object...
+            if dt:
+                # Check if it's naive (no timezone info)
+                if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+                    # If naive, assume it's UTC and make it aware.
+                    return dt.replace(tzinfo=timezone.utc)
+                # If it's already aware, return it as is.
+                return dt
+            
+            # Return None if input was invalid
+            return None
 
         def _parse_int(int_string):
             if not int_string: return None
@@ -89,12 +102,10 @@ class Job:
         self.dropoff_street_address = kwargs.get("dropoff_street_address", "")
         self.job_status = kwargs.get("job_status", "Scheduled")
         self.notes = kwargs.get("notes", "")
-        # <--- ADD THESE NEW LINES ---
         self.pickup_latitude = float(kwargs.get("pickup_latitude")) if kwargs.get("pickup_latitude") is not None else None
         self.pickup_longitude = float(kwargs.get("pickup_longitude")) if kwargs.get("pickup_longitude") is not None else None
         self.dropoff_latitude = float(kwargs.get("dropoff_latitude")) if kwargs.get("dropoff_longitude") is not None else None
         self.dropoff_longitude = float(kwargs.get("dropoff_longitude")) if kwargs.get("dropoff_longitude") is not None else None
-        # <--- END NEW LINES ---
 
 # --- CONFIGURATION AND GLOBAL CONSTANTS ---
 HOME_BASE_TOWN = "Pem"
