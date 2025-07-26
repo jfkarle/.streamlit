@@ -527,57 +527,65 @@ def show_scheduler_page():
             st.session_state.selected_boat_id = boat_options_with_prompt[selected_boat_str]
 
     # --- SCHEDULING FORM ---
-    if customer and st.session_state.get('selected_boat_id'):
-        boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
-        if boat:
-            st.sidebar.markdown("---")
-            st.sidebar.subheader("Selected Customer & Boat:")
-            st.sidebar.write(f"**Customer:** {customer.customer_name}")
-            st.sidebar.write(f"**ECM Boat:** {'Yes' if boat.is_ecm_boat else 'No'}")
-            st.sidebar.write(f"**Boat Type:** {boat.boat_type}")
-            st.sidebar.write(f"**Boat Length:** {boat.boat_length}ft")
-            st.sidebar.write(f"**Preferred Truck:** {boat.preferred_truck_id or 'N/A'}")
-            st.sidebar.markdown("---")
+if customer and st.session_state.get('selected_boat_id'):
+    boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
+    if boat:
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Selected Customer & Boat:")
+        st.sidebar.write(f"**Customer:** {customer.customer_name}")
+        st.sidebar.write(f"**ECM Boat:** {'Yes' if boat.is_ecm_boat else 'No'}")
+        st.sidebar.write(f"**Boat Type:** {boat.boat_type}")
+        st.sidebar.write(f"**Boat Length:** {boat.boat_length}ft")
+        st.sidebar.write(f"**Preferred Truck:** {boat.preferred_truck_id or 'N/A'}")
+        st.sidebar.markdown("---")
 
-            service_type = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
-            req_date = st.sidebar.date_input("Requested Date:", datetime.date.today() + datetime.timedelta(days=1))
-            
-            ramp_id = None
-            if service_type in ["Launch", "Haul"]:
-                ramp_options = list(ecm.ECM_RAMPS.keys())
-                ramp_id = st.sidebar.selectbox("Select Ramp:", ramp_options, format_func=lambda r_id: ecm.ECM_RAMPS[r_id].ramp_name)
-            
-            relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
-            manager_override = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
-            
-            if st.sidebar.button("Find Best Slot"):
-                if not st.session_state.get('conflict_override_acknowledged'):
-                    conflict = ecm.find_same_service_conflict(boat.boat_id, service_type, req_date, ecm.SCHEDULED_JOBS)
-                    if conflict:
-                        st.session_state.conflict_warning_details = conflict
-                        st.rerun()
+        service_type = st.sidebar.selectbox("Select Service Type:", ["Launch", "Haul", "Transport"])
+        req_date = st.sidebar.date_input("Requested Date:", datetime.date.today() + datetime.timedelta(days=1))
+        
+        ramp_id = None
+        if service_type in ["Launch", "Haul"]:
+            ramp_options = list(ecm.ECM_RAMPS.keys())
+            ramp_id = st.sidebar.selectbox("Select Ramp:", ramp_options, format_func=lambda r_id: ecm.ECM_RAMPS[r_id].ramp_name)
+        
+        relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
+        manager_override = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
+        
+        if st.sidebar.button("Find Best Slot"):
+            # First, check for same-service conflicts before running the main search
+            if not st.session_state.get('conflict_override_acknowledged'):
+                conflict = ecm.find_same_service_conflict(boat.boat_id, service_type, req_date, ecm.SCHEDULED_JOBS)
+                if conflict:
+                    st.session_state.conflict_warning_details = conflict
+                    st.rerun() # Stop and show the warning
 
-                st.session_state.current_job_request = {
-                    'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 
-                    'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'), 
-                    'selected_ramp_id': ramp_id
-                }
-                st.session_state.conflict_override_acknowledged = False 
-                st.session_state.slot_page_index = 0
-                
-                slots, msg, reasons, _ = ecm.find_available_job_slots(
-                    **st.session_state.current_job_request,
-                    num_suggestions_to_find=st.session_state.get('num_suggestions', 25),
-                    force_preferred_truck=(not relax_truck),
-                    manager_override=manager_override,
-                    # --- ADD THESE NEW PARAMETERS HERE ---
-                    prioritize_sailboats=st.session_state.get('sailboat_priority_enabled', True),
-                    ramp_tide_blackout_enabled=st.session_state.get('ramp_tide_blackout_enabled', True),
-                    scituate_powerboat_priority_enabled=st.session_state.get('scituate_powerboat_priority_enabled', True),
-                    is_bulk_job=False # For individual scheduling from the UI, it's not a bulk job
-                    # --- END NEW PARAMETERS ---
-                )
+            # This block is corrected to properly handle results and failure messages
+            request_details = {
+                'customer_id': customer.customer_id, 'boat_id': boat.boat_id,
+                'service_type': service_type, 'requested_date_str': req_date.strftime('%Y-%m-%d'),
+                'selected_ramp_id': ramp_id
+            }
+            st.session_state.current_job_request = request_details
 
+            slots, msg, reasons, was_forced = ecm.find_available_job_slots(
+                **request_details,
+                num_suggestions_to_find=st.session_state.get('num_suggestions', 25),
+                force_preferred_truck=(not relax_truck),
+                manager_override=manager_override,
+                prioritize_sailboats=st.session_state.get('sailboat_priority_enabled', True),
+                ramp_tide_blackout_enabled=st.session_state.get('ramp_tide_blackout_enabled', True),
+                scituate_powerboat_priority_enabled=st.session_state.get('scituate_powerboat_priority_enabled', True),
+                is_bulk_job=False
+            )
+
+            # Save all results to the session state for the UI to use
+            st.session_state.found_slots = slots
+            st.session_state.info_message = msg
+            st.session_state.failure_reasons = reasons
+            st.session_state.was_forced_search = was_forced
+            st.session_state.selected_slot = None # Clear any previously selected slot
+            st.session_state.slot_page_index = 0
+            st.session_state.conflict_override_acknowledged = False # Reset override
+            st.rerun() # Rerun to display messages and results
     # --- SLOT DISPLAY AND PAGINATION ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
         st.subheader("Please select your preferred slot:")
