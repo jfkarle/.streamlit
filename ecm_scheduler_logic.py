@@ -1425,9 +1425,9 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
     }
 
 
-def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, truck_hours):
+def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hours):
     """
-    Generates random jobs by picking a boat and exhaustively searching the date range for a slot.
+    Generates random jobs, packing them as close to a target date as possible.
     """
     if not LOADED_CUSTOMERS or not LOADED_BOATS:
         return "Cannot generate jobs: Customer or Boat data is not loaded."
@@ -1441,10 +1441,7 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
 
     for i in range(num_to_gen):
         if not customer_list:
-            break
-
-        job_scheduled_for_this_attempt = False
-        last_day_reasons = []
+            break # Stop if we run out of customers
 
         random_customer = random.choice(customer_list)
         customer_list.remove(random_customer)
@@ -1454,21 +1451,19 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
             continue
         random_boat = random.choice(customer_boats)
         random_service = random.choice(services_to_use)
-        
-        # --- THIS CALL IS CORRECTED ---
-        # It now passes the start_date and end_date to constrain the search
+
+        # The slot finder will now search forward from the target_date
+        # to find the best (i.e., earliest) possible slot.
         slots, msg, reasons, _ = find_available_job_slots(
             customer_id=random_customer.customer_id,
             boat_id=random_boat.boat_id,
             service_type=random_service,
-            requested_date_str=start_date.strftime('%Y-%m-%d'), # Use start_date as the initial request
+            requested_date_str=target_date.strftime('%Y-%m-%d'),
             selected_ramp_id=random.choice(list(ECM_RAMPS.keys())) if random_service in ["Launch", "Haul"] else None,
             force_preferred_truck=False,
-            num_suggestions_to_find=1,
+            num_suggestions_to_find=1, # We only need the single best slot
             truck_operating_hours=truck_hours,
-            is_bulk_job=True,
-            search_start_date=start_date, # Pass the constrained start date
-            search_end_date=end_date     # Pass the constrained end date
+            is_bulk_job=True
         )
 
         if slots:
@@ -1484,7 +1479,7 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
                     f"Attempted to schedule:\n"
                     f"  - Customer: {random_customer.customer_name}\n"
                     f"  - Boat: {random_boat.boat_length}' {random_boat.boat_type}\n"
-                    f"  - Service: {random_service} within range {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+                    f"  - Service: {random_service} starting from {target_date.strftime('%Y-%m-%d')}"
                 )
                 failure_analysis = "\n".join(reasons)
                 first_failure_details = f"\n\n--- Analysis of First Failure ---\n{job_details}\n\n{failure_analysis}"
@@ -1494,4 +1489,3 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
         summary += first_failure_details
         
     return summary
-
