@@ -574,6 +574,7 @@ def show_scheduler_page():
                     prioritize_sailboats=st.session_state.get('sailboat_priority_enabled', True),
                     ramp_tide_blackout_enabled=st.session_state.get('ramp_tide_blackout_enabled', True),
                     scituate_powerboat_priority_enabled=st.session_state.get('scituate_powerboat_priority_enabled', True),
+                    dynamic_duration_enabled=st.session_state.get('dynamic_duration_enabled', True),
                     is_bulk_job=False
                 )
 
