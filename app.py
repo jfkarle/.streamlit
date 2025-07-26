@@ -95,40 +95,147 @@ def display_crane_day_calendar(crane_days_for_ramp):
                     font_weight = "bold" if is_candidate or is_today else "normal"
                     cols[i].markdown(f'<div style="padding:10px; border-radius:5px; border: 2px solid {border_color};background-color:{bg_color}; height: 60px;"><p style="text-align: right; font-weight: {font_weight}; color: black;">{day.day}</p></div>', unsafe_allow_html=True)
 
-def generate_multi_day_planner_pdf(start_date, end_date, jobs):
-    from PyPDF2 import PdfMerger
-    from io import BytesIO
-    merger = PdfMerger()
-    # Loop through each day in the user-selected date range
-    for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
-        # Find all jobs that are scheduled for that specific day
-        jobs_for_day = [j for j in jobs if j.scheduled_start_datetime and j.scheduled_start_datetime.date() == single_date]
+def generate_daily_planner_pdf(report_date, jobs_for_day):
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    planner_columns = ["S20/33", "S21/77", "S23/55", "J17"]
+    column_map = {name: i for i, name in enumerate(planner_columns)}
+    margin, time_col_width = 0.5 * inch, 0.75 * inch
+    content_width = width - 2 * margin - time_col_width
+    col_width = content_width / len(planner_columns)
+
+    start_time_obj = datetime.time(7, 30)
+    end_time_obj = datetime.time(17, 30)
+    total_minutes = (end_time_obj.hour * 60 + end_time_obj.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
+
+    top_y = height - margin - 0.8 * inch
+    bottom_y = margin + 0.5 * inch
+    content_height = top_y - bottom_y
+
+    def get_y_for_time(t):
+        minutes_into_day = (t.hour * 60 + t.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
+        return top_y - ((minutes_into_day / total_minutes) * content_height)
+
+    high_tide_highlights, low_tide_highlights = [], []
+    primary_high_tide = None
+    if jobs_for_day:
+        ramp_id_for_tides = None
+        first_job = jobs_for_day[0]
+        if first_job.pickup_ramp_id:
+            ramp_id_for_tides = first_job.pickup_ramp_id
+        elif first_job.dropoff_ramp_id:
+            ramp_id_for_tides = first_job.dropoff_ramp_id
+        else:
+            ramp_id_for_tides = "3000001" 
+
+        if ramp_id_for_tides:
+            ramp_obj = ecm.get_ramp_details(ramp_id_for_tides)
+            if ramp_obj:
+                all_tides_for_date = ecm.fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, report_date, report_date)
+                tide_data_for_day = all_tides_for_date.get(report_date, [])
+                
+                high_tides_full_data = [t for t in tide_data_for_day if t.get('type') == 'H']
+                low_tides_full_data = [t for t in tide_data_for_day if t.get('type') == 'L']
+                
+                if high_tides_full_data:
+                    noon = datetime.datetime.combine(report_date, datetime.time(12,0), tzinfo=timezone.utc)
+                    primary_high_tide = min(high_tides_full_data, key=lambda t: abs(datetime.datetime.combine(report_date, t['time'], tzinfo=timezone.utc) - noon))
+
+                def round_time(t):
+                    mins = t.hour * 60 + t.minute;rounded = int(round(mins / 15.0) * 15)
+                    return datetime.time(min(23, rounded // 60), rounded % 60)
+                
+                high_tide_highlights = [round_time(t['time']) for t in high_tides_full_data]
+                low_tide_highlights = [round_time(t['time']) for t in low_tides_full_data]
+
+    c.setFont("Helvetica-Bold", 12);c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
+    if primary_high_tide:
+        tide_time_str = ecm.format_time_for_display(primary_high_tide['time'])
+        tide_height_str = f"{float(primary_high_tide.get('height', 0)):.1f}'"
+        c.setFont("Helvetica-Bold", 9);c.drawString(margin, height - 0.6 * inch, f"High Tide: {tide_time_str} ({tide_height_str})")
+
+    for i, name in enumerate(planner_columns):
+        c.setFont("Helvetica-Bold", 14);c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
+
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(margin + 3, top_y - 9, "7:30")
+    for hour in range(start_time_obj.hour + 1, end_time_obj.hour + 1):
+        hour_highlight_color = None
+        for m_check in [0, 15, 30, 45]:
+            check_time = datetime.time(hour, m_check)
+            if check_time in high_tide_highlights: hour_highlight_color = colors.Color(1, 1, 0, alpha=0.4); break
+            elif check_time in low_tide_highlights: hour_highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4); break
+        for minute in [0, 15, 30, 45]:
+            current_time = datetime.time(hour, minute)
+            if not (start_time_obj <= current_time <= end_time_obj): continue
+            y = get_y_for_time(current_time)
+            c.setStrokeColorRGB(0.7, 0.7, 0.7)
+            c.setLineWidth(1.0 if minute == 0 else 0.25)
+            c.line(margin, y, width - margin, y)
+            if minute == 0:
+                if hour_highlight_color:
+                    c.setFillColor(hour_highlight_color); c.rect(margin + 1, y - 11, time_col_width - 2, 13, fill=1, stroke=0)
+                display_hour = hour if hour <= 12 else hour - 12
+                c.setFont("Helvetica-Bold", 9);c.setFillColorRGB(0,0,0)
+                c.drawString(margin + 3, y - 9, str(display_hour))
+    c.setStrokeColorRGB(0,0,0)
+    for i in range(len(planner_columns) + 1):
+        x = margin + time_col_width + i * col_width;c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
+    c.line(margin, top_y, margin, bottom_y);c.line(width - margin, top_y, width - margin, bottom_y)
+    c.line(margin, bottom_y, width - margin, bottom_y);c.line(margin, top_y, width - margin, top_y)
+
+    id_to_name_map = {t.truck_id: t.truck_name for t in ecm.ECM_TRUCKS.values()}
+
+    for job in jobs_for_day:
+        start_time, end_time = job.scheduled_start_datetime.time(), job.scheduled_end_datetime.time()
+        if start_time < start_time_obj: start_time = start_time_obj
+        y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
+        line1_y, line2_y, line3_y = y0 - 15, y0 - 25, y0 - 35
+        customer, boat = ecm.get_customer_details(job.customer_id), ecm.get_boat_details(job.boat_id)
         
-        # --- THIS IS THE CRITICAL FIX ---
-        # Only create a PDF page if there are jobs scheduled for that day
-        if jobs_for_day:
-            daily_pdf_buffer = generate_daily_planner_pdf(single_date, jobs_for_day)
-            merger.append(daily_pdf_buffer)
-            
-    output = BytesIO()
-    # Ensure there's something to write to prevent errors with empty ranges
-    if len(merger.pages) > 0:
-        merger.write(output)
-    merger.close()
-    output.seek(0)
-    return output
+        hauling_truck_name = id_to_name_map.get(job.assigned_hauling_truck_id)
+        
+        if hauling_truck_name and hauling_truck_name in column_map:
+            col_index = column_map[hauling_truck_name]
+            text_x = margin + time_col_width + (col_index + 0.5) * col_width
+            c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_x, line1_y, customer.customer_name)
+            c.setFont("Helvetica", 7);c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
+            c.drawCentredString(text_x, line3_y, f"{ecm._abbreviate_town(job.pickup_street_address)}-{ecm._abbreviate_town(job.dropoff_street_address)}")
+            c.setLineWidth(2);c.line(text_x, y0 - 45, text_x, y_end); c.line(text_x - 10, y_end, text_x + 10, y_end)
+
+        crane_truck_name = id_to_name_map.get(job.assigned_crane_truck_id)
+        if crane_truck_name and crane_truck_name in column_map:
+            crane_col_index = column_map[crane_truck_name]
+            crane_text_x = margin + time_col_width + (crane_col_index + 0.5) * col_width
+            y_crane_end = get_y_for_time(job.j17_busy_end_datetime.time())
+            c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
+            c.setFont("Helvetica", 7);c.drawCentredString(crane_text_x, line2_y, ecm._abbreviate_town(job.dropoff_street_address))
+            c.setLineWidth(2); c.line(crane_text_x, y0-45, crane_text_x, y_crane_end);c.line(crane_text_x-3, y_crane_end, crane_text_x+3, y_crane_end)
+
+    c.save()
+    buffer.seek(0)
+    return buffer
 
 def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     from PyPDF2 import PdfMerger
     from io import BytesIO
     merger = PdfMerger()
     for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
-        jobs_for_day = [j for j in jobs if j.scheduled_start_datetime.date() == single_date]
+        jobs_for_day = [j for j in jobs if j.scheduled_start_datetime and j.scheduled_start_datetime.date() == single_date]
+        
         if jobs_for_day:
             daily_pdf_buffer = generate_daily_planner_pdf(single_date, jobs_for_day)
             merger.append(daily_pdf_buffer)
+            
     output = BytesIO()
-    merger.write(output)
+    if len(merger.pages) > 0:
+        merger.write(output)
     merger.close()
     output.seek(0)
     return output
