@@ -1427,48 +1427,47 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
 
 def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hours):
     """
-    Generates random jobs, packing them as close to a target date as possible.
+    Generates random jobs from a shuffled list of all boats to ensure a realistic mix of job types.
     """
-    if not LOADED_CUSTOMERS or not LOADED_BOATS:
-        return "Cannot generate jobs: Customer or Boat data is not loaded."
+    if not LOADED_BOATS:
+        return "Cannot generate jobs: Boat data is not loaded."
 
     services_to_use = ["Launch", "Haul"] if service_type_filter == "All" else [service_type_filter]
-    customer_list = list(LOADED_CUSTOMERS.values())
+    
+    # --- THIS IS THE NEW LOGIC ---
+    # 1. Create a list of all boats and shuffle it for a true random mix.
+    all_boats = list(LOADED_BOATS.values())
+    random.shuffle(all_boats)
+    
+    # 2. Limit the number of jobs to the number of boats available.
+    num_to_gen = min(num_to_gen, len(all_boats))
     
     success_count = 0
     failure_count = 0
     first_failure_details = None
 
+    # 3. Process the boats in the shuffled order.
     for i in range(num_to_gen):
-        if not customer_list:
-            break # Stop if we run out of customers
-
-        random_customer = random.choice(customer_list)
-        customer_list.remove(random_customer)
-        customer_boats = [b for b in LOADED_BOATS.values() if b.customer_id == random_customer.customer_id]
-        if not customer_boats:
-            failure_count += 1
-            continue
-        random_boat = random.choice(customer_boats)
+        boat_to_schedule = all_boats[i]
+        customer = get_customer_details(boat_to_schedule.customer_id)
         random_service = random.choice(services_to_use)
-
-        # The slot finder will now search forward from the target_date
-        # to find the best (i.e., earliest) possible slot.
+        
+        # The slot finder will search forward from the target_date to find the best slot.
         slots, msg, reasons, _ = find_available_job_slots(
-            customer_id=random_customer.customer_id,
-            boat_id=random_boat.boat_id,
+            customer_id=customer.customer_id,
+            boat_id=boat_to_schedule.boat_id,
             service_type=random_service,
             requested_date_str=target_date.strftime('%Y-%m-%d'),
             selected_ramp_id=random.choice(list(ECM_RAMPS.keys())) if random_service in ["Launch", "Haul"] else None,
             force_preferred_truck=False,
-            num_suggestions_to_find=1, # We only need the single best slot
+            num_suggestions_to_find=1,
             truck_operating_hours=truck_hours,
             is_bulk_job=True
         )
 
         if slots:
             confirm_and_schedule_job(
-                original_request={'customer_id': random_customer.customer_id, 'boat_id': random_boat.boat_id, 'service_type': random_service},
+                original_request={'customer_id': customer.customer_id, 'boat_id': boat_to_schedule.boat_id, 'service_type': random_service},
                 selected_slot=slots[0]
             )
             success_count += 1
@@ -1477,13 +1476,13 @@ def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hou
             if first_failure_details is None:
                 job_details = (
                     f"Attempted to schedule:\n"
-                    f"  - Customer: {random_customer.customer_name}\n"
-                    f"  - Boat: {random_boat.boat_length}' {random_boat.boat_type}\n"
+                    f"  - Customer: {customer.customer_name}\n"
+                    f"  - Boat: {boat_to_schedule.boat_length}' {boat_to_schedule.boat_type}\n"
                     f"  - Service: {random_service} starting from {target_date.strftime('%Y-%m-%d')}"
                 )
                 failure_analysis = "\n".join(reasons)
                 first_failure_details = f"\n\n--- Analysis of First Failure ---\n{job_details}\n\n{failure_analysis}"
-    
+
     summary = f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
     if first_failure_details:
         summary += first_failure_details
