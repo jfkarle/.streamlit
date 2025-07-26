@@ -1240,6 +1240,58 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     return all_found_slots[:num_suggestions_to_find], f"Found {len(all_found_slots)} potential slots.", [], False
 
+def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
+    try:
+        customer = get_customer_details(original_request['customer_id'])
+        boat = get_boat_details(original_request['boat_id'])
+        service_type = original_request['service_type']
+        selected_ramp_id = selected_slot.get('ramp_id')
+        
+        pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
+        
+        if service_type == "Launch":
+            pickup_addr = boat.storage_address
+            dropoff_rid = selected_ramp_id or boat.preferred_ramp_id
+            # Safety check to prevent crash if ramp is not found
+            dropoff_ramp_obj = get_ramp_details(dropoff_rid)
+            dropoff_addr = dropoff_ramp_obj.ramp_name if dropoff_ramp_obj else ""
+            
+        elif service_type == "Haul":
+            dropoff_addr = boat.storage_address
+            pickup_rid = selected_ramp_id or boat.preferred_ramp_id
+            # Safety check to prevent crash if ramp is not found
+            pickup_ramp_obj = get_ramp_details(pickup_rid)
+            pickup_addr = pickup_ramp_obj.ramp_name if pickup_ramp_obj else ""
+        
+        # Use the precise, pre-calculated start and end times from the selected slot
+        start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'], tzinfo=timezone.utc)
+        hauler_end_dt = selected_slot['hauler_end_dt']
+        j17_end_dt = selected_slot.get('j17_end_dt')
+        
+        new_job = Job(
+            customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
+            scheduled_start_datetime=start_dt,
+            scheduled_end_datetime=hauler_end_dt,
+            assigned_hauling_truck_id=selected_slot['truck_id'],
+            assigned_crane_truck_id="J17" if selected_slot.get('j17_needed') else None,
+            j17_busy_end_datetime=j17_end_dt,
+            pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
+            job_status="Scheduled", pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
+        )
+        
+        SCHEDULED_JOBS.append(new_job)
+        save_job(new_job)
+        
+        if parked_job_to_remove and parked_job_to_remove in PARKED_JOBS:
+            del PARKED_JOBS[parked_job_to_remove]
+            delete_job_from_db(parked_job_to_remove)
+            
+        message = f"SUCCESS: Job #{new_job.job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
+        return new_job.job_id, message
+        
+    except Exception as e:
+        return None, f"An error occurred: {e}"
+
 def analyze_job_distribution(scheduled_jobs, all_boats, all_ramps):
     """
     Analyzes the distribution of scheduled jobs by day of the week and by ramp
