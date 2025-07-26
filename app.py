@@ -780,13 +780,32 @@ def show_reporting_page():
     with tab4:
         st.subheader("Generate Daily Planner PDF")
         selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
-        if st.button("📤 Generate PDF", key="generate_daily_pdf_button"):
+        if st.button("📤 Generate Daily PDF", key="generate_daily_pdf_button"):
             jobs_today = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime and j.scheduled_start_datetime.date() == selected_date]
             if not jobs_today:
                 st.warning("No jobs scheduled for that date.")
             else:
                 pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
-                st.download_button(label="📥 Download Planner", data=pdf_buffer.getvalue(), file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf", key="download_daily_planner_button")
+                st.download_button(label="📥 Download Daily Planner", data=pdf_buffer.getvalue(), file_name=f"Daily_Planner_{selected_date}.pdf", mime="application/pdf", key="download_daily_planner_button")
+
+        st.markdown("---") # Add a separator
+
+        # --- RESTORED MULTI-DAY FUNCTIONALITY ---
+        st.subheader("Generate Multi-Day Planner PDF")
+        d_col1, d_col2 = st.columns(2)
+        start_date = d_col1.date_input("Start date:", datetime.date.today())
+        end_date = d_col2.date_input("End date:", datetime.date.today() + datetime.timedelta(days=6))
+
+        if st.button("📤 Generate Multi-Day PDF", key="generate_multi_day_pdf_button"):
+            if start_date > end_date:
+                st.error("Start date cannot be after end date.")
+            else:
+                jobs_in_range = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime and start_date <= j.scheduled_start_datetime.date() <= end_date]
+                if not jobs_in_range:
+                    st.warning("No jobs scheduled in that date range.")
+                else:
+                    pdf_buffer = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
+                    st.download_button(label="📥 Download Multi-Day Planner", data=pdf_buffer.getvalue(), file_name=f"Multi_Day_Planner_{start_date}_to_{end_date}.pdf", mime="application/pdf", key="download_multi_day_planner_button")
 
     with tab5:
         st.subheader("🅿️ Parked Jobs")
