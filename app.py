@@ -122,51 +122,39 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         minutes_into_day = (t.hour * 60 + t.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
         return top_y - ((minutes_into_day / total_minutes) * content_height)
 
+    # --- THIS SECTION IS UNCHANGED, FOR CONTEXT ---
     high_tide_highlights, low_tide_highlights = [], []
     primary_high_tide = None
     if jobs_for_day:
-        # It's better to pick a ramp associated with the jobs for the day,
-        # or a primary ramp if no jobs exist for that day.
-        # For simplicity, let's assume if there are jobs, one of their ramps is sufficient.
-        # If no jobs for the day, tide info might not be as relevant or needs a default.
         ramp_id_for_tides = None
-        if jobs_for_day:
-            # Try to get ramp from the first job, or a preferred ramp from boat
-            first_job = jobs_for_day[0]
-            if first_job.pickup_ramp_id:
-                ramp_id_for_tides = first_job.pickup_ramp_id
-            elif first_job.dropoff_ramp_id:
-                ramp_id_for_tides = first_job.dropoff_ramp_id
-            else: # Fallback if job has no ramp, use a common one or a default
-                # This might be too simplistic, consider a more robust fallback
-                # e.g., default to ScituateHarborJericho if no ramp is explicitly set for jobs
-                ramp_id_for_tides = "3000001" # Example: Cohasset Harbor (Parker Ave)
+        first_job = jobs_for_day[0]
+        if first_job.pickup_ramp_id:
+            ramp_id_for_tides = first_job.pickup_ramp_id
+        elif first_job.dropoff_ramp_id:
+            ramp_id_for_tides = first_job.dropoff_ramp_id
+        else:
+            ramp_id_for_tides = "3000001" 
 
         if ramp_id_for_tides:
             ramp_obj = ecm.get_ramp_details(ramp_id_for_tides)
             if ramp_obj:
-                # Fetch tides for the specific day
                 all_tides_for_date = ecm.fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, report_date, report_date)
-                tide_data_for_day = all_tides_for_date.get(report_date, []) # Get tides for the exact report_date
+                tide_data_for_day = all_tides_for_date.get(report_date, [])
                 
-                # Process the fetched tides
                 high_tides_full_data = [t for t in tide_data_for_day if t.get('type') == 'H']
                 low_tides_full_data = [t for t in tide_data_for_day if t.get('type') == 'L']
                 
                 if high_tides_full_data:
-                    # Make noon_dt timezone-aware for correct comparison
                     noon = datetime.datetime.combine(report_date, datetime.time(12,0), tzinfo=timezone.utc)
-                    
-                    # Create temporary aware datetimes for sorting, then use original time
                     primary_high_tide = min(high_tides_full_data, key=lambda t: abs(datetime.datetime.combine(report_date, t['time'], tzinfo=timezone.utc) - noon))
 
                 def round_time(t):
                     mins = t.hour * 60 + t.minute;rounded = int(round(mins / 15.0) * 15)
                     return datetime.time(min(23, rounded // 60), rounded % 60)
                 
-                # Correctly access the 'time' from the full tide data
                 high_tide_highlights = [round_time(t['time']) for t in high_tides_full_data]
                 low_tide_highlights = [round_time(t['time']) for t in low_tides_full_data]
+    # --- END OF UNCHANGED SECTION ---
 
     c.setFont("Helvetica-Bold", 12);c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
     if primary_high_tide:
@@ -177,62 +165,60 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     for i, name in enumerate(planner_columns):
         c.setFont("Helvetica-Bold", 14);c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
 
+    # Drawing the grid (unchanged)
     c.setFont("Helvetica-Bold", 9)
     c.drawString(margin + 3, top_y - 9, "7:30")
-
     for hour in range(start_time_obj.hour + 1, end_time_obj.hour + 1):
-        # --- UPDATED HIGHLIGHT LOGIC ---
         hour_highlight_color = None
         for m_check in [0, 15, 30, 45]:
             check_time = datetime.time(hour, m_check)
-            if check_time in high_tide_highlights:
-                hour_highlight_color = colors.Color(1, 1, 0, alpha=0.4)
-                break
-            elif check_time in low_tide_highlights:
-                hour_highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
-                break
-
+            if check_time in high_tide_highlights: hour_highlight_color = colors.Color(1, 1, 0, alpha=0.4); break
+            elif check_time in low_tide_highlights: hour_highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4); break
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
             if not (start_time_obj <= current_time <= end_time_obj): continue
             y = get_y_for_time(current_time)
-
             c.setStrokeColorRGB(0.7, 0.7, 0.7)
             c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
-
             if minute == 0:
                 if hour_highlight_color:
-                    c.setFillColor(hour_highlight_color)
-                    c.rect(margin + 1, y - 11, time_col_width - 2, 13, fill=1, stroke=0)
+                    c.setFillColor(hour_highlight_color); c.rect(margin + 1, y - 11, time_col_width - 2, 13, fill=1, stroke=0)
                 display_hour = hour if hour <= 12 else hour - 12
                 c.setFont("Helvetica-Bold", 9);c.setFillColorRGB(0,0,0)
                 c.drawString(margin + 3, y - 9, str(display_hour))
-
     c.setStrokeColorRGB(0,0,0)
     for i in range(len(planner_columns) + 1):
         x = margin + time_col_width + i * col_width;c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
     c.line(margin, top_y, margin, bottom_y);c.line(width - margin, top_y, width - margin, bottom_y)
     c.line(margin, bottom_y, width - margin, bottom_y);c.line(margin, top_y, width - margin, top_y)
 
+    # --- THIS SECTION IS CORRECTED ---
+    # Create a map to look up truck names from their IDs
+    id_to_name_map = {t.truck_id: t.truck_name for t in ecm.ECM_TRUCKS.values()}
+
     for job in jobs_for_day:
-        # Ensure these are timezone-aware if they're used in comparisons
-        # However, .time() extracts the naive time part, so these are fine for display based on time only
         start_time, end_time = job.scheduled_start_datetime.time(), job.scheduled_end_datetime.time()
         if start_time < start_time_obj: start_time = start_time_obj
         y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
         line1_y, line2_y, line3_y = y0 - 15, y0 - 25, y0 - 35
         customer, boat = ecm.get_customer_details(job.customer_id), ecm.get_boat_details(job.boat_id)
-        if job.assigned_hauling_truck_id in column_map:
-            col_index = column_map[job.assigned_hauling_truck_id]; text_x = margin + time_col_width + (col_index + 0.5) * col_width
+        
+        # Look up the truck name using the ID from the job
+        hauling_truck_name = id_to_name_map.get(job.assigned_hauling_truck_id)
+        
+        if hauling_truck_name and hauling_truck_name in column_map:
+            col_index = column_map[hauling_truck_name]
+            text_x = margin + time_col_width + (col_index + 0.5) * col_width
             c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_x, line1_y, customer.customer_name)
             c.setFont("Helvetica", 7);c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
             c.drawCentredString(text_x, line3_y, f"{ecm._abbreviate_town(job.pickup_street_address)}-{ecm._abbreviate_town(job.dropoff_street_address)}")
             c.setLineWidth(2);c.line(text_x, y0 - 45, text_x, y_end); c.line(text_x - 10, y_end, text_x + 10, y_end)
-        if job.assigned_crane_truck_id and 'J17' in column_map:
-            crane_col_index = column_map['J17'];crane_text_x = margin + time_col_width + (crane_col_index + 0.5) * col_width
-            # This line needs the .time() method to extract the time component for comparison
-            # to match the other time-only comparisons in this function.
+
+        crane_truck_name = id_to_name_map.get(job.assigned_crane_truck_id)
+        if crane_truck_name and crane_truck_name in column_map:
+            crane_col_index = column_map[crane_truck_name]
+            crane_text_x = margin + time_col_width + (crane_col_index + 0.5) * col_width
             y_crane_end = get_y_for_time(job.j17_busy_end_datetime.time())
             c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
             c.setFont("Helvetica", 7);c.drawCentredString(crane_text_x, line2_y, ecm._abbreviate_town(job.dropoff_street_address))
