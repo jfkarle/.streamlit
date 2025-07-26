@@ -824,6 +824,13 @@ def show_settings_page():
         
         st.markdown("---")
         st.subheader("Advanced Logic")
+
+        st.toggle(
+            "Enable Dynamic Job Durations (includes travel time)",
+            value=st.session_state.get('dynamic_duration_enabled', True),
+            key='dynamic_duration_enabled',
+            help="ON: Job duration = travel time + on-site time. OFF: Job duration = fixed on-site time only."
+        )
         
         # Existing Sailboat Priority Toggle
         st.toggle(
@@ -1015,7 +1022,8 @@ def initialize_session_state():
         'selected_tide_day': None, 
         'sailboat_priority_enabled': True,
         'ramp_tide_blackout_enabled': True, # Add this
-        'scituate_powerboat_priority_enabled': True, # Add this
+        'scituate_powerboat_priority_enabled': True,
+        'dynamic_duration_enabled': True,
         'last_seasonal_job': None
     }
     
