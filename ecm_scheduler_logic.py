@@ -1421,7 +1421,7 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
 
 def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, truck_hours):
     """
-    Generates random jobs, halting with a detailed error if the first attempt fails.
+    Generates random jobs, returning a detailed analysis of the first failure encountered.
     """
     if not LOADED_CUSTOMERS or not LOADED_BOATS:
         return "Cannot generate jobs: Customer or Boat data is not loaded."
@@ -1431,6 +1431,7 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
     date_range_days = (end_date - start_date).days
     success_count = 0
     failure_count = 0
+    first_failure_details = None
 
     for i in range(num_to_gen):
         try:
@@ -1451,7 +1452,7 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
             if random_service in ["Launch", "Haul"]:
                 random_ramp_id = random.choice(list(ECM_RAMPS.keys()))
 
-            # 4. Find an available slot and capture the failure reasons
+            # 4. Find an available slot and capture failure reasons
             slots, msg, reasons, _ = find_available_job_slots(
                 customer_id=random_customer.customer_id,
                 boat_id=random_boat.boat_id,
@@ -1464,7 +1465,7 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
                 is_bulk_job=True
             )
 
-            # 5. Confirm the job or halt on first failure
+            # 5. Confirm the job or capture details of the first failure
             if slots:
                 confirm_and_schedule_job(
                     original_request={
@@ -1477,10 +1478,9 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
                 success_count += 1
             else:
                 failure_count += 1
-                # If this is the first attempt (i == 0), halt and return details
-                if i == 0:
+                # If this is the first failure we've seen, store its details
+                if first_failure_details is None:
                     random_ramp = get_ramp_details(random_ramp_id)
-                    error_header = "HALTED: Could not schedule the first random job."
                     job_details = (
                         f"Attempted to schedule:\n"
                         f"  - Customer: {random_customer.customer_name}\n"
@@ -1489,13 +1489,20 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
                         f"  - Ramp: {random_ramp.ramp_name if random_ramp else 'N/A'}"
                     )
                     failure_analysis = "\n".join(reasons)
-                    return f"{error_header}\n\n{job_details}\n\n{failure_analysis}"
+                    first_failure_details = f"\n\n--- Analysis of First Failure ---\n{job_details}\n\n{failure_analysis}"
 
         except Exception as e:
             failure_count += 1
-            if i == 0:
-                return f"HALTED: An unexpected error occurred on the first attempt: {e}"
+            if first_failure_details is None:
+                first_failure_details = f"\n\n--- Analysis of First Failure ---\nAn unexpected error occurred: {e}"
     
-    return f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
+    # --- Construct Final Summary Message ---
+    summary = f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
+    
+    # Append the failure details if any occurred
+    if first_failure_details:
+        summary += first_failure_details
+        
+    return summary
 
 
