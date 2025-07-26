@@ -835,6 +835,10 @@ def get_final_schedulable_ramp_times(
     truck_hours_schedule,
     ramp_tide_blackout_enabled=True
 ):
+    """
+    Calculates the final, schedulable time slots for a specific truck at a ramp on a given day.
+    -- CORRECTED to handle timezone-aware datetime objects consistently. --
+    """
     day_of_week = date_to_check.weekday()
     
     # --- Check 1: Collective Truck Hours ---
@@ -856,113 +860,69 @@ def get_final_schedulable_ramp_times(
     if not specific_truck_hours:
         return []
 
-    # PROBLEM AREA HERE:
-    # `datetime.datetime.combine(date_to_check, earliest_truck_start)`
-    # `datetime.datetime.combine(date_to_check, latest_truck_end)`
-    # The timezone awareness needs to be applied here for these critical combined datetimes.
-    collective_truck_open_dt = datetime.datetime.combine(date_to_check, earliest_truck_start) # <--- THIS IS NAIIVE
-    collective_truck_close_dt = datetime.datetime.combine(date_to_check, latest_truck_end)   # <--- THIS IS NAIIVE
-
-    # FIX: MAKE THEM TIMEZONE-AWARE
+    # FIX: Make collective truck hours timezone-aware (UTC)
     collective_truck_open_dt = datetime.datetime.combine(date_to_check, earliest_truck_start, tzinfo=timezone.utc)
     collective_truck_close_dt = datetime.datetime.combine(date_to_check, latest_truck_end, tzinfo=timezone.utc)
-    # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
     if not ramp_obj:
-        # This part looks fine as it's dealing with raw times or passing them on
         return [{'start_time': specific_truck_hours[0], 'end_time': specific_truck_hours[1], 'high_tide_times': [], 'tide_rule_concise': 'N/A'}]
 
     # --- Check 2: Tidal Windows ---
     tide_data_for_day = all_tides.get(date_to_check, [])
-    # `calculate_ramp_windows` should return timezone-aware datetimes for its window boundaries if it expects them.
-    # We already made `tide_dt_combined` timezone-aware within `calculate_ramp_windows`.
-    # However, `window_start_time` and `window_end_time` are `.time()` objects.
-    # So `t_win['start_time']` and `t_win['end_time']` are *naive time objects*.
-    # When combined here: `datetime.datetime.combine(date_to_check, t_win['start_time'])` it becomes NAIIVE.
     tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
     
     filtered_tidal_windows = []
-    for t_win in tidal_windows:
-        # PROBLEM AREA HERE:
-        tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time']) # <--- THIS IS NAIIVE
-        tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'])     # <--- THIS IS NAIIVE
-        # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    if ramp_obj.tide_calculation_method == "AnyTide" or (ramp_obj.tide_calculation_method == "AnyTideWithDraftRule" and boat_obj.draft_ft < 5.0):
+        # For AnyTide, the tidal window is effectively the entire day.
+        filtered_tidal_windows = tidal_windows
+    else:
+        # For tide-dependent ramps, filter windows by collective truck hours
+        for t_win in tidal_windows:
+            # FIX: Make tidal windows timezone-aware (UTC)
+            tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
+            tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
 
-        # FIX: MAKE THEM TIMEZONE-AWARE
-        tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
-        tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
-        # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            if tidal_start_dt > tidal_end_dt:
+                tidal_end_dt += datetime.timedelta(days=1)
+            
+            # Compare two aware datetimes
+            overlap_start = max(tidal_start_dt, collective_truck_open_dt)
+            overlap_end = min(tidal_end_dt, collective_truck_close_dt)
 
-        if tidal_start_dt > tidal_end_dt:
-            tidal_end_dt += datetime.timedelta(days=1)
-
-        # The comparison `max(tidal_start_dt, collective_truck_open_dt)` etc.
-        # will cause TypeError if one is aware and other is naive.
-        # Since `collective_truck_open_dt` is now UTC, `tidal_start_dt` MUST also be UTC.
-        overlap_start = max(tidal_start_dt, collective_truck_open_dt)
-        overlap_end = min(tidal_end_dt, collective_truck_close_dt)
-
-        if overlap_start < overlap_end:
-            filtered_tidal_windows.append(t_win)
-        else:
-            DEBUG_MESSAGES.append(f"DEBUG: Tide window {t_win['start_time']}-{t_win['end_time']} at {ramp_obj.ramp_name} does NOT overlap with collective truck hours {earliest_truck_start}-{latest_truck_end} on {date_to_check}. Skipping this tide window.")
+            if overlap_start < overlap_end:
+                filtered_tidal_windows.append(t_win)
+            else:
+                DEBUG_MESSAGES.append(f"DEBUG: Tide window {t_win['start_time']}-{t_win['end_time']} at {ramp_obj.ramp_name} does NOT overlap with collective truck hours {earliest_truck_start}-{latest_truck_end} on {date_to_check}. Skipping.")
 
     # --- Blackout Logic ---
-    if ramp_tide_blackout_enabled and not filtered_tidal_windows and \
-       ramp_obj.tide_calculation_method != "AnyTide" and \
-       not (ramp_obj.tide_calculation_method == "AnyTideWithDraftRule" and boat_obj.draft_ft and boat_obj.draft_ft < 5.0):
-        
-        DEBUG_MESSAGES.append(f"DEBUG: Ramp {ramp_obj.ramp_name} (ID: {ramp_obj.ramp_id}) is effectively 'blacked out' on {date_to_check} due to no viable tide windows overlapping truck hours (Ramp Blackout enabled).")
+    if ramp_tide_blackout_enabled and not filtered_tidal_windows and ramp_obj.tide_calculation_method not in ["AnyTide", "AnyTideWithDraftRule"]:
+        DEBUG_MESSAGES.append(f"DEBUG: Ramp {ramp_obj.ramp_name} 'blacked out' on {date_to_check} due to no viable tide windows overlapping truck hours.")
         return []
 
-    # --- Final Slot Generation (individual truck) ---
-    # PROBLEM AREA HERE:
-    # `datetime.datetime.combine(date_to_check, specific_truck_hours[0])`
-    # `datetime.datetime.combine(date_to_check, specific_truck_hours[1])`
-    # These are also naive.
-    specific_truck_open_dt = datetime.datetime.combine(date_to_check, specific_truck_hours[0]) # <--- NAIIVE
-    specific_truck_close_dt = datetime.datetime.combine(date_to_check, specific_truck_hours[1]) # <--- NAIIVE
-    # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-    # FIX: MAKE THEM TIMEZONE-AWARE
+    # --- Final Slot Generation (for the specific truck) ---
+    # FIX: Make specific truck hours timezone-aware (UTC)
     specific_truck_open_dt = datetime.datetime.combine(date_to_check, specific_truck_hours[0], tzinfo=timezone.utc)
     specific_truck_close_dt = datetime.datetime.combine(date_to_check, specific_truck_hours[1], tzinfo=timezone.utc)
-    # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
     all_schedulable_slots = []
     for t_win in filtered_tidal_windows:
-        # PROBLEM AREA HERE:
-        tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time']) # <--- NAIIVE
-        tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'])     # <--- NAIIVE
-        # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-        # FIX: MAKE THEM TIMEZONE-AWARE
+        # FIX: Make tidal window timezone-aware (UTC) again for specific truck comparison
         tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
         tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
-        # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
         if tidal_start_dt > tidal_end_dt:
             tidal_end_dt += datetime.timedelta(days=1)
 
-        # These comparisons will now be between two UTC-aware datetimes.
+        # Compare two aware datetimes
         overlap_start = max(tidal_start_dt, specific_truck_open_dt)
         overlap_end = min(tidal_end_dt, specific_truck_close_dt)
 
         if overlap_start < overlap_end:
-            debug_trace = {
-                "Truck Shift": f"{specific_truck_open_dt.strftime('%I:%M %p')} - {specific_truck_close_dt.strftime('%I:%M %p')}",
-                "Tide Window": f"{tidal_start_dt.strftime('%I:%M %p')} - {tidal_end_dt.strftime('%I:%M %p')}",
-                "Overlap Found": f"{overlap_start.strftime('%I:%M %p')} - {overlap_end.strftime('%I:%M %p')}",
-                "Comparison": f"{overlap_start} < {overlap_end} = {overlap_start < overlap_end}"
-            }
-            
             all_schedulable_slots.append({
-                'start_time'       : overlap_start.time(),
-                'end_time'         : overlap_end.time(),
-                'high_tide_times'  : [t['time'] for t in tide_data_for_day if t['type'] == 'H'],
-                'low_tide_times'   : [t['time'] for t in tide_data_for_day if t['type'] == 'L'], # Pass low tide times
-                'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj),
-                'debug_trace'      : debug_trace
+                'start_time': overlap_start.time(), 'end_time': overlap_end.time(),
+                'high_tide_times': [t['time'] for t in tide_data_for_day if t['type'] == 'H'],
+                'low_tide_times': [t['time'] for t in tide_data_for_day if t['type'] == 'L'],
+                'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
             })
 
     return all_schedulable_slots
