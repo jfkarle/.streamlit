@@ -1421,8 +1421,7 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
 
 def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, truck_hours):
     """
-    Generates a specified number of random, valid jobs within a date range.
-    This is a developer tool for populating the schedule with test data.
+    Generates random jobs, halting with a detailed error if the first attempt fails.
     """
     if not LOADED_CUSTOMERS or not LOADED_BOATS:
         return "Cannot generate jobs: Customer or Boat data is not loaded."
@@ -1433,12 +1432,13 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
     success_count = 0
     failure_count = 0
 
-    for _ in range(num_to_gen):
+    for i in range(num_to_gen):
         try:
             # 1. Get a random customer and their boat
             random_customer = random.choice(customer_list)
             customer_boats = [b for b in LOADED_BOATS.values() if b.customer_id == random_customer.customer_id]
             if not customer_boats:
+                failure_count += 1
                 continue
             random_boat = random.choice(customer_boats)
 
@@ -1451,20 +1451,20 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
             if random_service in ["Launch", "Haul"]:
                 random_ramp_id = random.choice(list(ECM_RAMPS.keys()))
 
-            # 4. Find an available slot
-            slots, _, _, _ = find_available_job_slots(
+            # 4. Find an available slot and capture the failure reasons
+            slots, msg, reasons, _ = find_available_job_slots(
                 customer_id=random_customer.customer_id,
                 boat_id=random_boat.boat_id,
                 service_type=random_service,
                 requested_date_str=random_date.strftime('%Y-%m-%d'),
                 selected_ramp_id=random_ramp_id,
-                force_preferred_truck=False, # Use any capable truck for random generation
+                force_preferred_truck=False,
                 num_suggestions_to_find=1,
                 truck_operating_hours=truck_hours,
-                is_bulk_job=True # <--- ADD THIS HERE for random job generation
+                is_bulk_job=True
             )
 
-            # 5. Confirm the job if a slot was found
+            # 5. Confirm the job or halt on first failure
             if slots:
                 confirm_and_schedule_job(
                     original_request={
@@ -1477,8 +1477,24 @@ def generate_random_jobs(num_to_gen, start_date, end_date, service_type_filter, 
                 success_count += 1
             else:
                 failure_count += 1
-        except Exception:
+                # If this is the first attempt (i == 0), halt and return details
+                if i == 0:
+                    random_ramp = get_ramp_details(random_ramp_id)
+                    error_header = "HALTED: Could not schedule the first random job."
+                    job_details = (
+                        f"Attempted to schedule:\n"
+                        f"  - Customer: {random_customer.customer_name}\n"
+                        f"  - Boat: {random_boat.boat_length}' {random_boat.boat_type}\n"
+                        f"  - Service: {random_service} on {random_date.strftime('%A, %Y-%m-%d')}\n"
+                        f"  - Ramp: {random_ramp.ramp_name if random_ramp else 'N/A'}"
+                    )
+                    failure_analysis = "\n".join(reasons)
+                    return f"{error_header}\n\n{job_details}\n\n{failure_analysis}"
+
+        except Exception as e:
             failure_count += 1
+            if i == 0:
+                return f"HALTED: An unexpected error occurred on the first attempt: {e}"
     
     return f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
 
