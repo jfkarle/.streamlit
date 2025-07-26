@@ -692,6 +692,10 @@ def show_reporting_page():
     with tab1:
         st.subheader("Scheduled Jobs Overview")
         if ecm.SCHEDULED_JOBS:
+            # --- THIS BLOCK IS CORRECTED ---
+            # Create a map to look up truck names from IDs
+            id_to_name_map = {t.truck_id: t.truck_name for t in ecm.ECM_TRUCKS.values()}
+
             cols = st.columns((2, 1, 2, 1, 1, 3))
             fields = ["Date/Time", "Service", "Customer", "Haul Truck", "Crane", "Actions"]
             for col, field in zip(cols, fields):
@@ -712,8 +716,10 @@ def show_reporting_page():
 
                 cols[1].write(j.service_type)
                 cols[2].write(customer.customer_name)
-                cols[3].write(j.assigned_hauling_truck_id or "—")
-                cols[4].write(j.assigned_crane_truck_id or "—")
+                
+                # Look up and display the truck names instead of IDs
+                cols[3].write(id_to_name_map.get(j.assigned_hauling_truck_id, "—"))
+                cols[4].write(id_to_name_map.get(j.assigned_crane_truck_id, "—"))
 
                 with cols[5]:
                     if st.session_state.get('job_to_cancel') == j.job_id:
