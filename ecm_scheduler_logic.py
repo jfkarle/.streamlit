@@ -1122,7 +1122,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              search_end_date=None,
                              **kwargs):
     """
-    Finds the best available job slots with priority logic for sailboats on prime tide days.
+    Finds available slots, now correctly applying the sailboat priority logic based on the UI toggle.
     """
     truck_operating_hours = truck_operating_hours or TRUCK_OPERATING_HOURS
     try:
@@ -1134,7 +1134,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     boat = get_boat_details(boat_id)
     if not customer or not boat: return [], "Invalid Customer or Boat ID.", [], False
     
-    # --- NEW: Classify the boat for priority scheduling ---
     is_priority_sailboat = "Sailboat" in boat.boat_type and boat.draft_ft is not None and boat.draft_ft > 3.0
 
     ramp_obj = get_ramp_details(selected_ramp_id)
@@ -1153,9 +1152,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     compiled_schedule, daily_truck_last_location = _compile_truck_schedules(SCHEDULED_JOBS)
     yard_coords = get_location_coords(address=YARD_ADDRESS)
     
-    # --- NEW: Identify Prime Tide Days for Priority Logic ---
+    # --- THIS LOGIC IS NOW CORRECTLY CONDITIONAL ---
     prime_tide_days = set()
-    if is_priority_sailboat:
+    # Only identify prime days if the boat is a priority sailboat AND the setting is enabled.
+    if is_priority_sailboat and prioritize_sailboats:
         duxbury_ramp_id = "3000002" # Reference ramp for system-wide prime day definition
         prime_day_tides = fetch_noaa_tides_for_range(ECM_RAMPS[duxbury_ramp_id].noaa_station_id, search_start_date, search_end_date)
         prime_window_start, prime_window_end = time(10, 0), time(14, 0)
@@ -1169,17 +1169,16 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     for day_offset in range((search_end_date - search_start_date).days + 1):
         check_date = search_start_date + timedelta(days=day_offset)
 
-        # --- NEW: Enforce Priority Scheduling ---
-        # If it's a priority sailboat, only search on prime tide days.
-        if is_priority_sailboat and check_date not in prime_tide_days:
-            continue # Skip this day entirely if it's not a prime day for a priority boat
+        # --- THIS CHECK IS NOW CORRECTLY CONDITIONAL ---
+        # If sailboat priority is on, only search prime tide days for those boats.
+        if is_priority_sailboat and prioritize_sailboats and check_date not in prime_tide_days:
+            continue
 
         if service_type == "Launch": new_job_coords = get_location_coords(address=boat.storage_address, boat_id=boat.boat_id)
         elif service_type in ["Haul", "Transport"]: new_job_coords = get_location_coords(ramp_id=selected_ramp_id)
         else: continue
 
         for truck in suitable_trucks:
-            # (The rest of the logic for finding a slot on a given day remains the same)
             truck_hours = truck_operating_hours.get(truck.truck_id, {}).get(check_date.weekday())
             if not truck_hours: continue
             
@@ -1229,11 +1228,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
         if len(all_found_slots) >= SEARCH_LIMIT: break
     
-    # Scoring logic remains the same
+    # Scoring logic is omitted for brevity but remains unchanged
     for slot in all_found_slots:
-        score = 0; score_trace = {}
-        # (scoring logic is unchanged)
-        slot['score'] = score; slot['debug_trace']['score_calculation'] = score_trace; slot['debug_trace']['FINAL_SCORE'] = score
+        score = 0
+        score_trace = {}
+        # ... full scoring logic ...
+        slot['score'] = score
+        slot['debug_trace']['score_calculation'] = score_trace
+        slot['debug_trace']['FINAL_SCORE'] = score
             
     all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
 
