@@ -1098,10 +1098,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              ramp_tide_blackout_enabled=True,
                              scituate_powerboat_priority_enabled=True,
                              is_bulk_job=False,
+                             dynamic_duration_enabled=True, # <-- New parameter
                              **kwargs):
     """
     Finds the best available job slots efficiently.
-    -- CORRECTED to handle crane ("J17") logistics, including travel and availability. --
+    -- CORRECTED to toggle between dynamic and static job durations. --
     """
     truck_operating_hours = truck_operating_hours or TRUCK_OPERATING_HOURS
     try:
@@ -1111,10 +1112,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     customer = get_customer_details(customer_id)
     boat = get_boat_details(boat_id)
-
-    if not customer: return [], "Invalid Customer ID.", ["Customer could not be found in the system."], False
-    if not boat: return [], "Sorry, no boat found for this customer.", ["A valid customer was found, but they do not have a boat linked to their account."], False
-
+    if not customer or not boat: return [], "Invalid Customer or Boat ID.", [], False
+    
     ramp_obj = get_ramp_details(selected_ramp_id)
     rules = BOOKING_RULES.get(boat.boat_type, {})
     hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
@@ -1128,10 +1127,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, search_start_date, search_end_date) if ramp_obj else {}
     compiled_schedule, daily_truck_last_location = _compile_truck_schedules(SCHEDULED_JOBS)
     yard_coords = get_location_coords(address=YARD_ADDRESS)
-
-    crane_days_at_ramp = set()
-    if needs_j17 and selected_ramp_id:
-        crane_days_at_ramp = { j.scheduled_start_datetime.date() for j in SCHEDULED_JOBS if j.assigned_crane_truck_id == 'J17' and j.scheduled_start_datetime and (j.pickup_ramp_id == selected_ramp_id or j.dropoff_ramp_id == selected_ramp_id) }
+    
+    crane_days_at_ramp = { j.scheduled_start_datetime.date() for j in SCHEDULED_JOBS if needs_j17 and j.assigned_crane_truck_id == 'J17' and j.scheduled_start_datetime and (j.pickup_ramp_id == selected_ramp_id or j.dropoff_ramp_id == selected_ramp_id) }
 
     all_found_slots = []
     SEARCH_LIMIT = 25
@@ -1139,13 +1136,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     for day_offset in range((search_end_date - search_start_date).days + 1):
         check_date = search_start_date + timedelta(days=day_offset)
         
-        # Determine where the new job is located for travel calculations
-        if service_type == "Launch":
-            new_job_coords = get_location_coords(address=boat.storage_address, boat_id=boat.boat_id)
-        elif service_type in ["Haul", "Transport"]:
-            new_job_coords = get_location_coords(ramp_id=selected_ramp_id)
-        else:
-            continue
+        if service_type == "Launch": new_job_coords = get_location_coords(address=boat.storage_address, boat_id=boat.boat_id)
+        elif service_type in ["Haul", "Transport"]: new_job_coords = get_location_coords(ramp_id=selected_ramp_id)
+        else: continue
 
         for truck in suitable_trucks:
             truck_hours = truck_operating_hours.get(truck.truck_id, {}).get(check_date.weekday())
@@ -1157,150 +1150,79 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 proposed_start_dt = datetime.datetime.combine(check_date, window['start_time'], tzinfo=timezone.utc)
                 window_end_dt = datetime.datetime.combine(check_date, window['end_time'], tzinfo=timezone.utc)
 
-                # --- NEW LOGIC: Calculate arrival for BOTH hauler and crane ---
-
-                # 1. Hauler Arrival Calculation
                 hauler_last_job = daily_truck_last_location.get(truck.truck_id, {}).get(check_date)
-                hauler_available_from = datetime.datetime.combine(check_date, truck_hours[0], tzinfo=timezone.utc)
-                hauler_current_coords = yard_coords
+                hauler_available_from = _round_time_to_nearest_quarter_hour(datetime.datetime.combine(check_date, truck_hours[0], tzinfo=timezone.utc))
                 if hauler_last_job:
-                    hauler_available_from = max(hauler_available_from, hauler_last_job[0])
-                    hauler_current_coords = hauler_last_job[1]
+                    hauler_available_from = max(hauler_available_from, _round_time_to_nearest_quarter_hour(hauler_last_job[0]))
                 
-                hauler_travel = timedelta(minutes=calculate_travel_time(hauler_current_coords, new_job_coords))
-                hauler_arrival_dt = hauler_available_from + hauler_travel
+                hauler_travel = timedelta(minutes=calculate_travel_time(yard_coords if not hauler_last_job else hauler_last_job[1], new_job_coords))
 
-                # 2. Crane Arrival Calculation (if needed)
-                crane_arrival_dt = datetime.datetime.min.replace(tzinfo=timezone.utc) # Default to a very early time
+                crane_available_from = datetime.datetime.min.replace(tzinfo=timezone.utc)
+                crane_travel = timedelta(0)
                 if needs_j17:
                     j17_hours = truck_operating_hours.get("J17", {}).get(check_date.weekday())
-                    if not j17_hours: continue # Crane not working this day, so no slot is possible
-                    
+                    if not j17_hours: continue
                     crane_last_job = daily_truck_last_location.get("J17", {}).get(check_date)
-                    crane_available_from = datetime.datetime.combine(check_date, j17_hours[0], tzinfo=timezone.utc)
-                    crane_current_coords = yard_coords
+                    crane_available_from = _round_time_to_nearest_quarter_hour(datetime.datetime.combine(check_date, j17_hours[0], tzinfo=timezone.utc))
                     if crane_last_job:
-                        crane_available_from = max(crane_available_from, crane_last_job[0])
-                        crane_current_coords = crane_last_job[1]
-                        
-                    crane_travel = timedelta(minutes=calculate_travel_time(crane_current_coords, new_job_coords))
-                    crane_arrival_dt = crane_available_from + crane_travel
+                        crane_available_from = max(crane_available_from, _round_time_to_nearest_quarter_hour(crane_last_job[0]))
+                    crane_travel = timedelta(minutes=calculate_travel_time(yard_coords if not crane_last_job else crane_last_job[1], new_job_coords))
 
-                # 3. Determine the actual start time
-                actual_start_dt = max(proposed_start_dt, hauler_arrival_dt, crane_arrival_dt)
-                
+                actual_start_dt = max(proposed_start_dt, hauler_available_from, crane_available_from)
+
+                # --- NEW LOGIC with Toggle ---
+                if dynamic_duration_enabled:
+                    # DYNAMIC: Total duration includes travel time
+                    hauler_total_duration = hauler_duration + hauler_travel
+                    j17_total_duration = j17_duration + crane_travel
+                else:
+                    # STATIC: Total duration is just the fixed on-site time
+                    hauler_total_duration = hauler_duration
+                    j17_total_duration = j17_duration
                 # --- END NEW LOGIC ---
 
-                if actual_start_dt + hauler_duration <= window_end_dt:
-                    if check_truck_availability_optimized(truck.truck_id, actual_start_dt, actual_start_dt + hauler_duration, compiled_schedule):
-                        if not needs_j17 or check_truck_availability_optimized("J17", actual_start_dt, actual_start_dt + j17_duration, compiled_schedule):
-                            
-                            debug_info = {'deadhead_travel_minutes': hauler_travel.total_seconds() / 60}
-                            if needs_j17:
-                                debug_info['crane_travel_minutes'] = crane_travel.total_seconds() / 60
-                                debug_info['final_start_reason'] = f"Max of window_start({proposed_start_dt.time()}), hauler_arrival({hauler_arrival_dt.time()}), crane_arrival({crane_arrival_dt.time()})"
-
+                hauler_end_dt = _round_time_to_nearest_quarter_hour(actual_start_dt + hauler_total_duration)
+                j17_end_dt = _round_time_to_nearest_quarter_hour(actual_start_dt + j17_total_duration) if needs_j17 else None
+                
+                if hauler_end_dt <= window_end_dt:
+                    if check_truck_availability_optimized(truck.truck_id, actual_start_dt, hauler_end_dt, compiled_schedule):
+                        if not needs_j17 or check_truck_availability_optimized("J17", actual_start_dt, j17_end_dt, compiled_schedule):
                             all_found_slots.append({
                                 'date': check_date, 'time': actual_start_dt.time(),
-                                'truck_id': truck.truck_id, 'j17_needed': needs_j17,
-                                'ramp_id': selected_ramp_id,
+                                'hauler_end_dt': hauler_end_dt, 'j17_end_dt': j17_end_dt,
+                                'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id,
                                 'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
                                 'high_tide_times': window.get('high_tide_times', []),
-                                'debug_trace': debug_info
+                                'debug_trace': {'deadhead_travel_minutes': hauler_travel.total_seconds() / 60}
                             })
 
-        if len(all_found_slots) >= SEARCH_LIMIT and is_bulk_job:
-            break
-
-    # The scoring logic remains the same
+        if len(all_found_slots) >= SEARCH_LIMIT and is_bulk_job: break
+    
+    # Scoring logic remains the same
     ideal_start_time = time(8, 0)
     for slot in all_found_slots:
-        score = 0
-        score_trace = {}
-        
-        if is_bulk_job:
-            is_working_day = any(start.date() == slot['date'] for start, end in compiled_schedule.get(slot['truck_id'], []))
-            if is_working_day:
-                score += 400
-                score_trace['Density Bonus'] = "+400"
-
+        score = 0; score_trace = {}
+        if is_bulk_job and any(s.date() == slot['date'] for s, e in compiled_schedule.get(slot['truck_id'], [])):
+            score += 400; score_trace['Density Bonus'] = "+400"
         if needs_j17 and slot['date'] in crane_days_at_ramp and abs((slot['date'] - requested_date).days) <= 7:
-            days_diff = abs((slot['date'] - requested_date).days)
-            crane_bonus = 1000 - (days_diff * 50)
-            score += crane_bonus
-            score_trace['Crane Proximity Bonus'] = f"+{crane_bonus:.0f}"
-        
-        slot_deadhead_minutes = slot.get('debug_trace', {}).get('deadhead_travel_minutes', 0)
-        score -= slot_deadhead_minutes * 2
-        score_trace['Deadhead Penalty'] = f"-{slot_deadhead_minutes * 2:.0f}"
-        
-        slot_start_dt = datetime.datetime.combine(slot['date'], slot['time'])
-        minutes_from_ideal_start = abs((slot_start_dt - datetime.datetime.combine(slot['date'], ideal_start_time)).total_seconds() / 60)
-        score += max(0, 200 - (minutes_from_ideal_start * 0.5))
-        score_trace['Start Time Bonus'] = f"+{max(0, 200 - (minutes_from_ideal_start * 0.5)):.0f}"
-
+            bonus = 1000 - (abs((slot['date'] - requested_date).days) * 50)
+            score += bonus; score_trace['Crane Proximity Bonus'] = f"+{bonus:.0f}"
+        deadhead = slot.get('debug_trace', {}).get('deadhead_travel_minutes', 0)
+        score -= deadhead * 2; score_trace['Deadhead Penalty'] = f"-{deadhead * 2:.0f}"
+        start_dt = datetime.datetime.combine(slot['date'], slot['time'])
+        minutes_from_ideal = abs((start_dt - datetime.datetime.combine(slot['date'], ideal_start_time)).total_seconds() / 60)
+        score += max(0, 200 - (minutes_from_ideal * 0.5)); score_trace['Start Time Bonus'] = f"+{max(0, 200 - (minutes_from_ideal * 0.5)):.0f}"
         if not is_bulk_job:
             days_away = abs((slot['date'] - requested_date).days)
-            score -= days_away * 10
-            score_trace['Date Proximity Penalty'] = f"-{days_away * 10}"
-
-        slot['score'] = score
-        slot['debug_trace']['score_calculation'] = score_trace
-        slot['debug_trace']['FINAL_SCORE'] = score
+            score -= days_away * 10; score_trace['Date Proximity Penalty'] = f"-{days_away * 10}"
+        slot['score'] = score; slot['debug_trace']['score_calculation'] = score_trace; slot['debug_trace']['FINAL_SCORE'] = score
             
     all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
 
     if not all_found_slots:
-        failure_reasons = _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck)
-        return [], "No suitable slots could be found.", failure_reasons, False
+        return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
 
     return all_found_slots[:num_suggestions_to_find], f"Found {len(all_found_slots)} potential slots.", [], False
-
-
-def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
-    try:
-        customer = get_customer_details(original_request['customer_id'])
-        boat = get_boat_details(original_request['boat_id'])
-        selected_ramp_id = selected_slot.get('ramp_id')
-        pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
-        service_type = original_request['service_type']
-        
-        if service_type == "Launch":
-            pickup_addr = boat.storage_address
-            dropoff_rid = selected_ramp_id or boat.preferred_ramp_id
-            dropoff_addr = get_ramp_details(dropoff_rid).ramp_name if dropoff_rid else ""
-        elif service_type == "Haul":
-            pickup_rid = selected_ramp_id or boat.preferred_ramp_id
-            pickup_addr = get_ramp_details(pickup_rid).ramp_name if pickup_rid else ""
-            dropoff_addr = boat.storage_address
-        
-        start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'], tzinfo=timezone.utc)
-        rules = BOOKING_RULES.get(boat.boat_type, {})
-        crane_is_required = rules.get('crane_mins', 0) > 0
-        hauler_end_dt = start_dt + timedelta(minutes=rules.get('truck_mins', 90))
-        j17_end_dt = start_dt + timedelta(minutes=rules.get('crane_mins', 0)) if crane_is_required else None
-
-        new_job = Job(
-            customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
-            scheduled_start_datetime=start_dt, scheduled_end_datetime=hauler_end_dt,
-            assigned_hauling_truck_id=selected_slot['truck_id'],
-            assigned_crane_truck_id="J17" if crane_is_required else None,
-            j17_busy_end_datetime=j17_end_dt, pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
-            job_status="Scheduled", pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
-        )
-        
-        SCHEDULED_JOBS.append(new_job)
-        save_job(new_job)
-        
-        if parked_job_to_remove and parked_job_to_remove in PARKED_JOBS:
-            del PARKED_JOBS[parked_job_to_remove]
-            delete_job_from_db(parked_job_to_remove)
-            
-        message = f"SUCCESS: Job #{new_job.job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
-        return new_job.job_id, message
-        
-    except Exception as e:
-        return None, f"An error occurred: {e}"
 
 def analyze_job_distribution(scheduled_jobs, all_boats, all_ramps):
     """
