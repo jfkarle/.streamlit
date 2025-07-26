@@ -899,7 +899,10 @@ def get_final_schedulable_ramp_times(
     tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
     
     filtered_tidal_windows = []
-    if ramp_obj.tide_calculation_method == "AnyTide" or (ramp_obj.tide_calculation_method == "AnyTideWithDraftRule" and boat_obj.draft_ft < 5.0):
+    
+    # --- THIS LINE IS CORRECTED ---
+    # It now checks that draft_ft is not None before comparing it.
+    if ramp_obj.tide_calculation_method == "AnyTide" or (ramp_obj.tide_calculation_method == "AnyTideWithDraftRule" and boat_obj.draft_ft is not None and boat_obj.draft_ft < 5.0):
         # For AnyTide, the tidal window is effectively the entire day.
         filtered_tidal_windows = tidal_windows
     else:
@@ -951,8 +954,6 @@ def get_final_schedulable_ramp_times(
                 'low_tide_times': [t['time'] for t in tide_data_for_day if t['type'] == 'L'],
                 'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
             })
-
-    return all_schedulable_slots
     
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
     all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and t.max_boat_length is not None and boat_len <= t.max_boat_length]
