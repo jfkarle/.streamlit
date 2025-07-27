@@ -1111,176 +1111,102 @@ def find_same_service_conflict(boat_id, new_service_type, requested_date, all_sc
                     return job # Return the specific job that is causing the conflict
     return None
 
-def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str,
-                             selected_ramp_id=None, force_preferred_truck=True, num_suggestions_to_find=5,
-                             manager_override=False, crane_look_back_days=7, crane_look_forward_days=60,
-                             truck_operating_hours=None, prioritize_sailboats=True,
-                             ramp_tide_blackout_enabled=True,
-                             scituate_powerboat_priority_enabled=True,
-                             is_bulk_job=False,
-                             dynamic_duration_enabled=True,
-                             search_start_date=None,
-                             search_end_date=None,
-                             max_job_distance=10,
-                             **kwargs):
-    """
-    Finds best slots using "closest day first" search, ECM boat priority, and full scoring logic.
-    """
-    truck_operating_hours = truck_operating_hours or TRUCK_OPERATING_HOURS
-    try:
-        requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
-    except ValueError:
-        return [], "Error: Invalid date format.", [], False
+def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, **kwargs):
+    all_settings = {
+        'selected_ramp_id': None, 'force_preferred_truck': True, 'num_suggestions_to_find': 5,
+        'crane_look_back_days': 7, 'crane_look_forward_days': 60, 'truck_operating_hours': TRUCK_OPERATING_HOURS,
+        'prioritize_sailboats': True, 'max_job_distance': 10
+    }
+    all_settings.update(kwargs)
+    
+    try: requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
+    except ValueError: return [], "Error: Invalid date format.", [], False
 
     customer = get_customer_details(customer_id)
     boat = get_boat_details(boat_id)
     if not customer or not boat: return [], "Invalid Customer or Boat ID.", [], False
     
-    is_priority_sailboat = "Sailboat" in boat.boat_type and boat.draft_ft is not None and boat.draft_ft > 3.0
+    is_priority_sailboat = "Sailboat" in boat.boat_type
+    ramp_obj = get_ramp_details(all_settings['selected_ramp_id'])
 
-    ramp_obj = get_ramp_details(selected_ramp_id)
-    rules = BOOKING_RULES.get(boat.boat_type, {})
-    hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
-    j17_duration = timedelta(minutes=rules.get('crane_mins', 0))
-    needs_j17 = j17_duration.total_seconds() > 0
-    suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
+    # --- UPDATED DURATION LOGIC ---
+    # Durations are now fixed and include travel time.
+    if is_priority_sailboat:
+        hauler_duration = timedelta(minutes=180)  # 3 hours total for sailboats
+    else: # Assumes Powerboat
+        hauler_duration = timedelta(minutes=90)   # 1.5 hours total for powerboats
+    # --- END OF UPDATE ---
 
-    min_search_date = requested_date - timedelta(days=crane_look_back_days if not is_bulk_job else 0)
-    max_search_date = requested_date + timedelta(days=crane_look_forward_days)
-    day_search_order = _generate_day_search_order(requested_date, crane_look_back_days, crane_look_forward_days)
+    min_search_date = requested_date - timedelta(days=all_settings['crane_look_back_days'])
+    max_search_date = requested_date + timedelta(days=all_settings['crane_look_forward_days'])
+    day_search_order = _generate_day_search_order(requested_date, all_settings['crane_look_back_days'], all_settings['crane_look_forward_days'])
 
     all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, min_search_date, max_search_date) if ramp_obj else {}
     compiled_schedule, daily_truck_last_location = _compile_truck_schedules(SCHEDULED_JOBS)
-    yard_coords = get_location_coords(address=YARD_ADDRESS)
     
-    # --- CORRECTED PRIME DAY CALCULATION ---
     prime_tide_days = set()
-    # Logic now uses the ramp object from the user's selection.
-    if prioritize_sailboats and ramp_obj:
-        # Uses the NOAA station from the RAMP SELECTED FOR THE JOB.
+    if all_settings['prioritize_sailboats'] and ramp_obj:
         prime_day_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, min_search_date, max_search_date)
-        prime_window_start, prime_window_end = time(10, 0), time(14, 0)
         for day, tides in prime_day_tides.items():
-            if any(t['type'] == 'H' and prime_window_start <= t['time'] <= prime_window_end for t in tides):
+            if any(t['type'] == 'H' and time(10, 0) <= t['time'] <= time(14, 0) for t in tides):
                 prime_tide_days.add(day)
-    # --- END OF FIX ---
 
     all_found_slots = []
-    SEARCH_LIMIT = num_suggestions_to_find if not is_bulk_job else 50
-
     for check_date in day_search_order:
-        if prioritize_sailboats and check_date in prime_tide_days:
-            if not is_priority_sailboat:
-                continue 
-
+        if all_settings['prioritize_sailboats'] and check_date in prime_tide_days and not is_priority_sailboat: continue
         if not (min_search_date <= check_date <= max_search_date): continue
-        if is_priority_sailboat and prioritize_sailboats and check_date not in prime_tide_days:
-            continue
+        if is_priority_sailboat and all_settings['prioritize_sailboats'] and check_date not in prime_tide_days: continue
 
-        if service_type == "Launch": new_job_coords = get_location_coords(address=boat.storage_address, boat_id=boat.boat_id)
-        elif service_type in ["Haul", "Transport"]: new_job_coords = get_location_coords(ramp_id=selected_ramp_id)
-        else: continue
-
+        suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, all_settings['force_preferred_truck'])
         for truck in suitable_trucks:
-            hauler_last_job = daily_truck_last_location.get(truck.truck_id, {}).get(check_date)
-            
-            if hauler_last_job:
-                truck_current_coords = hauler_last_job[1]
-                distance_from_last_job = _calculate_distance_miles(truck_current_coords, new_job_coords)
-                if distance_from_last_job > max_job_distance:
-                    continue
-            else:
-                truck_current_coords = yard_coords
-            
-            truck_hours = truck_operating_hours.get(truck.truck_id, {}).get(check_date.weekday())
+            truck_hours = all_settings['truck_operating_hours'].get(truck.truck_id, {}).get(check_date.weekday())
             if not truck_hours: continue
             
-            windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours, ramp_tide_blackout_enabled)
-            
+            windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, all_settings['truck_operating_hours'])
             for window in windows:
-                proposed_start_dt = datetime.datetime.combine(check_date, window['start_time'], tzinfo=timezone.utc)
-                window_end_dt = datetime.datetime.combine(check_date, window['end_time'], tzinfo=timezone.utc)
+                hauler_last_job = daily_truck_last_location.get(truck.truck_id, {}).get(check_date)
                 hauler_available_from = _round_time_to_nearest_quarter_hour(datetime.datetime.combine(check_date, truck_hours[0], tzinfo=timezone.utc))
                 if hauler_last_job: hauler_available_from = max(hauler_available_from, _round_time_to_nearest_quarter_hour(hauler_last_job[0]))
                 
-                hauler_travel = timedelta(minutes=calculate_travel_time(truck_current_coords, new_job_coords))
-                actual_start_dt = max(proposed_start_dt, hauler_available_from)
-
-                if dynamic_duration_enabled:
-                    hauler_total_duration = hauler_duration + hauler_travel
-                else:
-                    hauler_total_duration = hauler_duration
-
-                current_month = check_date.month
-                launch_season_months = [4, 5, 6, 7]
-                haul_season_months = [8, 9, 10, 11, 12]
-
-                is_launch_season_active = current_month in launch_season_months
-                is_haul_season_active = current_month in haul_season_months
-
-                latest_possible_start_dt = datetime.datetime.combine(check_date, truck_hours[1], tzinfo=timezone.utc) - hauler_total_duration
-                is_first_slot = actual_start_dt.time() == truck_hours[0]
-                is_last_slot = actual_start_dt >= latest_possible_start_dt
-
-                is_reserved_slot = False
-                if is_launch_season_active and service_type == "Launch" and is_first_slot:
-                    is_reserved_slot = True
-                elif is_haul_season_active and service_type == "Haul" and is_last_slot:
-                    is_reserved_slot = True
-
-                if is_reserved_slot and not boat.is_ecm_boat:
-                    continue
+                actual_start_dt = max(datetime.datetime.combine(check_date, window['start_time'], tzinfo=timezone.utc), hauler_available_from)
                 
+                # The total duration is now the fixed duration.
+                hauler_total_duration = hauler_duration
                 hauler_end_dt = _round_time_to_nearest_quarter_hour(actual_start_dt + hauler_total_duration)
                 
-                if hauler_end_dt <= window_end_dt:
-                    if check_truck_availability_optimized(truck.truck_id, actual_start_dt, hauler_end_dt, compiled_schedule):
-                        if not needs_j17:
-                            all_found_slots.append({
-                                'date': check_date, 'time': actual_start_dt.time(),
-                                'hauler_end_dt': hauler_end_dt, 'j17_end_dt': None,
-                                'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id,
-                                'is_priority_slot': is_reserved_slot and boat.is_ecm_boat,
-                                'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
-                                'high_tide_times': window.get('high_tide_times', []),
-                                'debug_trace': {'deadhead_travel_minutes': hauler_travel.total_seconds() / 60}
-                            })
+                if hauler_end_dt > datetime.datetime.combine(check_date, window['end_time'], tzinfo=timezone.utc): continue
+                if not check_truck_availability_optimized(truck.truck_id, actual_start_dt, hauler_end_dt, compiled_schedule): continue
+                
+                current_month = check_date.month
+                is_launch_season = current_month in [4, 5, 6, 7]
+                is_haul_season = current_month in [8, 9, 10, 11, 12]
+                is_first_slot = actual_start_dt.time() == truck_hours[0]
+                
+                latest_possible_start_dt = datetime.datetime.combine(check_date, truck_hours[1], tzinfo=timezone.utc) - hauler_total_duration
+                is_last_slot = actual_start_dt >= latest_possible_start_dt
 
-        if len(all_found_slots) >= SEARCH_LIMIT: break
-    
-    ideal_start_time = time(8, 0)
-    for slot in all_found_slots:
-        score = 0
-        score_trace = {}
-        
-        days_away = abs((slot['date'] - requested_date).days)
-        score -= days_away * 10
-        score_trace['Date Proximity Penalty'] = f"-{days_away * 10}"
+                is_reserved = (is_launch_season and service_type == "Launch" and is_first_slot) or \
+                              (is_haul_season and service_type == "Haul" and is_last_slot)
+                
+                if is_reserved and not boat.is_ecm_boat: continue
+                
+                # Note: Travel time is no longer part of the scheduling logic but can be calculated for scoring/display if needed.
+                all_found_slots.append({'date': check_date, 'time': actual_start_dt.time(), 'truck_id': truck.truck_id, 'ramp_id': all_settings['selected_ramp_id'], 'is_priority_slot': is_reserved and boat.is_ecm_boat, 'debug_trace': {}})
 
-        if slot.get('is_priority_slot'):
-            score += 500
-            score_trace['ECM Priority Bonus'] = "+500"
-        
-        slot_start_dt = datetime.datetime.combine(slot['date'], slot['time'])
-        minutes_from_ideal = abs((slot_start_dt - datetime.datetime.combine(slot['date'], ideal_start_time)).total_seconds() / 60)
-        start_time_bonus = max(0, 200 - (minutes_from_ideal * 0.5))
-        score += start_time_bonus
-        score_trace['Start Time Bonus'] = f"+{start_time_bonus:.0f}"
-
-        deadhead = slot.get('debug_trace', {}).get('deadhead_travel_minutes', 0)
-        score -= deadhead * 2
-        score_trace['Deadhead Penalty'] = f"-{deadhead * 2:.0f}"
-
-        slot['score'] = score
-        slot['debug_trace']['score_calculation'] = score_trace
-        slot['debug_trace']['FINAL_SCORE'] = score
+        if len(all_found_slots) >= all_settings['num_suggestions_to_find']: break
             
-    all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
-
     if not all_found_slots:
-        return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
+        return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, boat, ramp_obj, all_settings['truck_operating_hours'], all_settings['force_preferred_truck']), False
 
-    return all_found_slots[:num_suggestions_to_find], f"Found {len(all_found_slots)} potential slots.", [], False
+    # Scoring logic
+    for slot in all_found_slots:
+        score = 1000
+        score -= abs((slot['date'] - requested_date).days) * 10
+        if slot['is_priority_slot']: score += 500
+        slot['score'] = score
+    
+    all_found_slots.sort(key=lambda s: s['score'], reverse=True)
+    return all_found_slots[:all_settings['num_suggestions_to_find']], f"Found {len(all_found_slots)} potential slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
     try:
