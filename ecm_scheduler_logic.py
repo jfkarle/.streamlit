@@ -580,6 +580,25 @@ def _abbreviate_town(address):
         if town in address_lower: return abbr
     return address.title().split(',')[0][:3]
 
+def _calculate_distance_miles(coords1, coords2):
+    """Calculates the Haversine distance between two lat/lon points in miles."""
+    import math
+    if not coords1 or not coords2:
+        return float('inf') # Return a large number if coords are missing
+
+    R = 3958.8 # Earth radius in miles
+    lat1, lon1 = math.radians(coords1[0]), math.radians(coords1[1])
+    lat2, lon2 = math.radians(coords2[0]), math.radians(coords2[1])
+
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+
+    a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    distance = R * c
+    return distance
+
 def _round_time_to_nearest_quarter_hour(dt):
     """Rounds a datetime object UP to the nearest 15-minute interval."""
     if not isinstance(dt, datetime.datetime):
