@@ -1186,10 +1186,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 
                 if is_reserved and not boat.is_ecm_boat: continue
                 
-                # --- FIX: Restored missing tide information ---
                 all_found_slots.append({
                     'date': check_date,
                     'time': actual_start_dt.time(),
+                    'hauler_end_dt': hauler_end_dt, # FIX: Added missing end time
                     'truck_id': truck.truck_id,
                     'ramp_id': all_settings['selected_ramp_id'],
                     'is_priority_slot': is_reserved and boat.is_ecm_boat,
@@ -1197,7 +1197,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     'high_tide_times': window.get('high_tide_times', []),
                     'debug_trace': {}
                 })
-                # --- END OF FIX ---
 
         if len(all_found_slots) >= all_settings['num_suggestions_to_find']: break
             
