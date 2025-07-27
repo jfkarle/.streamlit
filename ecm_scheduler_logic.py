@@ -1126,8 +1126,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              scituate_powerboat_priority_enabled=True,
                              is_bulk_job=False,
                              dynamic_duration_enabled=True,
-                             search_start_date=None, # This is now managed internally by the new search order
-                             search_end_date=None,   # This is now managed internally
+                             search_start_date=None,
+                             search_end_date=None,
                              max_job_distance=10,
                              **kwargs):
     """
@@ -1152,10 +1152,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     needs_j17 = j17_duration.total_seconds() > 0
     suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
 
-    # Determine search date boundaries
     min_search_date = requested_date - timedelta(days=crane_look_back_days if not is_bulk_job else 0)
     max_search_date = requested_date + timedelta(days=crane_look_forward_days)
-    
     day_search_order = _generate_day_search_order(requested_date, crane_look_back_days, crane_look_forward_days)
 
     all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, min_search_date, max_search_date) if ramp_obj else {}
@@ -1176,7 +1174,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     for check_date in day_search_order:
         if not (min_search_date <= check_date <= max_search_date): continue
-
         if is_priority_sailboat and prioritize_sailboats and check_date not in prime_tide_days:
             continue
 
@@ -1198,7 +1195,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             truck_hours = truck_operating_hours.get(truck.truck_id, {}).get(check_date.weekday())
             if not truck_hours: continue
             
-            windows = get_final_sched_ulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours, ramp_tide_blackout_enabled)
+            # --- THIS LINE IS CORRECTED ---
+            windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours, ramp_tide_blackout_enabled)
             
             for window in windows:
                 proposed_start_dt = datetime.datetime.combine(check_date, window['start_time'], tzinfo=timezone.utc)
@@ -1207,7 +1205,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 if hauler_last_job: hauler_available_from = max(hauler_available_from, _round_time_to_nearest_quarter_hour(hauler_last_job[0]))
                 
                 hauler_travel = timedelta(minutes=calculate_travel_time(truck_current_coords, new_job_coords))
-
                 actual_start_dt = max(proposed_start_dt, hauler_available_from)
 
                 if dynamic_duration_enabled:
@@ -1215,42 +1212,37 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 else:
                     hauler_total_duration = hauler_duration
 
-                # --- NEW: ECM Boat Reserved Slot Logic ---
                 is_first_slot = actual_start_dt.time() == truck_hours[0]
                 latest_possible_start = (datetime.datetime.combine(check_date, truck_hours[1]) - hauler_total_duration).time()
                 is_last_slot = actual_start_dt.time() >= latest_possible_start
-
-                is_reserved_slot = (service_type == "Launch" and is_first_slot) or \
-                                   (service_type == "Haul" and is_last_slot)
+                is_reserved_slot = (service_type == "Launch" and is_first_slot) or (service_type == "Haul" and is_last_slot)
 
                 if is_reserved_slot and not boat.is_ecm_boat:
-                    continue # Skip this slot for non-ECM boats
+                    continue
                 
                 hauler_end_dt = _round_time_to_nearest_quarter_hour(actual_start_dt + hauler_total_duration)
                 
                 if hauler_end_dt <= window_end_dt:
                     if check_truck_availability_optimized(truck.truck_id, actual_start_dt, hauler_end_dt, compiled_schedule):
-                        # Crane logic is simplified here for brevity but remains the same
+                        # Crane logic is simplified and needs to be fully integrated
                         all_found_slots.append({
                             'date': check_date, 'time': actual_start_dt.time(),
-                            'hauler_end_dt': hauler_end_dt, 'j17_end_dt': None, # Placeholder for crane
+                            'hauler_end_dt': hauler_end_dt, 'j17_end_dt': None,
                             'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id,
-                            'is_priority_slot': is_reserved_slot and boat.is_ecm_boat, # Flag for scoring
+                            'is_priority_slot': is_reserved_slot and boat.is_ecm_boat,
                             'debug_trace': {'deadhead_travel_minutes': hauler_travel.total_seconds() / 60}
                         })
+
         if len(all_found_slots) >= SEARCH_LIMIT: break
     
-    # Update scoring to reward ECM boats in priority slots
+    # Scoring logic
     for slot in all_found_slots:
         score = 0
         days_away = abs((slot['date'] - requested_date).days)
-        score -= days_away * 10 # Prioritize closest day
-        
+        score -= days_away * 10
         if slot.get('is_priority_slot'):
-            score += 500 # Large bonus for ECM boats in reserved slots
-        
-        # ... other scoring logic like deadhead and start time bonus ...
-        
+            score += 500
+        # Add other scoring components as needed
         slot['score'] = score
             
     all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
