@@ -1211,8 +1211,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 else:
                     hauler_total_duration = hauler_duration
 
-                is_first_slot = actual_start_dt.time() == truck_hours[0]
                 latest_possible_start_dt = datetime.datetime.combine(check_date, truck_hours[1], tzinfo=timezone.utc) - hauler_total_duration
+                is_first_slot = actual_start_dt.time() == truck_hours[0]
                 is_last_slot = actual_start_dt >= latest_possible_start_dt
                 is_reserved_slot = (service_type == "Launch" and is_first_slot) or (service_type == "Haul" and is_last_slot)
 
@@ -1223,42 +1223,42 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 
                 if hauler_end_dt <= window_end_dt:
                     if check_truck_availability_optimized(truck.truck_id, actual_start_dt, hauler_end_dt, compiled_schedule):
-                        # This logic assumes no crane is needed for simplicity. A full implementation would handle crane checks here.
+                        # Crane logic needs full implementation for sailboat jobs
                         if not needs_j17:
+                            # --- THIS BLOCK IS CORRECTED ---
+                            # It now includes the tide information from the 'window' object.
                             all_found_slots.append({
                                 'date': check_date, 'time': actual_start_dt.time(),
                                 'hauler_end_dt': hauler_end_dt, 'j17_end_dt': None,
                                 'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id,
                                 'is_priority_slot': is_reserved_slot and boat.is_ecm_boat,
+                                'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
+                                'high_tide_times': window.get('high_tide_times', []),
                                 'debug_trace': {'deadhead_travel_minutes': hauler_travel.total_seconds() / 60}
                             })
 
         if len(all_found_slots) >= SEARCH_LIMIT: break
     
-    # --- SCORING LOGIC RESTORED ---
+    # Scoring logic
     ideal_start_time = time(8, 0)
     for slot in all_found_slots:
         score = 0
         score_trace = {}
         
-        # Date Proximity Score
         days_away = abs((slot['date'] - requested_date).days)
         score -= days_away * 10
         score_trace['Date Proximity Penalty'] = f"-{days_away * 10}"
 
-        # ECM Boat Priority Slot Score
         if slot.get('is_priority_slot'):
             score += 500
             score_trace['ECM Priority Bonus'] = "+500"
         
-        # Morning Bias Score
         slot_start_dt = datetime.datetime.combine(slot['date'], slot['time'])
         minutes_from_ideal = abs((slot_start_dt - datetime.datetime.combine(slot['date'], ideal_start_time)).total_seconds() / 60)
         start_time_bonus = max(0, 200 - (minutes_from_ideal * 0.5))
         score += start_time_bonus
         score_trace['Start Time Bonus'] = f"+{start_time_bonus:.0f}"
 
-        # Deadhead Penalty
         deadhead = slot.get('debug_trace', {}).get('deadhead_travel_minutes', 0)
         score -= deadhead * 2
         score_trace['Deadhead Penalty'] = f"-{deadhead * 2:.0f}"
