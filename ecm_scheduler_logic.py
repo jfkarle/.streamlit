@@ -1421,10 +1421,13 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
 
 def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hours, dynamic_duration_enabled=False, max_job_distance=10):
     """
-    Generates jobs using the boat's preferred ramp instead of tide rules.
+    Generates jobs using the boat's preferred ramp and the selected service type.
     """
     if not LOADED_BOATS:
         return "Cannot generate jobs: Boat data is not loaded."
+
+    # Use the service type selected in the UI. Default to "Haul" if "All" is selected.
+    service_to_schedule = service_type_filter if service_type_filter != "All" else "Haul"
 
     all_boats = list(LOADED_BOATS.values())
     random.shuffle(all_boats)
@@ -1439,21 +1442,16 @@ def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hou
         customer = get_customer_details(boat.customer_id)
         if not customer: continue
 
-        # --- UPDATED RAMP SELECTION LOGIC ---
-        # Prioritize the boat's preferred ramp.
         selected_ramp_id = boat.preferred_ramp_id
-
-        # If the boat has no valid preferred ramp, select one randomly as a fallback.
         if not selected_ramp_id or selected_ramp_id not in ECM_RAMPS:
             selected_ramp_id = random.choice(list(ECM_RAMPS.keys()))
-        # --- END OF UPDATE ---
 
         find_available_job_slots.compiled_schedule, find_available_job_slots.daily_truck_last_location = _compile_truck_schedules(SCHEDULED_JOBS)
 
         slots, msg, reasons, _ = find_available_job_slots(
             customer_id=customer.customer_id,
             boat_id=boat.boat_id,
-            service_type="Haul",
+            service_type=service_to_schedule, # FIX: Uses the selected service type
             requested_date_str=target_date.strftime('%Y-%m-%d'),
             selected_ramp_id=selected_ramp_id,
             force_preferred_truck=True,
@@ -1463,27 +1461,22 @@ def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hou
 
         if slots:
             confirm_and_schedule_job(
-                original_request={'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': "Haul"},
+                original_request={'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_to_schedule}, # FIX: Uses the selected service type
                 selected_slot=slots[0]
             )
             success_count += 1
         else:
             failure_count += 1
             if first_failure_details is None:
+                ramp_name = ECM_RAMPS.get(selected_ramp_id).ramp_name if selected_ramp_id in ECM_RAMPS else "Unknown Ramp"
                 job_details = (
                     f"Attempted to schedule:\n"
                     f"  - Customer: {customer.customer_name}\n"
                     f"  - Boat: {boat.boat_length}' {boat.boat_type}\n"
-                    f"  - Service: Haul from ramp '{ECM_RAMPS.get(selected_ramp_id, selected_ramp_id).ramp_name}'"
+                    f"  - Service: {service_to_schedule} from ramp '{ramp_name}'"
                 )
                 failure_analysis = "\n".join(reasons)
                 first_failure_details = f"\n\n--- Analysis of First Failure ---\n{job_details}\n\n{failure_analysis}"
-    
-    summary = f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
-    if first_failure_details:
-        summary += first_failure_details
-        
-    return summary
     
     summary = f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
     if first_failure_details:
