@@ -1186,16 +1186,21 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 
                 if is_reserved and not boat.is_ecm_boat: continue
                 
+                # Restore travel time calculation for scoring purposes
+                new_job_coords = get_location_coords(address=boat.storage_address, boat_id=boat.boat_id) if service_type == "Launch" else get_location_coords(ramp_id=all_settings['selected_ramp_id'])
+                truck_current_coords = hauler_last_job[1] if hauler_last_job else get_location_coords(address=YARD_ADDRESS)
+                hauler_travel = timedelta(minutes=calculate_travel_time(truck_current_coords, new_job_coords))
+
                 all_found_slots.append({
                     'date': check_date,
                     'time': actual_start_dt.time(),
-                    'hauler_end_dt': hauler_end_dt, # FIX: Added missing end time
+                    'hauler_end_dt': hauler_end_dt,
                     'truck_id': truck.truck_id,
                     'ramp_id': all_settings['selected_ramp_id'],
                     'is_priority_slot': is_reserved and boat.is_ecm_boat,
                     'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
                     'high_tide_times': window.get('high_tide_times', []),
-                    'debug_trace': {}
+                    'debug_trace': {'deadhead_travel_minutes': hauler_travel.total_seconds() / 60}
                 })
 
         if len(all_found_slots) >= all_settings['num_suggestions_to_find']: break
@@ -1203,14 +1208,36 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not all_found_slots:
         return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, boat, ramp_obj, all_settings['truck_operating_hours'], all_settings['force_preferred_truck']), False
 
-    # Scoring logic
+    # --- RESTORED SCORING LOGIC ---
+    ideal_start_time = time(8, 0)
     for slot in all_found_slots:
-        score = 1000
-        score -= abs((slot['date'] - requested_date).days) * 10
-        if slot['is_priority_slot']: score += 500
+        score = 0
+        score_trace = {}
+        
+        days_away = abs((slot['date'] - requested_date).days)
+        score -= days_away * 10
+        score_trace['Date Proximity Penalty'] = f"-{days_away * 10}"
+
+        if slot.get('is_priority_slot'):
+            score += 500
+            score_trace['ECM Priority Bonus'] = "+500"
+        
+        slot_start_dt = datetime.datetime.combine(slot['date'], slot['time'])
+        minutes_from_ideal = abs((slot_start_dt - datetime.datetime.combine(slot['date'], ideal_start_time)).total_seconds() / 60)
+        start_time_bonus = max(0, 200 - (minutes_from_ideal * 0.5))
+        score += start_time_bonus
+        score_trace['Start Time Bonus'] = f"+{start_time_bonus:.0f}"
+
+        deadhead = slot.get('debug_trace', {}).get('deadhead_travel_minutes', 0)
+        score -= deadhead * 2
+        score_trace['Deadhead Penalty'] = f"-{deadhead * 2:.0f}"
+
         slot['score'] = score
+        slot['debug_trace']['score_calculation'] = score_trace
+        slot['debug_trace']['FINAL_SCORE'] = score
+    # --- END OF RESTORED LOGIC ---
     
-    all_found_slots.sort(key=lambda s: s['score'], reverse=True)
+    all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
     return all_found_slots[:all_settings['num_suggestions_to_find']], f"Found {len(all_found_slots)} potential slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
