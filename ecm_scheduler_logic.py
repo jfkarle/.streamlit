@@ -1435,7 +1435,7 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
 
 def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hours, dynamic_duration_enabled=False, max_job_distance=10):
     """
-    Generates jobs, now passing the max_job_distance parameter.
+    Generates jobs, now enforcing the preferred_truck constraint to better simulate real-world entry.
     """
     if not LOADED_BOATS:
         return "Cannot generate jobs: Boat data is not loaded."
@@ -1477,10 +1477,12 @@ def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hou
             service_type="Haul",
             requested_date_str=target_date.strftime('%Y-%m-%d'),
             selected_ramp_id=selected_ramp_id,
+            force_preferred_truck=True, # <-- THIS IS THE CHANGE
             num_suggestions_to_find=1,
+            truck_operating_hours=truck_hours,
             is_bulk_job=True,
             dynamic_duration_enabled=dynamic_duration_enabled,
-            max_job_distance=max_job_distance # <-- Pass the setting through
+            max_job_distance=max_job_distance
         )
 
         if slots:
@@ -1496,13 +1498,3 @@ def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hou
                     f"Attempted to schedule:\n"
                     f"  - Customer: {customer.customer_name}\n"
                     f"  - Boat: {boat.boat_length}' {boat.boat_type}\n"
-                    f"  - Service: Haul starting from {target_date.strftime('%Y-%m-%d')}"
-                )
-                failure_analysis = "\n".join(reasons)
-                first_failure_details = f"\n\n--- Analysis of First Failure ---\n{job_details}\n\n{failure_analysis}"
-    
-    summary = f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
-    if first_failure_details:
-        summary += first_failure_details
-        
-    return summary
