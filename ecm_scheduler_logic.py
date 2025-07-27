@@ -1131,7 +1131,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              max_job_distance=10,
                              **kwargs):
     """
-    Finds best slots using "closest day first" search and reserves prime slots for ECM boats.
+    Finds best slots using "closest day first" search, ECM boat priority, and full scoring logic.
     """
     truck_operating_hours = truck_operating_hours or TRUCK_OPERATING_HOURS
     try:
@@ -1195,7 +1195,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             truck_hours = truck_operating_hours.get(truck.truck_id, {}).get(check_date.weekday())
             if not truck_hours: continue
             
-            # --- THIS LINE IS CORRECTED ---
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours, ramp_tide_blackout_enabled)
             
             for window in windows:
@@ -1213,8 +1212,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     hauler_total_duration = hauler_duration
 
                 is_first_slot = actual_start_dt.time() == truck_hours[0]
-                latest_possible_start = (datetime.datetime.combine(check_date, truck_hours[1]) - hauler_total_duration).time()
-                is_last_slot = actual_start_dt.time() >= latest_possible_start
+                latest_possible_start_dt = datetime.datetime.combine(check_date, truck_hours[1], tzinfo=timezone.utc) - hauler_total_duration
+                is_last_slot = actual_start_dt >= latest_possible_start_dt
                 is_reserved_slot = (service_type == "Launch" and is_first_slot) or (service_type == "Haul" and is_last_slot)
 
                 if is_reserved_slot and not boat.is_ecm_boat:
@@ -1224,26 +1223,49 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 
                 if hauler_end_dt <= window_end_dt:
                     if check_truck_availability_optimized(truck.truck_id, actual_start_dt, hauler_end_dt, compiled_schedule):
-                        # Crane logic is simplified and needs to be fully integrated
-                        all_found_slots.append({
-                            'date': check_date, 'time': actual_start_dt.time(),
-                            'hauler_end_dt': hauler_end_dt, 'j17_end_dt': None,
-                            'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id,
-                            'is_priority_slot': is_reserved_slot and boat.is_ecm_boat,
-                            'debug_trace': {'deadhead_travel_minutes': hauler_travel.total_seconds() / 60}
-                        })
+                        # This logic assumes no crane is needed for simplicity. A full implementation would handle crane checks here.
+                        if not needs_j17:
+                            all_found_slots.append({
+                                'date': check_date, 'time': actual_start_dt.time(),
+                                'hauler_end_dt': hauler_end_dt, 'j17_end_dt': None,
+                                'truck_id': truck.truck_id, 'j17_needed': needs_j17, 'ramp_id': selected_ramp_id,
+                                'is_priority_slot': is_reserved_slot and boat.is_ecm_boat,
+                                'debug_trace': {'deadhead_travel_minutes': hauler_travel.total_seconds() / 60}
+                            })
 
         if len(all_found_slots) >= SEARCH_LIMIT: break
     
-    # Scoring logic
+    # --- SCORING LOGIC RESTORED ---
+    ideal_start_time = time(8, 0)
     for slot in all_found_slots:
         score = 0
+        score_trace = {}
+        
+        # Date Proximity Score
         days_away = abs((slot['date'] - requested_date).days)
         score -= days_away * 10
+        score_trace['Date Proximity Penalty'] = f"-{days_away * 10}"
+
+        # ECM Boat Priority Slot Score
         if slot.get('is_priority_slot'):
             score += 500
-        # Add other scoring components as needed
+            score_trace['ECM Priority Bonus'] = "+500"
+        
+        # Morning Bias Score
+        slot_start_dt = datetime.datetime.combine(slot['date'], slot['time'])
+        minutes_from_ideal = abs((slot_start_dt - datetime.datetime.combine(slot['date'], ideal_start_time)).total_seconds() / 60)
+        start_time_bonus = max(0, 200 - (minutes_from_ideal * 0.5))
+        score += start_time_bonus
+        score_trace['Start Time Bonus'] = f"+{start_time_bonus:.0f}"
+
+        # Deadhead Penalty
+        deadhead = slot.get('debug_trace', {}).get('deadhead_travel_minutes', 0)
+        score -= deadhead * 2
+        score_trace['Deadhead Penalty'] = f"-{deadhead * 2:.0f}"
+
         slot['score'] = score
+        slot['debug_trace']['score_calculation'] = score_trace
+        slot['debug_trace']['FINAL_SCORE'] = score
             
     all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
 
