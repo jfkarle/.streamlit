@@ -1129,13 +1129,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     is_priority_sailboat = "Sailboat" in boat.boat_type
     ramp_obj = get_ramp_details(all_settings['selected_ramp_id'])
 
-    # --- UPDATED DURATION LOGIC ---
-    # Durations are now fixed and include travel time.
     if is_priority_sailboat:
-        hauler_duration = timedelta(minutes=180)  # 3 hours total for sailboats
-    else: # Assumes Powerboat
-        hauler_duration = timedelta(minutes=90)   # 1.5 hours total for powerboats
-    # --- END OF UPDATE ---
+        hauler_duration = timedelta(minutes=180)
+    else:
+        hauler_duration = timedelta(minutes=90)
 
     min_search_date = requested_date - timedelta(days=all_settings['crane_look_back_days'])
     max_search_date = requested_date + timedelta(days=all_settings['crane_look_forward_days'])
@@ -1170,7 +1167,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 
                 actual_start_dt = max(datetime.datetime.combine(check_date, window['start_time'], tzinfo=timezone.utc), hauler_available_from)
                 
-                # The total duration is now the fixed duration.
                 hauler_total_duration = hauler_duration
                 hauler_end_dt = _round_time_to_nearest_quarter_hour(actual_start_dt + hauler_total_duration)
                 
@@ -1190,8 +1186,18 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 
                 if is_reserved and not boat.is_ecm_boat: continue
                 
-                # Note: Travel time is no longer part of the scheduling logic but can be calculated for scoring/display if needed.
-                all_found_slots.append({'date': check_date, 'time': actual_start_dt.time(), 'truck_id': truck.truck_id, 'ramp_id': all_settings['selected_ramp_id'], 'is_priority_slot': is_reserved and boat.is_ecm_boat, 'debug_trace': {}})
+                # --- FIX: Restored missing tide information ---
+                all_found_slots.append({
+                    'date': check_date,
+                    'time': actual_start_dt.time(),
+                    'truck_id': truck.truck_id,
+                    'ramp_id': all_settings['selected_ramp_id'],
+                    'is_priority_slot': is_reserved and boat.is_ecm_boat,
+                    'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
+                    'high_tide_times': window.get('high_tide_times', []),
+                    'debug_trace': {}
+                })
+                # --- END OF FIX ---
 
         if len(all_found_slots) >= all_settings['num_suggestions_to_find']: break
             
