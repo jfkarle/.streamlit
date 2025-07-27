@@ -1421,24 +1421,15 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
 
 def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hours, dynamic_duration_enabled=False, max_job_distance=10):
     """
-    Generates jobs, now enforcing the preferred_truck constraint to better simulate real-world entry.
+    Generates jobs using the boat's preferred ramp instead of tide rules.
     """
     if not LOADED_BOATS:
         return "Cannot generate jobs: Boat data is not loaded."
 
-    services_to_use = ["Launch", "Haul"] if service_type_filter == "All" else [service_type_filter]
-    
-    any_tide_ramps = [r.ramp_id for r in ECM_RAMPS.values() if "AnyTide" in r.tide_calculation_method and r.ramp_id]
-    tide_dependent_ramps = [r.ramp_id for r in ECM_RAMPS.values() if "AnyTide" not in r.tide_calculation_method and r.ramp_id]
-
     all_boats = list(LOADED_BOATS.values())
     random.shuffle(all_boats)
     
-    priority_sailboats = [b for b in all_boats if "Sailboat" in b.boat_type and b.draft_ft is not None and b.draft_ft > 3.0]
-    powerboats = [b for b in all_boats if "Powerboat" in b.boat_type]
-    other_boats = [b for b in all_boats if b not in priority_sailboats and b not in powerboats]
-    
-    boats_to_schedule = (priority_sailboats + powerboats + other_boats)[:num_to_gen]
+    boats_to_schedule = all_boats[:num_to_gen]
     
     success_count = 0
     failure_count = 0
@@ -1448,14 +1439,16 @@ def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hou
         customer = get_customer_details(boat.customer_id)
         if not customer: continue
 
-        selected_ramp_id = None
-        is_sailboat = "Sailboat" in boat.boat_type
-        if is_sailboat and tide_dependent_ramps:
-            selected_ramp_id = random.choice(tide_dependent_ramps)
-        elif not is_sailboat and any_tide_ramps:
-            selected_ramp_id = random.choice(any_tide_ramps)
-        else:
+        # --- UPDATED RAMP SELECTION LOGIC ---
+        # Prioritize the boat's preferred ramp.
+        selected_ramp_id = boat.preferred_ramp_id
+
+        # If the boat has no valid preferred ramp, select one randomly as a fallback.
+        if not selected_ramp_id or selected_ramp_id not in ECM_RAMPS:
             selected_ramp_id = random.choice(list(ECM_RAMPS.keys()))
+        # --- END OF UPDATE ---
+
+        find_available_job_slots.compiled_schedule, find_available_job_slots.daily_truck_last_location = _compile_truck_schedules(SCHEDULED_JOBS)
 
         slots, msg, reasons, _ = find_available_job_slots(
             customer_id=customer.customer_id,
@@ -1465,10 +1458,7 @@ def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hou
             selected_ramp_id=selected_ramp_id,
             force_preferred_truck=True,
             num_suggestions_to_find=1,
-            truck_operating_hours=truck_hours,
-            is_bulk_job=True,
-            dynamic_duration_enabled=dynamic_duration_enabled,
-            max_job_distance=max_job_distance
+            is_bulk_job=True
         )
 
         if slots:
@@ -1484,10 +1474,16 @@ def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hou
                     f"Attempted to schedule:\n"
                     f"  - Customer: {customer.customer_name}\n"
                     f"  - Boat: {boat.boat_length}' {boat.boat_type}\n"
-                    f"  - Service: Haul starting from {target_date.strftime('%Y-%m-%d')}"
+                    f"  - Service: Haul from ramp '{ECM_RAMPS.get(selected_ramp_id, selected_ramp_id).ramp_name}'"
                 )
                 failure_analysis = "\n".join(reasons)
                 first_failure_details = f"\n\n--- Analysis of First Failure ---\n{job_details}\n\n{failure_analysis}"
+    
+    summary = f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
+    if first_failure_details:
+        summary += first_failure_details
+        
+    return summary
     
     summary = f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
     if first_failure_details:
