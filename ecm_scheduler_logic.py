@@ -18,10 +18,6 @@ from geopy.geocoders import Nominatim # Change GoogleV3 to Nominatim
 # The API key is no longer needed for geocoding
 Maps_API_KEY = st.secrets.get("Maps_API_KEY") # This can remain for the Distance Matrix API if you still use it
 
-# Optionally, you can remove the API key check if you are no longer using any paid Google services
-if not Maps_API_KEY:
-    DEBUG_MESSAGES.append("WARNING: Google Maps API Key not found. Travel time estimates may be affected.")
-
 # Update the geolocator to use the free Nominatim service
 _geolocator = Nominatim(user_agent="ecm_boat_scheduler_app")
 
