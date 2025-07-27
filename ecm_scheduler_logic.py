@@ -1477,7 +1477,7 @@ def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hou
             service_type="Haul",
             requested_date_str=target_date.strftime('%Y-%m-%d'),
             selected_ramp_id=selected_ramp_id,
-            force_preferred_truck=True, # <-- THIS IS THE CHANGE
+            force_preferred_truck=True,
             num_suggestions_to_find=1,
             truck_operating_hours=truck_hours,
             is_bulk_job=True,
@@ -1498,3 +1498,13 @@ def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hou
                     f"Attempted to schedule:\n"
                     f"  - Customer: {customer.customer_name}\n"
                     f"  - Boat: {boat.boat_length}' {boat.boat_type}\n"
+                    f"  - Service: Haul starting from {target_date.strftime('%Y-%m-%d')}"
+                )
+                failure_analysis = "\n".join(reasons)
+                first_failure_details = f"\n\n--- Analysis of First Failure ---\n{job_details}\n\n{failure_analysis}"
+    
+    summary = f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
+    if first_failure_details:
+        summary += first_failure_details
+        
+    return summary
