@@ -1146,10 +1146,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                              dynamic_duration_enabled=True,
                              search_start_date=None,
                              search_end_date=None,
-                             max_job_distance=10, # <-- New parameter
+                             max_job_distance=10,
                              **kwargs):
     """
-    Finds available slots, now with a configurable max distance rule.
+    Finds available slots, with a corrected 10-mile proximity rule that applies only to subsequent jobs.
     """
     truck_operating_hours = truck_operating_hours or TRUCK_OPERATING_HOURS
     try:
@@ -1203,20 +1203,22 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
         for truck in suitable_trucks:
             hauler_last_job = daily_truck_last_location.get(truck.truck_id, {}).get(check_date)
-            truck_current_coords = yard_coords
+            
+            # --- THIS IS THE CORRECTED PROXIMITY RULE LOGIC ---
+            # Only apply the distance check if it is NOT the first job of the day for this truck.
             if hauler_last_job:
                 truck_current_coords = hauler_last_job[1]
-
-            # --- USE THE NEW PARAMETER FOR THE PROXIMITY RULE ---
-            distance_from_last_job = _calculate_distance_miles(truck_current_coords, new_job_coords)
-            if distance_from_last_job > max_job_distance:
-                DEBUG_MESSAGES.append(f"DEBUG: Skipping truck {truck.truck_id}; distance ({distance_from_last_job:.1f} mi) > {max_job_distance} mi.")
-                continue
+                distance_from_last_job = _calculate_distance_miles(truck_current_coords, new_job_coords)
+                if distance_from_last_job > max_job_distance:
+                    DEBUG_MESSAGES.append(f"DEBUG: Skipping truck {truck.truck_id}; distance ({distance_from_last_job:.1f} mi) > {max_job_distance} mi.")
+                    continue # Skip this truck, it's too far away
+            
+            # This is the truck's starting location for travel time calculation (either yard or last job)
+            truck_current_coords = hauler_last_job[1] if hauler_last_job else yard_coords
             
             truck_hours = truck_operating_hours.get(truck.truck_id, {}).get(check_date.weekday())
             if not truck_hours: continue
             
-            # ... (rest of the function is unchanged)
             windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, truck.truck_id, truck_operating_hours, ramp_tide_blackout_enabled)
             
             for window in windows:
@@ -1224,7 +1226,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 window_end_dt = datetime.datetime.combine(check_date, window['end_time'], tzinfo=timezone.utc)
                 hauler_available_from = _round_time_to_nearest_quarter_hour(datetime.datetime.combine(check_date, truck_hours[0], tzinfo=timezone.utc))
                 if hauler_last_job: hauler_available_from = max(hauler_available_from, _round_time_to_nearest_quarter_hour(hauler_last_job[0]))
+                
                 hauler_travel = timedelta(minutes=calculate_travel_time(truck_current_coords, new_job_coords))
+
                 crane_available_from = datetime.datetime.min.replace(tzinfo=timezone.utc)
                 crane_travel = timedelta(0)
                 if needs_j17:
@@ -1234,13 +1238,17 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     crane_available_from = _round_time_to_nearest_quarter_hour(datetime.datetime.combine(check_date, j17_hours[0], tzinfo=timezone.utc))
                     if crane_last_job: crane_available_from = max(crane_available_from, _round_time_to_nearest_quarter_hour(crane_last_job[0]))
                     crane_travel = timedelta(minutes=calculate_travel_time(crane_last_job[1] if crane_last_job else yard_coords, new_job_coords))
+
                 actual_start_dt = max(proposed_start_dt, hauler_available_from, crane_available_from)
+
                 if dynamic_duration_enabled:
                     hauler_total_duration, j17_total_duration = hauler_duration + hauler_travel, j17_duration + crane_travel
                 else:
                     hauler_total_duration, j17_total_duration = hauler_duration, j17_duration
+
                 hauler_end_dt = _round_time_to_nearest_quarter_hour(actual_start_dt + hauler_total_duration)
                 j17_end_dt = _round_time_to_nearest_quarter_hour(actual_start_dt + j17_total_duration) if needs_j17 else None
+                
                 if hauler_end_dt <= window_end_dt:
                     if check_truck_availability_optimized(truck.truck_id, actual_start_dt, hauler_end_dt, compiled_schedule):
                         if not needs_j17 or check_truck_availability_optimized("J17", actual_start_dt, j17_end_dt, compiled_schedule):
@@ -1255,10 +1263,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
         if len(all_found_slots) >= SEARCH_LIMIT: break
     
-    # Scoring is omitted for brevity but remains unchanged
     all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
+
     if not all_found_slots:
         return [], "No suitable slots could be found.", _diagnose_failure_reasons(requested_date, customer, boat, ramp_obj, service_type, truck_operating_hours, manager_override, force_preferred_truck), False
+
     return all_found_slots[:num_suggestions_to_find], f"Found {len(all_found_slots)} potential slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
