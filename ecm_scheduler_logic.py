@@ -983,59 +983,66 @@ def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
     return all_suitable
 
 def _diagnose_failure_reasons(req_date, customer, boat, ramp_obj, service_type, truck_hours, manager_override, force_preferred_truck):
-    """A modified version of the function with step-by-step debugging output."""
-    # Use a local list to store messages for this specific run.
+    """Provides a step-by-step diagnostic for scheduling failures."""
     diag_messages = []
-    
     diag_messages.append("--- Failure Analysis ---")
     diag_messages.append(f"Debugging for: {req_date.strftime('%A, %Y-%m-%d')}")
 
-    # Step 1: Find all trucks suitable for the boat's size.
+    # Step 1: Find suitable trucks
     suitable_trucks = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, force_preferred_truck)
-    diag_messages.append("**Step 1: Suitable Trucks**")
-    diag_messages.append(json.dumps([t.truck_name for t in suitable_trucks], indent=2))
-
+    diag_messages.append(f"**Step 1: Suitable Trucks** (Force Preferred: {force_preferred_truck})")
+    diag_messages.append(json.dumps([t.truck_name for t in suitable_trucks]))
     if not suitable_trucks:
-        diag_messages.append(f"**Boat Too Large:** No trucks in the fleet are rated for a boat of {boat.boat_length}ft.")
+        diag_messages.append(f"**Failure Reason:** No trucks were found that can handle a {boat.boat_length}ft boat with the current preference rules.")
         return diag_messages
 
-    # Step 2: Check which of those trucks are on duty.
-    trucks_on_duty = {t.truck_name: truck_hours.get(t.truck_id, {}).get(req_date.weekday()) for t in suitable_trucks}
-    diag_messages.append("**Step 2: Duty Status** (Should have time values)")
-    diag_messages.append(json.dumps({k: str(v) if v else "Off Duty" for k, v in trucks_on_duty.items()}, indent=2))
-    
-    if not any(trucks_on_duty.values()):
-        diag_messages.append(f"**No Trucks on Duty:** No suitable trucks are scheduled to work on {req_date.strftime('%A, %B %d')}.")
+    # Step 2: Check which trucks are on duty
+    trucks_on_duty = {t.truck_id: truck_hours.get(t.truck_id, {}).get(req_date.weekday()) for t in suitable_trucks}
+    diag_messages.append("**Step 2: Duty Status**")
+    diag_messages.append(json.dumps({ECM_TRUCKS[tid].truck_name: str(hrs) if hrs else "Off Duty" for tid, hrs in trucks_on_duty.items()}))
+    working_truck_ids = [tid for tid, hrs in trucks_on_duty.items() if hrs]
+    if not working_truck_ids:
+        diag_messages.append(f"**Failure Reason:** No suitable trucks are scheduled to work on this day.")
         return diag_messages
 
-    # Step 3 & 4 are only relevant if a ramp is selected.
-    if ramp_obj:
-        # Step 3: Fetch tide predictions from NOAA.
+    # Step 3 & 4 are only relevant if a ramp is selected
+    if not ramp_obj:
+        diag_messages.append("**No Ramp Selected:** Cannot perform tide analysis.")
+    else:
         all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, req_date, req_date)
         tides_for_day = all_tides.get(req_date, [])
-        diag_messages.append("**Step 3: Fetched Tides** (High Tides for today)")
-        json_friendly_high_tides = [
-            {'type': t['type'], 'time': str(t['time']), 'height': t['height']}
-            for t in tides_for_day if t['type'] == 'H'
-        ]
-        diag_messages.append(json.dumps(json_friendly_high_tides, indent=2))
+        diag_messages.append(f"**Step 3: Fetched Tides for {ramp_obj.ramp_name}**")
+        diag_messages.append(json.dumps([{'type': t['type'], 'time': str(t['time'])} for t in tides_for_day if t['type'] == 'H']))
 
-        # Step 5: Check for overlap between tide windows and each truck's shift.
-        final_windows_found = False
-        diag_messages.append("**Step 4 & 5: Overlap Calculation**")
-        for truck in suitable_trucks:
-            if trucks_on_duty.get(truck.truck_name):
-                final_windows = get_final_schedulable_ramp_times(ramp_obj, boat, req_date, all_tides, truck.truck_id, truck_hours)
-                diag_messages.append(f" - Overlap for **{truck.truck_name}**: `{len(final_windows)}` valid window(s) found.")
-                if final_windows:
-                    final_windows_found = True
+        final_windows_found_for_any_truck = False
+        longest_window_found = timedelta(0)
         
-        if not final_windows_found:
-            diag_messages.append("**Tide Conditions Not Met:** No valid tide windows overlap with available truck working hours on this date.")
+        diag_messages.append("**Step 4: Overlap Calculation**")
+        for truck_id in working_truck_ids:
+            final_windows = get_final_schedulable_ramp_times(ramp_obj, boat, req_date, all_tides, truck_id, truck_hours)
+            diag_messages.append(f" - Overlap for **{ECM_TRUCKS[truck_id].truck_name}**: `{len(final_windows)}` valid window(s) found.")
+            if final_windows:
+                final_windows_found_for_any_truck = True
+                for window in final_windows:
+                    start_dt = datetime.datetime.combine(req_date, window['start_time'])
+                    end_dt = datetime.datetime.combine(req_date, window['end_time'])
+                    if end_dt > start_dt:
+                        longest_window_found = max(longest_window_found, end_dt - start_dt)
+
+        if not final_windows_found_for_any_truck:
+            diag_messages.append("**Failure Reason: Tide/Work Hour Conflict:** No valid tide windows overlap with available truck working hours.")
+            return diag_messages
+        
+        # --- NEW, MORE ACCURATE FINAL CHECK ---
+        rules = BOOKING_RULES.get(boat.boat_type, {})
+        job_duration = timedelta(minutes=rules.get('truck_mins', 90))
+        
+        if longest_window_found < job_duration:
+            diag_messages.append(f"**Failure Reason: Job Too Long for Window:** The required job duration ({job_duration.total_seconds()/60:.0f} mins) is longer than the longest available time window ({longest_window_found.total_seconds()/60:.0f} mins) on this day.")
             return diag_messages
 
-    # If we get here, it means trucks are on duty and tide windows are fine.
-    diag_messages.append("**All Slots Booked:** All available time slots for suitable trucks are already taken on this date.")
+    # This is now the true final reason if all other checks pass.
+    diag_messages.append("**Failure Reason: All Slots Booked:** All available time slots for suitable trucks are already taken on this date.")
     return diag_messages
 
 
