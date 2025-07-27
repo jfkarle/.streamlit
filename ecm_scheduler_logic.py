@@ -1161,7 +1161,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     yard_coords = get_location_coords(address=YARD_ADDRESS)
     
     prime_tide_days = set()
-    if is_priority_sailboat and prioritize_sailboats:
+    if prioritize_sailboats and "Sailboat" in boat.boat_type:
         duxbury_ramp_id = "3000002"
         prime_day_tides = fetch_noaa_tides_for_range(ECM_RAMPS[duxbury_ramp_id].noaa_station_id, min_search_date, max_search_date)
         prime_window_start, prime_window_end = time(10, 0), time(14, 0)
@@ -1173,6 +1173,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     SEARCH_LIMIT = num_suggestions_to_find if not is_bulk_job else 50
 
     for check_date in day_search_order:
+        # --- NEW BLOCKING LOGIC ---
+        # If the priority setting is on and the day is a prime sailboat day...
+        if prioritize_sailboats and check_date in prime_tide_days:
+            # ...then block any boat that is NOT a priority sailboat from using it.
+            if not is_priority_sailboat:
+                continue # Skip this day entirely for this powerboat.
+        # --- END NEW LOGIC ---
+
         if not (min_search_date <= check_date <= max_search_date): continue
         if is_priority_sailboat and prioritize_sailboats and check_date not in prime_tide_days:
             continue
@@ -1211,10 +1219,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 else:
                     hauler_total_duration = hauler_duration
 
-                # --- UPDATED SEASONAL RESERVATION LOGIC ---
                 current_month = check_date.month
-                launch_season_months = [4, 5, 6, 7]  # April -> July
-                haul_season_months = [8, 9, 10, 11, 12] # August -> December
+                launch_season_months = [4, 5, 6, 7]
+                haul_season_months = [8, 9, 10, 11, 12]
 
                 is_launch_season_active = current_month in launch_season_months
                 is_haul_season_active = current_month in haul_season_months
@@ -1231,7 +1238,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
                 if is_reserved_slot and not boat.is_ecm_boat:
                     continue
-                # --- END OF UPDATED LOGIC ---
                 
                 hauler_end_dt = _round_time_to_nearest_quarter_hour(actual_start_dt + hauler_total_duration)
                 
