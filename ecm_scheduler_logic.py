@@ -11,14 +11,21 @@ from st_supabase_connection import SupabaseConnection, execute_query
 from datetime import timedelta, time, timezone
 from collections import Counter
 import streamlit as st # Ensure this is imported to access st.secrets
-from geopy.geocoders import GoogleV3 # Change Nominatim to GoogleV3
+# In ecm_scheduler_logic.py
 
-Maps_API_KEY = st.secrets.get("Maps_API_KEY")
+from geopy.geocoders import Nominatim # Change GoogleV3 to Nominatim
+
+# The API key is no longer needed for geocoding
+Maps_API_KEY = st.secrets.get("Maps_API_KEY") # This can remain for the Distance Matrix API if you still use it
+
+# Optionally, you can remove the API key check if you are no longer using any paid Google services
 if not Maps_API_KEY:
-    DEBUG_MESSAGES.append("ERROR: Google Maps API Key not found in Streamlit Secrets. Geocoding and Travel Time will likely fail.")
-    # Optionally, raise an error or use a fallback here if the key is mandatory for app function
+    DEBUG_MESSAGES.append("WARNING: Google Maps API Key not found. Travel time estimates may be affected.")
 
-_geolocator = GoogleV3(api_key=Maps_API_KEY, user_agent="ecm_boat_scheduler_app")
+# Update the geolocator to use the free Nominatim service
+_geolocator = Nominatim(user_agent="ecm_boat_scheduler_app")
+
+_location_coords_cache = {} # Ensure this line is present here
 
 _location_coords_cache = {} # Ensure this line is present here
 
@@ -505,64 +512,28 @@ def get_location_coords(address=None, ramp_id=None, job_id=None, job_type=None, 
 
 def calculate_travel_time(origin_coords, destination_coords):
     """
-    Calculates estimated travel time in minutes using Google Distance Matrix API.
-    Args:
-        origin_coords (tuple): (latitude, longitude) of start point.
-        destination_coords (tuple): (latitude, longitude) of end point.
-    Returns:
-        int: Estimated travel time in minutes, or MIN_TRAVEL_TIME_MINUTES if API fails/no route.
+    Estimates travel time in minutes based on straight-line distance.
+    This function makes NO external API calls.
     """
-    MIN_TRAVEL_TIME_MINUTES = 10 # Define this constant here or globally
-    
-    # Use the correct API key variable name (Maps_API_KEY or Maps_API_KEY)
-    global Maps_API_KEY # Declare as global to access it
+    # If coordinates are missing, return a default travel time.
     if not origin_coords or not destination_coords:
-        DEBUG_MESSAGES.append("WARNING: Missing coordinates for travel time calculation. Returning minimum travel time.")
-        return MIN_TRAVEL_TIME_MINUTES
+        return 15 # Default travel time in minutes
+
+    # Calculate straight-line distance in miles
+    straight_line_distance = _calculate_distance_miles(origin_coords, destination_coords)
+
+    # Estimate actual travel distance by applying a circuitry factor
+    # (e.g., 1.3 means we estimate roads are 30% longer than a straight line)
+    travel_distance_miles = straight_line_distance * 1.3
+
+    # Estimate time based on an average speed (e.g., 35 mph)
+    # (travel_distance / mph) gives hours, * 60 gives minutes
+    average_speed_mph = 35
+    travel_time_minutes = (travel_distance_miles / average_speed_mph) * 60
+
+    # Ensure a minimum travel time for very short distances
+    return max(10, int(travel_time_minutes))
     
-    if not Maps_API_KEY: # Use Maps_API_KEY here
-        DEBUG_MESSAGES.append("ERROR: Google Maps API Key is missing for calculate_travel_time. Returning minimum travel time.")
-        return MIN_TRAVEL_TIME_MINUTES
-
-    API_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
-    
-    params = {
-        "origins": f"{origin_coords[0]},{origin_coords[1]}",
-        "destinations": f"{destination_coords[0]},{destination_coords[1]}",
-        "key": Maps_API_KEY, # Use Maps_API_KEY here
-        "mode": "driving",
-        "units": "imperial",
-        "departure_time": "now" # This enables traffic-aware routing. Consider if you want this.
-    }
-
-    try:
-        response = requests.get(API_URL, params=params, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-
-        if data.get("status") == "OK" and data["rows"] and data["rows"][0]["elements"]:
-            element = data["rows"][0]["elements"][0]
-            if element.get("status") == "OK":
-                duration_seconds = element["duration"]["value"]
-                travel_time_minutes = int(duration_seconds / 60)
-                DEBUG_MESSAGES.append(f"DEBUG: Google Maps travel time from {origin_coords} to {destination_coords}: {travel_time_minutes} mins.")
-                return max(travel_time_minutes, MIN_TRAVEL_TIME_MINUTES)
-            else:
-                DEBUG_MESSAGES.append(f"WARNING: Google Distance Matrix API element status not OK for {origin_coords} to {destination_coords}. Status: {element.get('status')}. Message: {element.get('fare', {}).get('text')}")
-        else:
-            DEBUG_MESSAGES.append(f"WARNING: Google Distance Matrix API response not OK. Status: {data.get('status')}. Error Message: {data.get('error_message', 'No error message provided.')}")
-
-    except requests.exceptions.Timeout:
-        DEBUG_MESSAGES.append(f"ERROR: Google Distance Matrix API request timed out for {origin_coords} to {destination_coords}.")
-    except requests.exceptions.RequestException as e:
-        DEBUG_MESSAGES.append(f"ERROR: Error calling Google Distance Matrix API for {origin_coords} to {destination_coords}: {type(e).__name__}: {e}")
-    except json.JSONDecodeError:
-        DEBUG_MESSAGES.append(f"ERROR: Could not parse JSON from Google Distance Matrix API response for {origin_coords} to {destination_coords}.")
-    except Exception as e:
-        DEBUG_MESSAGES.append(f"ERROR: Unexpected error in calculate_travel_time: {type(e).__name__}: {e}")
-
-    DEBUG_MESSAGES.append(f"WARNING: Falling back to MIN_TRAVEL_TIME_MINUTES ({MIN_TRAVEL_TIME_MINUTES}) for {origin_coords} to {destination_coords}.")
-    return MIN_TRAVEL_TIME_MINUTES
 def get_customer_details(customer_id):
     return LOADED_CUSTOMERS.get(customer_id)
 def get_boat_details(boat_id):
