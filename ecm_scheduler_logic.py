@@ -1160,26 +1160,25 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     compiled_schedule, daily_truck_last_location = _compile_truck_schedules(SCHEDULED_JOBS)
     yard_coords = get_location_coords(address=YARD_ADDRESS)
     
+    # --- CORRECTED PRIME DAY CALCULATION ---
     prime_tide_days = set()
-    if prioritize_sailboats and "Sailboat" in boat.boat_type:
-        duxbury_ramp_id = "3000002"
-        prime_day_tides = fetch_noaa_tides_for_range(ECM_RAMPS[duxbury_ramp_id].noaa_station_id, min_search_date, max_search_date)
+    # Logic now uses the ramp object from the user's selection.
+    if prioritize_sailboats and ramp_obj:
+        # Uses the NOAA station from the RAMP SELECTED FOR THE JOB.
+        prime_day_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, min_search_date, max_search_date)
         prime_window_start, prime_window_end = time(10, 0), time(14, 0)
         for day, tides in prime_day_tides.items():
             if any(t['type'] == 'H' and prime_window_start <= t['time'] <= prime_window_end for t in tides):
                 prime_tide_days.add(day)
+    # --- END OF FIX ---
 
     all_found_slots = []
     SEARCH_LIMIT = num_suggestions_to_find if not is_bulk_job else 50
 
     for check_date in day_search_order:
-        # --- NEW BLOCKING LOGIC ---
-        # If the priority setting is on and the day is a prime sailboat day...
         if prioritize_sailboats and check_date in prime_tide_days:
-            # ...then block any boat that is NOT a priority sailboat from using it.
             if not is_priority_sailboat:
-                continue # Skip this day entirely for this powerboat.
-        # --- END NEW LOGIC ---
+                continue 
 
         if not (min_search_date <= check_date <= max_search_date): continue
         if is_priority_sailboat and prioritize_sailboats and check_date not in prime_tide_days:
