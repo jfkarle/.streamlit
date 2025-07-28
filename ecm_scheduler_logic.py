@@ -1399,63 +1399,106 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
     }
 
 
-def generate_random_jobs(num_to_gen, target_date, service_type_filter, truck_hours, **kwargs):
+def strategically_generate_jobs(num_to_gen, target_date, service_type_filter, truck_hours):
     """
-    Generates jobs using an efficiency-first approach to cluster jobs on the same day.
+    Generates a schedule by strategically placing jobs to maximize efficiency.
+    Replaces the simple 'generate_random_jobs' function.
     """
-    if not LOADED_BOATS: return "Cannot generate jobs: Boat data is not loaded."
+    if not LOADED_BOATS or not ECM_RAMPS:
+        return "Cannot generate jobs: Boat or Ramp data is not loaded."
 
-    service_to_schedule = service_type_filter if service_type_filter != "All" else "Haul"
+    service_to_schedule = service_type_filter if service_type_filter != "All" else "Launch"
     
+    # --- PHASE 1: PRE-ANALYSIS OF DAYS AND BOATS ---
+
+    # 1a. Analyze the Fleet
     all_boats = list(LOADED_BOATS.values())
     random.shuffle(all_boats)
     boats_to_schedule = all_boats[:num_to_gen]
     
-    # Compile the schedule once at the start.
-    live_schedule, live_locations = _compile_truck_schedules(SCHEDULED_JOBS)
+    high_priority_boats = [b for b in boats_to_schedule if "Sailboat" in b.boat_type]
+    low_priority_boats = [b for b in boats_to_schedule if "Sailboat" not in b.boat_type]
+
+    # 1b. Score Each Day
+    search_start_date = target_date
+    search_end_date = target_date + timedelta(days=90)
     
+    # Use a representative tide station for scoring (e.g., Scituate Harbor)
+    representative_station = '8445138' 
+    all_tides = fetch_noaa_tides_for_range(representative_station, search_start_date, search_end_date)
+    
+    day_scores = {}
+    current_date = search_start_date
+    while current_date <= search_end_date:
+        score = 0
+        # Score based on midday high tide
+        if tides_for_day := all_tides.get(current_date):
+            if any(time(10, 0) <= t['time'] <= time(14, 0) for t in tides_for_day if t['type'] == 'H'):
+                score += 100 # Prime tide bonus
+        # Score based on number of trucks working
+        trucks_working = sum(1 for schedule in truck_hours.values() if schedule.get(current_date.weekday()))
+        score += trucks_working * 10
+        day_scores[current_date] = score
+        current_date += timedelta(days=1)
+    
+    sorted_days = sorted(day_scores.keys(), key=lambda day: day_scores[day], reverse=True)
+    
+    live_schedule, live_locations = _compile_truck_schedules(SCHEDULED_JOBS)
     success_count, failure_count = 0, 0
 
-    for boat in boats_to_schedule:
-        customer = get_customer_details(boat.customer_id)
-        if not customer: continue
-
-        selected_ramp_id = boat.preferred_ramp_id
-        if not selected_ramp_id or selected_ramp_id not in ECM_RAMPS:
-            selected_ramp_id = random.choice(list(ECM_RAMPS.keys()))
-
-        # Find the best slot using the live, updated schedule and prioritizing clustering
-        slots, msg, reasons, _ = find_available_job_slots(
-            customer.customer_id, boat.boat_id, service_to_schedule,
-            target_date.strftime('%Y-%m-%d'),
-            selected_ramp_id=selected_ramp_id,
-            num_suggestions_to_find=50, # Search a wider range of options
-            is_bulk_job=True,
-            prioritize_clustering=True, # Enable the new efficiency logic
-            compiled_schedule=live_schedule, # Pass the live schedule
-            daily_truck_last_location=live_locations
-        )
-
-        if slots:
-            best_slot = slots[0]
-            # Manually confirm the job and update the live schedules for the next iteration
-            job_id, _ = confirm_and_schedule_job(
-                original_request={'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_to_schedule},
-                selected_slot=best_slot
+    # --- PHASE 2: PLACING HIGH-PRIORITY "ANCHOR" JOBS (SAILBOATS) ---
+    for boat in high_priority_boats:
+        job_scheduled = False
+        # Try to place the sailboat on the best possible day
+        for day in sorted_days:
+            slots, _, _, _ = find_available_job_slots(
+                boat.customer_id, boat.boat_id, service_to_schedule, day.strftime('%Y-%m-%d'),
+                selected_ramp_id=boat.preferred_ramp_id, num_suggestions_to_find=1,
+                compiled_schedule=live_schedule, daily_truck_last_location=live_locations
             )
-            if job_id:
-                new_job = get_job_details(job_id)
-                truck_id = new_job.assigned_hauling_truck_id
-                job_date = new_job.scheduled_start_datetime.date()
-                dropoff_coords = get_location_coords(address=new_job.dropoff_street_address, ramp_id=new_job.dropoff_ramp_id)
-                
-                live_schedule.setdefault(truck_id, []).append((new_job.scheduled_start_datetime, new_job.scheduled_end_datetime))
-                live_locations.setdefault(truck_id, {})[job_date] = (new_job.scheduled_end_datetime, dropoff_coords)
-                success_count += 1
-            else:
-                failure_count += 1
-        else:
+            if slots:
+                job_id, _ = confirm_and_schedule_job(original_request={'customer_id': boat.customer_id, 'boat_id': boat.boat_id, 'service_type': service_to_schedule}, selected_slot=slots[0])
+                if job_id:
+                    # Manually update the live schedule to inform the next iteration
+                    new_job = get_job_details(job_id)
+                    truck_id = new_job.assigned_hauling_truck_id
+                    dropoff_coords = get_location_coords(address=new_job.dropoff_street_address, ramp_id=new_job.dropoff_ramp_id)
+                    live_schedule.setdefault(truck_id, []).append((new_job.scheduled_start_datetime, new_job.scheduled_end_datetime))
+                    live_locations.setdefault(truck_id, {})[new_job.scheduled_start_datetime.date()] = (new_job.scheduled_end_datetime, dropoff_coords)
+                    success_count += 1
+                    job_scheduled = True
+                    break # Move to the next boat
+        if not job_scheduled:
             failure_count += 1
-    
-    summary = f"Job generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
+
+    # --- PHASE 3: CLUSTERING LOW-PRIORITY JOBS (POWERBOATS) BY REGION ---
+    boats_by_region = {}
+    for boat in low_priority_boats:
+        ramp = get_ramp_details(boat.preferred_ramp_id)
+        if ramp and ramp.region:
+            boats_by_region.setdefault(ramp.region, []).append(boat)
+        else: # Fallback for boats with no preferred ramp or region
+            boats_by_region.setdefault('Uncategorized', []).append(boat)
+
+    for region, boats in boats_by_region.items():
+        for boat in boats:
+            slots, _, _, _ = find_available_job_slots(
+                boat.customer_id, boat.boat_id, service_to_schedule, target_date.strftime('%Y-%m-%d'),
+                selected_ramp_id=boat.preferred_ramp_id, num_suggestions_to_find=50,
+                prioritize_clustering=True, # Use the clustering score
+                compiled_schedule=live_schedule, daily_truck_last_location=live_locations
+            )
+            if slots:
+                job_id, _ = confirm_and_schedule_job(original_request={'customer_id': boat.customer_id, 'boat_id': boat.boat_id, 'service_type': service_to_schedule}, selected_slot=slots[0])
+                if job_id:
+                    new_job = get_job_details(job_id)
+                    truck_id = new_job.assigned_hauling_truck_id
+                    dropoff_coords = get_location_coords(address=new_job.dropoff_street_address, ramp_id=new_job.dropoff_ramp_id)
+                    live_schedule.setdefault(truck_id, []).append((new_job.scheduled_start_datetime, new_job.scheduled_end_datetime))
+                    live_locations.setdefault(truck_id, {})[new_job.scheduled_start_datetime.date()] = (new_job.scheduled_end_datetime, dropoff_coords)
+                    success_count += 1
+                else: failure_count += 1
+            else: failure_count += 1
+            
+    summary = f"Strategic generation complete. Successfully created: {success_count}. Failed to find slots for: {failure_count}."
     return summary
