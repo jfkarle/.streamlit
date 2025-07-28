@@ -1408,9 +1408,9 @@ def simulate_job_requests(total_jobs_to_gen, truck_hours):
             scheduling_priority=priority,
             max_wait_days=14,
             compiled_schedule=live_schedule,
-            daily_truck_last_location=live_locations
+            daily_truck_last_location=live_locations,
+            truck_operating_hours=truck_hours  # <-- This line fixes the bug
         )
-
         if slots:
             best_slot = slots[0]
             # Temporarily add to SCHEDULED_JOBS to make get_job_details work
