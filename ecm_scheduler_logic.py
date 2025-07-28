@@ -1124,9 +1124,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     customer, boat = get_customer_details(customer_id), get_boat_details(boat_id)
     if not customer or not boat: return [], "Invalid Customer or Boat ID.", [], False
     
-    is_priority_sailboat = "Sailboat" in boat.boat_type
+    # Get the specific job duration from the BOOKING_RULES
+    rules = BOOKING_RULES.get(boat.boat_type, {'truck_mins': 90})
+    hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
+
+    # Get ramp details (this line is the same, just moved)
     ramp_obj = get_ramp_details(all_settings['selected_ramp_id'])
-    hauler_duration = timedelta(minutes=180) if is_priority_sailboat else timedelta(minutes=90)
 
     # Honor the max_wait_days constraint
     look_forward = min(all_settings['crane_look_forward_days'], all_settings['max_wait_days'])
