@@ -1401,6 +1401,7 @@ def simulate_job_requests(total_jobs_to_gen, truck_hours):
         service_type, season_start, season_end = season_info
         requested_date = _get_random_date(season_start, season_end)
 
+        # Corrected call inside simulate_job_requests
         slots, _, _, _ = find_available_job_slots(
             boat.customer_id, boat.boat_id, service_type, requested_date.strftime('%Y-%m-%d'),
             selected_ramp_id=boat.preferred_ramp_id,
