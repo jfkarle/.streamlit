@@ -862,7 +862,6 @@ def show_settings_page():
         st.subheader("Scheduling Defaults")
         st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=10, value=st.session_state.get('num_suggestions', 3), step=1)
         
-        # --- NEW SECTION FOR GEOGRAPHIC RULES ---
         st.markdown("---")
         st.subheader("Geographic Rules")
         st.number_input(
@@ -873,43 +872,21 @@ def show_settings_page():
             key='max_job_distance',
             help="Enforces that a truck's next job must be within this many miles of its previous job's location."
         )
-        # --- END OF NEW SECTION ---
-
+        
         st.markdown("---")
         st.subheader("Advanced Logic")
         st.toggle(
-            "Enable Dynamic Job Durations (includes travel time)",
-            value=st.session_state.get('dynamic_duration_enabled', False),
-            key='dynamic_duration_enabled',
-            help="ON: Job duration = travel time + on-site time. OFF: Job duration = fixed on-site time only."
-        )
-        st.toggle(
             "Prioritize Sailboats on Prime Tide Days",
             value=st.session_state.get('sailboat_priority_enabled', True),
-            key='sailboat_priority_enabled',
-            help="When enabled, the scheduler will give a large bonus to sailboats on days with favorable high tides, making them 'outbid' powerboats for those slots. When disabled, all boats are treated equally."
+            key='sailboat_priority_enabled'
         )
         st.toggle(
             "Optimize Ramp Blackout by Tide",
             value=st.session_state.get('ramp_tide_blackout_enabled', True),
-            key='ramp_tide_blackout_enabled',
-            help="When enabled, ramps that rely on high tide will be 'blacked out' for a given day if none of their high tide windows significantly overlap with collective truck operating hours. This can improve search speed and prevent unusable suggestions."
+            key='ramp_tide_blackout_enabled'
         )
-        st.toggle(
-            "Prioritize Scituate Powerboats on Low Tide Days",
-            value=st.session_state.get('scituate_powerboat_priority_enabled', True),
-            key='scituate_powerboat_priority_enabled',
-            help="When enabled, powerboat jobs at the Scituate ramp will receive a high priority bonus if a low tide occurs between 10 AM and 2 PM, optimizing for efficient powerboat movements during low tide periods."
-        )
-        
-        st.markdown("---")
-        st.subheader("Crane Job Search Window")
-        c1,c2 = st.columns(2)
-        c1.number_input("Days to search in PAST", min_value=0, max_value=30, value=st.session_state.get('crane_look_back_days', 7), key="crane_look_back_days")
-        c2.number_input("Days to search in FUTURE", min_value=7, max_value=180, value=st.session_state.get('crane_look_forward_days', 60), key="crane_look_forward_days")
 
     with tab2:
-        # ... (this tab is unchanged)
         st.subheader("Truck & Crane Weekly Hours")
         st.info("NOTE: Changes made here are saved permanently to the database.")
         name_to_id_map = {t.truck_name: t.truck_id for t in ecm.ECM_TRUCKS.values()}
@@ -944,28 +921,21 @@ def show_settings_page():
 
     with tab3:
         st.subheader("QA & Data Generation Tools")
-        st.write("This tool creates random, valid jobs to populate the calendar for testing, packing them as close to the target date as possible.")
+        st.write("This tool simulates a season of incoming job requests to populate the calendar for testing.")
         
-        num_jobs_to_gen = st.number_input("Number of jobs to generate:", min_value=1, max_value=100, value=25, step=1)
-        service_type_input = st.selectbox("Type of jobs to create:", ["All", "Launch", "Haul", "Transport"])
+        num_jobs_to_gen = st.number_input("Total number of jobs to simulate:", min_value=1, max_value=200, value=50, step=1)
         
-        target_date_input = st.date_input("Target Date:", datetime.date(2025, 10, 15))
-        
-        if st.button("Generate Random Jobs"):
-            with st.spinner(f"Generating {num_jobs_to_gen} jobs..."):
-               summary = ecm.generate_random_jobs(
-                    num_jobs_to_gen, 
-                    target_date_input, 
-                    service_type_input, 
-                    st.session_state.truck_operating_hours,
-                    dynamic_duration_enabled=st.session_state.get('dynamic_duration_enabled', False),
-                    max_job_distance=st.session_state.get('max_job_distance', 10) # <-- Pass new setting
+        if st.button("Simulate Job Requests"):
+            with st.spinner(f"Simulating {num_jobs_to_gen} job requests... This may take a moment."):
+                # --- FIX: Call the new function with the correct arguments ---
+                summary = ecm.simulate_job_requests(
+                    total_jobs_to_gen=num_jobs_to_gen, 
+                    truck_hours=st.session_state.truck_operating_hours
                 )
             st.success(summary)
             st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
 
     with tab4:
-        # ... (this tab is unchanged)
         st.subheader("Monthly Tide Chart for Scituate Harbor")
         col1, col2 = st.columns(2)
         with col1:
@@ -981,7 +951,7 @@ def show_settings_page():
         month_index = month_names.index(selected_month_name) + 1
         tide_data = ecm.get_monthly_tides_for_scituate(selected_year, month_index)
         if not tide_data:
-            st.warning("Could not retrieve tide data. The NOAA API might be unavailable.")
+            st.warning("Could not retrieve tide data.")
         else:
             st.markdown("---")
             cal = calendar.Calendar()
