@@ -593,6 +593,23 @@ def _round_time_to_nearest_quarter_hour(dt):
     # Set seconds and microseconds to zero for a clean time
     return rounded_dt.replace(second=0, microsecond=0)
 
+def _calculate_target_date_score(slot_date, target_date):
+    """
+    Calculates a score based on how close the slot_date is to the target_date.
+    A score of 100 is given for the exact date, with the score decreasing for
+    each day further away.
+    """
+    if target_date is None:
+        return 0 # No score if no target date is provided
+
+    days_difference = abs((slot_date - target_date).days)
+    
+    # Give a high score for the target date and a decreasing score for surrounding days
+    # This formula gives 100 for the target date, 90 for +/- 1 day, 80 for +/- 2 days, etc.
+    score = max(0, 100 - (days_difference * 10))
+    return score
+    
+
 def format_time_for_display(time_obj):
     return time_obj.strftime('%I:%M %p').lstrip('0') if isinstance(time_obj, datetime.time) else "InvalidTime"
 
@@ -1358,7 +1375,7 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
     }
 
 
-def simulate_job_requests(total_jobs_to_gen, truck_hours):
+def simulate_job_requests(pending_job_requests, target_date=None):
     """
     Simulates a season of sequential job requests with dynamically shifting priorities.
     """
