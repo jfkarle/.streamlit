@@ -596,15 +596,6 @@ def _round_time_to_nearest_quarter_hour(dt):
 def _calculate_target_date_score(slot_date, target_date):
     """
     Calculates a score based on how close the slot_date is to the target_date.
-    A score of 100 is given for the exact date, decreasing by 10 for each day away.
-    """
-    if target_date is None:
-        return 0
-    days_difference = abs((slot_date - target_date).days)
-    return max(0, 100 - days_difference * 10)
-
-    """
-    Calculates a score based on how close the slot_date is to the target_date.
     A score of 100 is given for the exact date, with the score decreasing for
     each day further away.
     """
@@ -1552,3 +1543,32 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
     except Exception as e:
         return None, f"An error occurred: {e}"
 
+
+
+def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks, duration, j17_duration, service_type):
+    """
+    Attempts to group a sailboat crane job with an existing crane job at the same ramp within ±7 days.
+    """
+    import datetime
+    from .ecm_scheduler_shared import _check_and_create_slot_detail
+    from .ecm_scheduler_data import SCHEDULED_JOBS
+
+    date_range = [requested_date + datetime.timedelta(days=delta) for delta in range(-7, 8)]
+
+    for scheduled_job in SCHEDULED_JOBS:
+        if scheduled_job.job_status != "Scheduled" or scheduled_job.crane_truck_id != "J17":
+            continue
+        if scheduled_job.ramp_id != ramp_obj.ramp_id:
+            continue
+        if scheduled_job.scheduled_date not in date_range:
+            continue
+
+        # Found match, attempt grouping
+        check_date = scheduled_job.scheduled_date
+        slot = _check_and_create_slot_detail(
+            check_date, trucks, ramp_obj, True,
+            duration, j17_duration, boat, customer, service_type
+        )
+        if slot:
+            return slot
+    return None
