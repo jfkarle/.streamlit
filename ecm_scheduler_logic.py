@@ -1224,26 +1224,71 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     current_slot_dt += timedelta(minutes=15)
 
     # --- Scoring logic remains the same ---
+    # --- Scoring logic: Enhanced Efficiency Score Calculation ---
     for slot in all_found_slots:
-        score, score_trace = 0, {}
-        days_away = abs((slot['date'] - requested_date).days)
+        score = 0
+        score_trace = {}
+        slot_date = slot['date']
+        slot_time = slot['time']
+        hauler_id = slot['truck_id']
+        service_type = service_type  # from outer scope
+        is_ecm_boat = boat.is_ecm_boat
+        ramp_id = slot['ramp_id']
+        aware_dt = datetime.datetime.combine(slot_date, slot_time, tzinfo=timezone.utc)
+    
+        # --- 1. Date Proximity Penalty ---
+        days_away = abs((slot_date - requested_date).days)
         date_proximity_penalty = days_away * 10
-        jobs_on_day = sum(1 for start, _ in compiled_schedule.get(slot['truck_id'], []) if start.date() == slot['date'])
+        score -= date_proximity_penalty
+        score_trace['Date Penalty'] = f"-{date_proximity_penalty}"
+    
+        # --- 2. Clustering Bonus: Jobs on same day for same truck ---
+        jobs_on_day = sum(
+            1 for start, _ in compiled_schedule.get(hauler_id, [])
+            if start.date() == slot_date
+        )
         clustering_bonus = jobs_on_day * 250 if jobs_on_day > 0 else 0
-        deadhead = slot.get('debug_trace', {}).get('deadhead_travel_minutes', 0)
-        deadhead_penalty = deadhead * 2
-
-        if all_settings['scheduling_priority'] == 'customer_date':
-            score += (clustering_bonus * 0.5) - (date_proximity_penalty * 2.0)
+        score += clustering_bonus
+        score_trace['Clustering Bonus'] = f"+{clustering_bonus}"
+    
+        # --- 3. Deadhead Travel Penalty ---
+        last_known = daily_truck_last_location.get(hauler_id, {}).get(slot_date - timedelta(days=1))
+        if last_known:
+            prev_coords = last_known[1]
         else:
-            score += (clustering_bonus * 2.0) - (date_proximity_penalty * 0.5)
-            
+            prev_coords = get_location_coords(address=YARD_ADDRESS)
+    
+        pickup_coords = get_location_coords(ramp_id=ramp_id)
+        deadhead_minutes = calculate_travel_time(prev_coords, pickup_coords)
+        deadhead_penalty = deadhead_minutes * 2
         score -= deadhead_penalty
         score_trace['Deadhead Penalty'] = f"-{deadhead_penalty:.0f}"
-        
+        slot['debug_trace']['deadhead_travel_minutes'] = deadhead_minutes
+    
+        # --- 4. ECM Boat Bonus ---
+        if is_ecm_boat:
+            if service_type == "Launch" and slot_time <= datetime.time(9, 0):
+                score += 200
+                score_trace['ECM Launch Bonus'] = "+200"
+            if service_type == "Haul" and slot_time >= datetime.time(13, 0):
+                score += 200
+                score_trace['ECM Haul Bonus'] = "+200"
+    
+        # --- 5. Tide Proximity Bonus (Optional) ---
+        high_tides = slot.get('high_tide_times', [])
+        if high_tides:
+            tide_time = high_tides[0]
+            tide_dt = datetime.datetime.combine(slot_date, tide_time, tzinfo=timezone.utc)
+            diff_minutes = abs((aware_dt - tide_dt).total_seconds()) / 60
+            if diff_minutes <= 60:
+                score += 100
+                score_trace['Tide Proximity Bonus'] = "+100"
+    
+        # --- Final Assignments ---
         slot['score'] = score
         slot['debug_trace']['score_calculation'] = score_trace
         slot['debug_trace']['FINAL_SCORE'] = score
+
     
     all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
     return all_found_slots[:all_settings['num_suggestions_to_find']], f"Found {len(all_found_slots)} potential slots.", [], False
