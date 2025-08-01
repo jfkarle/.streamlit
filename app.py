@@ -1,4 +1,8 @@
 import streamlit as st
+
+# Flag to prevent infinite rerun loops
+if 'just_scheduled_job' not in st.session_state:
+    st.session_state.just_scheduled_job = False
 import datetime
 import ecm_scheduler_logic as ecm
 import pandas as pd
