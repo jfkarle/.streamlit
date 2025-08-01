@@ -598,9 +598,12 @@ def show_scheduler_page():
                 st.session_state.failure_reasons = reasons
                 st.session_state.was_forced_search = was_forced
                 st.session_state.selected_slot = None # Clear any previously selected slot
-                st.session_state.slot_page_index = 0
-                st.session_state.conflict_override_acknowledged = False # Reset override
-                st.rerun() # Rerun to display messages and results
+                if 'just_scheduled_job' not in st.session_state:
+                st.session_state.just_scheduled_job = False
+                
+                if st.session_state.just_scheduled_job:
+                st.session_state.just_scheduled_job = False  # Reset flag
+                st.rerun()
                 
     # --- SLOT DISPLAY AND PAGINATION ---
     if st.session_state.found_slots and not st.session_state.selected_slot:
