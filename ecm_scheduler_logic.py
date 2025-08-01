@@ -596,6 +596,15 @@ def _round_time_to_nearest_quarter_hour(dt):
 def _calculate_target_date_score(slot_date, target_date):
     """
     Calculates a score based on how close the slot_date is to the target_date.
+    A score of 100 is given for the exact date, decreasing by 10 for each day away.
+    """
+    if target_date is None:
+        return 0
+    days_difference = abs((slot_date - target_date).days)
+    return max(0, 100 - days_difference * 10)
+
+    """
+    Calculates a score based on how close the slot_date is to the target_date.
     A score of 100 is given for the exact date, with the score decreasing for
     each day further away.
     """
