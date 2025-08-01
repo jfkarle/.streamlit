@@ -20,6 +20,11 @@ from reportlab.graphics.charts.barcharts import VerticalBarChart
 from reportlab.graphics.charts.piecharts import Pie
 
 st.set_page_config(layout="wide")
+from ecm_scheduler_logic import generate_crane_day_candidates, CRANE_DAY_CANDIDATES
+
+# Generate crane days at app launch
+generate_crane_day_candidates()
+
 
 # --- Helper Functions for UI ---
 
