@@ -1202,173 +1202,219 @@ def find_same_service_conflict(boat_id, new_service_type, requested_date, all_sc
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, **kwargs):
     all_settings = {
-        'selected_ramp_id': None, 'force_preferred_truck': True, 'num_suggestions_to_find': 5,
-        'crane_look_back_days': 2, 'crane_look_forward_days': 60, 'truck_operating_hours': TRUCK_OPERATING_HOURS,
-        'prioritize_sailboats': True, 'max_job_distance': 10, 'compiled_schedule': None, 
-        'daily_truck_last_location': None, 'prioritize_clustering': False,
-        'scheduling_priority': 'customer_date', # 'customer_date' or 'truck_efficiency'
-        'max_wait_days': 14, 'manager_override': False 
+        'selected_ramp_id': None,
+        'force_preferred_truck': True,
+        'num_suggestions_to_find': 5,
+        'crane_look_back_days': 2,
+        'crane_look_forward_days': 60,
+        'truck_operating_hours': TRUCK_OPERATING_HOURS,
+        'prioritize_sailboats': True,
+        'max_job_distance': 10,
+        'compiled_schedule': None,
+        'daily_truck_last_location': None,
+        'prioritize_clustering': False,
+        'scheduling_priority': 'customer_date',  # 'customer_date' or 'truck_efficiency'
+        'max_wait_days': 14,
+        'manager_override': False
     }
     all_settings.update(kwargs)
-    
+
+    # Parse requested_date
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, '%Y-%m-%d').date()
     except (ValueError, TypeError):
         return [], "Error: Invalid date format.", [], False
 
     customer = get_customer_details(customer_id)
-    boat = get_boat_details(boat_id)
+    boat     = get_boat_details(boat_id)
     if not customer or not boat:
         return [], "Invalid Customer or Boat ID.", [], False
-    
+
     # --- Corrected Duration Logic ---
     rules = BOOKING_RULES.get(boat.boat_type, {'truck_mins': 90, 'crane_mins': 0})
-    hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
-    crane_duration = timedelta(minutes=rules.get('crane_mins', 0))
-    j17_needed = crane_duration.total_seconds() > 0
+    hauler_duration = timedelta(minutes=rules['truck_mins'])
+    crane_duration  = timedelta(minutes=rules['crane_mins'])
+    j17_needed      = crane_duration.total_seconds() > 0
 
     ramp_obj = get_ramp_details(all_settings['selected_ramp_id'])
-    
-    look_forward = min(all_settings['crane_look_forward_days'], all_settings['max_wait_days'])
-    day_search_order = _generate_day_search_order(requested_date, all_settings['crane_look_back_days'], look_forward)
 
+    # Pre‐compute coordinate pairs once per request
+    origin_coords = get_location_coords(
+        address=boat.storage_address,
+        boat_id=boat.boat_id,
+        initial_latitude=boat.storage_latitude,
+        initial_longitude=boat.storage_longitude
+    )
+    ramp_coords = get_location_coords(
+        ramp_id=ramp_obj.ramp_id,
+        initial_latitude=ramp_obj.latitude,
+        initial_longitude=ramp_obj.longitude
+    )
+
+    # Build the search window for dates
+    look_forward    = min(all_settings['crane_look_forward_days'], all_settings['max_wait_days'])
+    day_search_order = _generate_day_search_order(requested_date,
+                                                 all_settings['crane_look_back_days'],
+                                                 look_forward)
     min_search_date = day_search_order[0] - timedelta(days=all_settings['crane_look_back_days'])
     max_search_date = day_search_order[0] + timedelta(days=look_forward)
+    all_tides       = fetch_noaa_tides_for_range(
+                          ramp_obj.noaa_station_id,
+                          min_search_date,
+                          max_search_date
+                      ) if ramp_obj else {}
 
-    all_tides = fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, min_search_date, max_search_date) if ramp_obj else {}
-    
     compiled_schedule, daily_truck_last_location = _compile_truck_schedules(SCHEDULED_JOBS)
-    
-    all_found_slots = []
-    suitable_haulers = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, all_settings['force_preferred_truck'])
 
+    suitable_haulers = get_suitable_trucks(
+        boat.boat_length,
+        boat.preferred_truck_id,
+        all_settings['force_preferred_truck']
+    )
+
+    all_found_slots = []
+
+    # ——— Core slot‐finding loop ———
     for check_date in day_search_order:
         if len(all_found_slots) >= all_settings['num_suggestions_to_find']:
             break
 
+        weekday_hours = all_settings['truck_operating_hours']
         for hauler in suitable_haulers:
-            if not all_settings['truck_operating_hours'].get(hauler.truck_id, {}).get(check_date.weekday()):
+            day_hours = weekday_hours.get(hauler.truck_id, {}).get(check_date.weekday())
+            if not day_hours:
                 continue
 
             possible_windows = get_final_schedulable_ramp_times(
-                ramp_obj, boat, check_date, all_tides, hauler.truck_id, all_settings['truck_operating_hours']
+                ramp_obj, boat, check_date, all_tides,
+                hauler.truck_id, weekday_hours
             )
 
             for window in possible_windows:
-                # --- This is the core slot-finding loop, now fully implemented ---
-                start_interval = datetime.datetime.combine(check_date, window['start_time'])
-                end_interval = datetime.datetime.combine(check_date, window['end_time'])
+                start_interval = datetime.datetime.combine(
+                    check_date, window['start_time']
+                )
+                end_interval = datetime.datetime.combine(
+                    check_date, window['end_time']
+                )
                 if end_interval <= start_interval:
                     end_interval += timedelta(days=1)
-                
+
                 current_slot_dt = start_interval
                 while current_slot_dt < end_interval:
-                    # --- CRITICAL FIX: Make the datetime object timezone-aware at creation ---
                     aware_start_dt = current_slot_dt.replace(tzinfo=timezone.utc)
 
-                    # Simplified travel calculation for this example
-                    travel_to_pickup_minutes = 20 
-                    travel_to_dropoff_minutes = 20
+                    # — New travel‐time integration —
+                    travel_to_pickup = calculate_travel_time(origin_coords, ramp_coords)
+                    # shift your start back so the truck can dead‐head in:
+                    start_dt_with_travel = aware_start_dt - timedelta(minutes=travel_to_pickup)
+                    # include service duration + drop‐off travel
+                    hauler_end_dt = (
+                        start_dt_with_travel
+                        + hauler_duration
+                        + timedelta(minutes=travel_to_pickup)
+                    )
 
-                    start_dt_with_travel = aware_start_dt - timedelta(minutes=travel_to_pickup_minutes)
-                    hauler_end_dt = start_dt_with_travel + hauler_duration + timedelta(minutes=travel_to_dropoff_minutes)
-                    
-                    is_available = check_truck_availability_optimized(hauler.truck_id, start_dt_with_travel, hauler_end_dt, compiled_schedule)
-                    
-                    if is_available:
-                        j17_end_dt = None
-                        if j17_needed:
-                            j17_end_dt = start_dt_with_travel + crane_duration
-                            is_crane_available = check_truck_availability_optimized("J17", start_dt_with_travel, j17_end_dt, compiled_schedule)
-                            if not is_crane_available:
-                                continue # Skip this slot if crane is not available
-                        
-                        slot = {
-                            'date': check_date,
-                            'time': aware_start_dt.time(),
-                            'truck_id': hauler.truck_id,
-                            'hauler_end_dt': hauler_end_dt,
-                            'j17_needed': j17_needed,
-                            'j17_end_dt': j17_end_dt,
-                            'ramp_id': all_settings['selected_ramp_id'],
-                            'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
-                            'high_tide_times': window.get('high_tide_times', []),
-                            'debug_trace': {}
-                        }
-                        all_found_slots.append(slot)
-                    
+                    # Check truck availability
+                    if not check_truck_availability_optimized(
+                        hauler.truck_id,
+                        start_dt_with_travel,
+                        hauler_end_dt,
+                        compiled_schedule
+                    ):
+                        current_slot_dt += timedelta(minutes=15)
+                        continue
+
+                    # If you need the crane:
+                    j17_end_dt = None
+                    if j17_needed:
+                        j17_end_dt = start_dt_with_travel + crane_duration
+                        if not check_truck_availability_optimized(
+                            "J17",
+                            start_dt_with_travel,
+                            j17_end_dt,
+                            compiled_schedule
+                        ):
+                            current_slot_dt += timedelta(minutes=15)
+                            continue
+
+                    # record the slot
+                    slot = {
+                        'date':           check_date,
+                        'time':           aware_start_dt.time(),
+                        'truck_id':       hauler.truck_id,
+                        'hauler_end_dt':  hauler_end_dt,
+                        'j17_needed':     j17_needed,
+                        'j17_end_dt':     j17_end_dt,
+                        'ramp_id':        all_settings['selected_ramp_id'],
+                        'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
+                        'high_tide_times':   window.get('high_tide_times', []),
+                        'debug_trace':       {}
+                    }
+                    all_found_slots.append(slot)
                     current_slot_dt += timedelta(minutes=15)
 
-    # --- Scoring logic remains the same ---
-    # --- Scoring logic: Enhanced Efficiency Score Calculation ---
+    # ——— Scoring logic (unchanged except it now has accurate dead‐heads) ———
     for slot in all_found_slots:
-        score = 0
-        score_trace = {}
-        slot_date = slot['date']
-        slot_time = slot['time']
-        hauler_id = slot['truck_id']
-        service_type = service_type  # from outer scope
-        is_ecm_boat = boat.is_ecm_boat
-        ramp_id = slot['ramp_id']
-        aware_dt = datetime.datetime.combine(slot_date, slot_time, tzinfo=timezone.utc)
-    
-        # --- 1. Date Proximity Penalty ---
+        score       = 0
+        trace       = {}
+        slot_date   = slot['date']
+        slot_time   = slot['time']
+        hauler_id   = slot['truck_id']
+        aware_dt    = datetime.datetime.combine(slot_date, slot_time, tzinfo=timezone.utc)
+
+        # 1) date proximity penalty
         days_away = abs((slot_date - requested_date).days)
-        date_proximity_penalty = days_away * 10
-        score -= date_proximity_penalty
-        score_trace['Date Penalty'] = f"-{date_proximity_penalty}"
-    
-        # --- 2. Clustering Bonus: Jobs on same day for same truck ---
+        penalty   = days_away * 10
+        score    -= penalty
+        trace['Date Penalty'] = f"-{penalty}"
+
+        # 2) clustering bonus
         jobs_on_day = sum(
             1 for start, _ in compiled_schedule.get(hauler_id, [])
             if start.date() == slot_date
         )
-        clustering_bonus = jobs_on_day * 250 if jobs_on_day > 0 else 0
-        score += clustering_bonus
-        score_trace['Clustering Bonus'] = f"+{clustering_bonus}"
-    
-        # --- 3. Deadhead Travel Penalty ---
-        last_known = daily_truck_last_location.get(hauler_id, {}).get(slot_date - timedelta(days=1))
-        if last_known:
-            prev_coords = last_known[1]
-        else:
-            prev_coords = get_location_coords(address=YARD_ADDRESS)
-    
-        pickup_coords = get_location_coords(ramp_id=ramp_id)
-        deadhead_minutes = calculate_travel_time(prev_coords, pickup_coords)
-        deadhead_penalty = deadhead_minutes * 2
-        score -= deadhead_penalty
-        score_trace['Deadhead Penalty'] = f"-{deadhead_penalty:.0f}"
-        slot['debug_trace']['deadhead_travel_minutes'] = deadhead_minutes
-    
-        # --- 4. ECM Boat Bonus ---
-        if is_ecm_boat:
-            if service_type == "Launch" and slot_time <= datetime.time(9, 0):
+        bonus = jobs_on_day * 250
+        score += bonus
+        trace['Clustering Bonus'] = f"+{bonus}"
+
+        # 3) deadhead from prior stop
+        prev = daily_truck_last_location.get(hauler_id, {}).get(slot_date - timedelta(days=1))
+        prev_coords = prev[1] if prev else get_location_coords(address=YARD_ADDRESS)
+        pickup_coords = get_location_coords(ramp_id=slot['ramp_id'])
+        deadhead = calculate_travel_time(prev_coords, pickup_coords)
+        dh_pen   = deadhead * 2
+        score   -= dh_pen
+        trace['Deadhead Penalty'] = f"-{dh_pen:.0f}"
+        slot['debug_trace']['deadhead_minutes'] = deadhead
+
+        # 4) ECM‐boat timing bonuses
+        if boat.is_ecm_boat:
+            if service_type == "Launch" and slot_time <= time(9,0):
                 score += 200
-                score_trace['ECM Launch Bonus'] = "+200"
-            if service_type == "Haul" and slot_time >= datetime.time(13, 0):
+                trace['ECM Launch Bonus'] = "+200"
+            if service_type == "Haul" and slot_time >= time(13,0):
                 score += 200
-                score_trace['ECM Haul Bonus'] = "+200"
-    
-        # --- 5. Tide Proximity Bonus (Optional) ---
-        high_tides = slot.get('high_tide_times', [])
-        if high_tides:
-            tide_time = high_tides[0]
-            tide_dt = datetime.datetime.combine(slot_date, tide_time, tzinfo=timezone.utc)
-            diff_minutes = abs((aware_dt - tide_dt).total_seconds()) / 60
-            if diff_minutes <= 60:
+                trace['ECM Haul Bonus'] = "+200"
+
+        # 5) tide proximity
+        tides = slot.get('high_tide_times', [])
+        if tides:
+            tt = tides[0]
+            tide_dt = datetime.datetime.combine(slot_date, tt, tzinfo=timezone.utc)
+            diff = abs((aware_dt - tide_dt).total_seconds())/60
+            if diff <= 60:
                 score += 100
-                score_trace['Tide Proximity Bonus'] = "+100"
-    
-        # --- Final Assignments ---
-        slot['score'] = score
-        slot['debug_trace']['score_calculation'] = score_trace
-        slot['debug_trace']['FINAL_SCORE'] = score
+                trace['Tide Proximity Bonus'] = "+100"
 
-    
-    all_found_slots.sort(key=lambda s: s.get('score', 0), reverse=True)
-    return all_found_slots[:all_settings['num_suggestions_to_find']], f"Found {len(all_found_slots)} potential slots.", [], False
+        slot['score']            = score
+        slot['debug_trace']['score_calculation'] = trace
+        slot['debug_trace']['FINAL_SCORE']       = score
 
+    # sort & return top N
+    all_found_slots.sort(key=lambda s: s['score'], reverse=True)
+    top = all_found_slots[:all_settings['num_suggestions_to_find']]
+    return top, f"Found {len(all_found_slots)} potential slots.", [], False
 def analyze_job_distribution(scheduled_jobs, all_boats, all_ramps):
     """
     Analyzes the distribution of scheduled jobs by day of the week and by ramp
