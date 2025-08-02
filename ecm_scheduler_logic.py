@@ -226,7 +226,7 @@ def score_slot(slot, truck_day_map, requested_date):
 
     return score
 
-
+### END new code Aug 2 from ChatGPT
 
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
