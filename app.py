@@ -8,6 +8,7 @@ import os
 import datetime
 import ecm_scheduler_logic as ecm
 import json
+from geopy.geocoders import Nominatim
 from datetime import timezone
 from reportlab.lib.pagesizes import letter
 import calendar
