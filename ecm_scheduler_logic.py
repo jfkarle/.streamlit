@@ -262,12 +262,11 @@ def score_slot(slot, truck_day_map, requested_date):
 
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
-    global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS
+    global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS, CANDIDATE_CRANE_DAYS
     try:
         conn = get_db_connection()
 
         # --- Jobs ---
-        # Select all columns, including new lat/lon columns, which will be passed to Job(**row)
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
         all_jobs = [Job(**row) for row in jobs_resp.data]
         for job in all_jobs:
@@ -277,7 +276,7 @@ def load_all_data_from_sheets():
                 print(f"ERROR: Job {job.job_id} has non-datetime scheduled_end_datetime: {type(job.scheduled_end_datetime)} - {job.scheduled_end_datetime}")
             if job.j17_busy_end_datetime is not None and not isinstance(job.j17_busy_end_datetime, datetime.datetime):
                 print(f"ERROR: Job {job.job_id} has non-datetime j17_busy_end_datetime: {type(job.j17_busy_end_datetime)} - {job.j17_busy_end_datetime}")
-        
+
         SCHEDULED_JOBS[:] = [job for job in all_jobs if job.job_status == "Scheduled"]
         PARKED_JOBS.clear()
         PARKED_JOBS.update({job.job_id: job for job in all_jobs if job.job_status == "Parked"})
@@ -292,24 +291,22 @@ def load_all_data_from_sheets():
                 max_len = row.get("max_boat_length")
             )
             ECM_TRUCKS[t.truck_id] = t
-        
-        # Build a name → ID map so schedules can be keyed by numeric truck_id
+
         name_to_id = {t.truck_name: t.truck_id for t in ECM_TRUCKS.values()}
 
         # --- Ramps ---
-        # Select all columns, including new lat/lon columns, which will be passed to Ramp(**row)
         ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
         ECM_RAMPS.clear()
         ECM_RAMPS.update({
             row["ramp_id"]: Ramp(
-                r_id       = row["ramp_id"],
-                name       = row.get("ramp_name"),
-                station    = row.get("noaa_station_id"),
-                tide_method= row.get("tide_calculation_method"),
-                offset     = row.get("tide_offset_hours"),
-                boats      = row.get("allowed_boat_types"),
-                latitude   = row.get("latitude"), # Pass new lat/lon from DB row
-                longitude  = row.get("longitude")  # Pass new lat/lon from DB row
+                r_id        = row["ramp_id"],
+                name        = row.get("ramp_name"),
+                station     = row.get("noaa_station_id"),
+                tide_method = row.get("tide_calculation_method"),
+                offset      = row.get("tide_offset_hours"),
+                boats       = row.get("allowed_boat_types"),
+                latitude    = row.get("latitude"),
+                longitude   = row.get("longitude")
             )
             for row in ramps_resp.data
         })
@@ -319,30 +316,29 @@ def load_all_data_from_sheets():
         LOADED_CUSTOMERS.clear()
         LOADED_CUSTOMERS.update({
             int(row["customer_id"]): Customer(
-                c_id = row["customer_id"],
-                name = row.get("Customer", "")
+                c_id  = row["customer_id"],
+                name  = row.get("Customer", "")
             )
             for row in cust_resp.data
             if row.get("customer_id")
         })
 
         # --- Boats ---
-        # Ensure 'select("*")' fetches the new lat/lon columns from Supabase
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
         LOADED_BOATS.clear()
         LOADED_BOATS.update({
             int(row["boat_id"]): Boat(
-                b_id       = row["boat_id"],
-                c_id       = row["customer_id"],
-                b_type     = row.get("boat_type"),
-                b_len      = row.get("boat_length"),
-                draft      = row.get("draft_ft"),
-                storage_addr = row.get("storage_address", ""),
-                pref_ramp  = row.get("preferred_ramp", ""),
-                pref_truck = row.get("preferred_truck", ""),
-                is_ecm     = str(row.get("is_ecm_boat", "no")).lower() == 'yes',
-                storage_latitude = row.get("storage_latitude"), # Pass new lat/lon from DB row
-                storage_longitude = row.get("storage_longitude") # Pass new lat/lon from DB row
+                b_id               = row["boat_id"],
+                c_id               = row["customer_id"],
+                b_type             = row.get("boat_type"),
+                b_len              = row.get("boat_length"),
+                draft              = row.get("draft_ft"),
+                storage_addr       = row.get("storage_address", ""),
+                pref_ramp          = row.get("preferred_ramp", ""),
+                pref_truck         = row.get("preferred_truck", ""),
+                is_ecm             = str(row.get("is_ecm_boat", "no")).lower() == 'yes',
+                storage_latitude   = row.get("storage_latitude"),
+                storage_longitude  = row.get("storage_longitude")
             )
             for row in boat_resp.data
             if row.get("boat_id")
@@ -355,7 +351,7 @@ def load_all_data_from_sheets():
             truck_name = row["truck_name"]
             truck_id   = name_to_id.get(truck_name)
             if truck_id is None:
-                continue   # skip unknown names
+                continue
             day        = row["day_of_week"]
             start_time = datetime.datetime.strptime(row["start_time"], '%H:%M:%S').time()
             end_time   = datetime.datetime.strptime(row["end_time"],   '%H:%M:%S').time()
@@ -364,64 +360,52 @@ def load_all_data_from_sheets():
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
 
-        # --- NEW: PROACTIVELY GEOCDE COMMON LOCATIONS ---
+        # --- NEW: PROACTIVELY GEOCODE COMMON LOCATIONS ---
         DEBUG_MESSAGES.append("DEBUG: Pre-geocoding common locations...")
+        _ = get_location_coords(address=YARD_ADDRESS)
+        for ramp_id, ramp_obj in ECM_RAMPS.items():
+            _ = get_location_coords(
+                ramp_id=ramp_id,
+                initial_latitude=ramp_obj.latitude,
+                initial_longitude=ramp_obj.longitude
+            )
+        for boat_id, boat_obj in LOADED_BOATS.items():
+            if boat_obj.storage_address:
+                _ = get_location_coords(
+                    address=boat_obj.storage_address,
+                    boat_id=boat_obj.boat_id,
+                    initial_latitude=boat_obj.storage_latitude,
+                    initial_longitude=boat_obj.storage_longitude
+                )
+        for job in all_jobs:
+            if job.pickup_street_address:
+                _ = get_location_coords(
+                    address=job.pickup_street_address,
+                    job_id=job.job_id,
+                    job_type='pickup',
+                    initial_latitude=job.pickup_latitude,
+                    initial_longitude=job.pickup_longitude
+                )
+            if job.dropoff_street_address:
+                _ = get_location_coords(
+                    address=job.dropoff_street_address,
+                    job_id=job.job_id,
+                    job_type='dropoff',
+                    initial_latitude=job.dropoff_latitude,
+                    initial_longitude=job.dropoff_longitude
+                )
+        DEBUG_MESSAGES.append("DEBUG: Pre-geocoding complete.")
 
-                # --- BUILD TRUE CRANE-DAY CALENDAR ---
-        global CANDIDATE_CRANE_DAYS
+        # --- BUILD TRUE CRANE-DAY CALENDAR ---
         CANDIDATE_CRANE_DAYS = generate_crane_day_candidates(
-            look_ahead_days=60,        # scan the next 60 days
-            tide_start_hour=10,        # only high tides ≥10:00
-            tide_end_hour=14           # and <14:00
+            look_ahead_days=60,
+            tide_start_hour=10,
+            tide_end_hour=14
         )
         DEBUG_MESSAGES.append(
             f"DEBUG: Populated CANDIDATE_CRANE_DAYS with "
             f"{sum(len(v) for v in CANDIDATE_CRANE_DAYS.values())} entries"
         )
-
-        
-        # Geocode Yard Address (this call ensures YARD_COORDS is set and potentially cached)
-        # It relies on get_location_coords's internal logic to check if YARD_COORDS already exists
-        _ = get_location_coords(address=YARD_ADDRESS) 
-
-        # Geocode all ramps:
-        # Pass ramp_id and existing lat/lon so get_location_coords can read from/write to DB if coords are missing.
-        for ramp_id, ramp_obj in ECM_RAMPS.items():
-            _ = get_location_coords(ramp_id=ramp_id, initial_latitude=ramp_obj.latitude, initial_longitude=ramp_obj.longitude) 
-        
-        # Geocode all boat storage addresses:
-        # Pass boat_id and existing lat/lon so get_location_coords can read from/write to DB if coords are missing.
-        for boat_id, boat_obj in LOADED_BOATS.items():
-            if boat_obj.storage_address: # Only process if there's an address string
-                _ = get_location_coords(address=boat_obj.storage_address, boat_id=boat_obj.boat_id,
-                                        initial_latitude=boat_obj.storage_latitude, initial_longitude=boat_obj.storage_longitude)
-        
-        # Geocode addresses from all jobs (pickup/dropoff streets)
-        # Pass job_id, job_type and existing lat/lon so get_location_coords can read from/write to DB if coords are missing.
-        for job in all_jobs: 
-            # Process pickup address/ramp (prioritize street address over ramp if both exist for geocoding)
-            if job.pickup_street_address: 
-                _ = get_location_coords(address=job.pickup_street_address, job_id=job.job_id, job_type='pickup',
-                                        initial_latitude=job.pickup_latitude, initial_longitude=job.pickup_longitude)
-            # If pickup is a ramp_id and no street address, it should have been covered by the 'ramps' loop.
-            
-            # Process dropoff address/ramp
-            if job.dropoff_street_address:
-                _ = get_location_coords(address=job.dropoff_street_address, job_id=job.job_id, job_type='dropoff',
-                                        initial_latitude=job.dropoff_latitude, initial_longitude=job.dropoff_longitude)
-            # If dropoff is a ramp_id and no street address, it should have been covered by the 'ramps' loop.
-        DEBUG_MESSAGES.append("DEBUG: Pre-geocoding complete.")
-        # --- END NEW BLOCK ---
-        
-        # Convert times to string for JSON serialization (this part is informational/for logging, not functional)
-        json_friendly_processed_schedules = {
-            k: {d: f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for d, (s, e) in v.items()}
-            for k, v in processed_schedules.items()
-        }
-        json_friendly_truck_operating_hours = {
-            k: {d: f"{s.strftime('%H:%M')}-{e.strftime('%H:%M')}" for d, (s, e) in v.items()}
-            for k, v in TRUCK_OPERATING_HOURS.items()
-        }
 
         st.toast(
             f"Loaded data for {len(ECM_TRUCKS)} trucks, "
