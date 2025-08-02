@@ -139,8 +139,37 @@ def get_db_connection():
         url="https://knexrzljvagiwqstapnk.supabase.co",
         key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZXhyemxqdmFnaXdxc3RhcG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwODY0ODIsImV4cCI6MjA2NzY2MjQ4Mn0.hgWhtefyiEmGj5CERladOe3hMBM-rVnwMGNwrt8FT6Y"
     )
+def generate_crane_day_candidates(
+    look_ahead_days: int = 60,
+    tide_start_hour: int = 10,
+    tide_end_hour: int = 14,
+    start_date: date = None
+) -> dict:
+    """
+    For each ramp, scan the next `look_ahead_days` for a high tide
+    between `tide_start_hour` (inclusive) and `tide_end_hour` (exclusive).
+    Returns a dict: { ramp_id: [ {date, time, height}, … ], … }.
+    """
+    if start_date is None:
+        start_date = date.today()
+    end_date = start_date + timedelta(days=look_ahead_days)
 
-# In ecm_scheduler_logic.py
+    candidates = {}
+    for ramp_id, ramp in ECM_RAMPS.items():
+        candidates[ramp_id] = []
+        # fetch all tides for the window
+        tides_by_date = fetch_noaa_tides_for_range(ramp.noaa_station_id, start_date, end_date)
+        for d, events in sorted(tides_by_date.items()):
+            # look for at least one high tide in your preferred window
+            for ev in events:
+                if ev["type"] == "H" and tide_start_hour <= ev["time"].hour < tide_end_hour:
+                    candidates[ramp_id].append({
+                        "date": d,
+                        "time": ev["time"],
+                        "height": ev.get("height", None)
+                    })
+                    break  # only one candidate per day
+    return candidates
 
 ### New code Aug 2 from ChatGPT
 
