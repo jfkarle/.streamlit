@@ -22,10 +22,6 @@ from reportlab.graphics.charts.piecharts import Pie
 
 st.set_page_config(layout="wide")
 
-# Generate crane days at app launch
-generate_crane_day_candidates()
-
-
 # --- Helper Functions for UI ---
 
 def create_gauge(value, max_value, label):
