@@ -1351,9 +1351,19 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         slot['debug_trace']['FINAL_SCORE']       = score
 
     # sort & return top N
-    all_found_slots.sort(key=lambda s: s['score'], reverse=True)
-    top = all_found_slots[:all_settings['num_suggestions_to_find']]
-    return top, f"Found {len(all_found_slots)} potential slots.", [], False
+    first_slots = {}
+    for slot in all_found_slots:
+        d = slot['date']
+        # keep only the earliest time for each date
+        if d not in first_slots or slot['time'] < first_slots[d]['time']:
+            first_slots[d] = slot
+
+    # build a chronologically ordered list of those first-of-day slots
+    ordered = [ first_slots[d] for d in sorted(first_slots) ]
+    top = ordered[:all_settings['num_suggestions_to_find']]
+
+    return top, f"Found {len(ordered)} potential slots.", [], False
+
 def analyze_job_distribution(scheduled_jobs, all_boats, all_ramps):
     """
     Analyzes the distribution of scheduled jobs by day of the week and by ramp
