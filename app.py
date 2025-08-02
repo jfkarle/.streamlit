@@ -124,7 +124,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
-    planner_columns = ["S20/33", "S21/77", "S23/55", "J17"]
+    planner_columns = ["S20/33", "S21/77", "S23/55", "S17"]
     column_map = {name: i for i, name in enumerate(planner_columns)}
     margin, time_col_width = 0.5 * inch, 0.75 * inch
     content_width = width - 2 * margin - time_col_width
@@ -230,7 +230,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         if crane_truck_name and crane_truck_name in column_map:
             crane_col_index = column_map[crane_truck_name]
             crane_text_x = margin + time_col_width + (crane_col_index + 0.5) * col_width
-            y_crane_end = get_y_for_time(job.j17_busy_end_datetime.time())
+            y_crane_end = get_y_for_time(job.S17_busy_end_datetime.time())
             c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
             c.setFont("Helvetica", 7);c.drawCentredString(crane_text_x, line2_y, ecm._abbreviate_town(job.dropoff_street_address))
             c.setLineWidth(2); c.line(crane_text_x, y0-45, crane_text_x, y_crane_end);c.line(crane_text_x-3, y_crane_end, crane_text_x+3, y_crane_end)
