@@ -1585,7 +1585,7 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
             scheduled_start_datetime=start_dt,
             scheduled_end_datetime=hauler_end_dt,
             assigned_hauling_truck_id=selected_slot['truck_id'],
-            assigned_crane_truck_id="J17" if selected_slot.get('j17_needed') else None,
+            assigned_crane_truck_id=17   if selected_slot.get('j17_needed') else None,
             j17_busy_end_datetime=j17_end_dt,
             pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
             job_status="Scheduled", pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
