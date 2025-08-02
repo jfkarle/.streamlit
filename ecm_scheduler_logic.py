@@ -139,6 +139,9 @@ def get_db_connection():
         url="https://knexrzljvagiwqstapnk.supabase.co",
         key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZXhyemxqdmFnaXdxc3RhcG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwODY0ODIsImV4cCI6MjA2NzY2MjQ4Mn0.hgWhtefyiEmGj5CERladOe3hMBM-rVnwMGNwrt8FT6Y"
     )
+
+from datetime import date
+
 def generate_crane_day_candidates(
     look_ahead_days: int = 60,
     tide_start_hour: int = 10,
