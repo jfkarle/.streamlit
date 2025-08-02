@@ -10,19 +10,10 @@ import streamlit as st
 from st_supabase_connection import SupabaseConnection, execute_query
 from datetime import timedelta, time, timezone
 from collections import Counter
-import streamlit as st # Ensure this is imported to access st.secrets
-# In ecm_scheduler_logic.py
-
+import streamlit as st 
 from geopy.geocoders import Nominatim # Change GoogleV3 to Nominatim
 
-# The API key is no longer needed for geocoding
-Maps_API_KEY = st.secrets.get("Maps_API_KEY") # This can remain for the Distance Matrix API if you still use it
-
-# Update the geolocator to use the free Nominatim service
 _geolocator = Nominatim(user_agent="ecm_boat_scheduler_app")
-
-_location_coords_cache = {} # Ensure this line is present here
-
 _location_coords_cache = {} # Ensure this line is present here
 
 DEBUG_MESSAGES = []
