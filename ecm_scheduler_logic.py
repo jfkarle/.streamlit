@@ -88,7 +88,7 @@ class Job:
         self.scheduled_end_datetime = _parse_or_get_datetime(kwargs.get("scheduled_end_datetime"))
         self.assigned_hauling_truck_id = kwargs.get("assigned_hauling_truck_id")
         self.assigned_crane_truck_id = kwargs.get("assigned_crane_truck_id")
-        self.j17_busy_end_datetime = _parse_or_get_datetime(kwargs.get("j17_busy_end_datetime"))
+        self.S17_busy_end_datetime = _parse_or_get_datetime(kwargs.get("S17_busy_end_datetime"))
         self.pickup_ramp_id = kwargs.get("pickup_ramp_id")
         self.dropoff_ramp_id = kwargs.get("dropoff_ramp_id")
         self.pickup_street_address = kwargs.get("pickup_street_address", "")
@@ -109,7 +109,7 @@ DEFAULT_TRUCK_OPERATING_HOURS = {
     "S20/33": { 0: (time(7, 0), time(15, 0)), 1: (time(7, 0), time(15, 0)), 2: (time(7, 0), time(15, 0)), 3: (time(7, 0), time(15, 0)), 4: (time(7, 0), time(15, 0)), 5: (time(8, 0), time(12, 0)), 6: None },
     "S21/77": { 0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)), 2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)), 4: (time(8, 0), time(16, 0)), 5: None, 6: None },
     "S23/55": { 0: (time(8, 0), time(17, 0)), 1: (time(8, 0), time(17, 0)), 2: (time(8, 0), time(17, 0)), 3: (time(8, 0), time(17, 0)), 4: (time(8, 0), time(17, 0)), 5: (time(7, 30), time(17, 30)), 6: None },
-    "J17":    { 0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)), 2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)), 4: (time(8, 0), time(16, 0)), 5: None, 6: None }
+    "S17":    { 0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)), 2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)), 4: (time(8, 0), time(16, 0)), 5: None, 6: None }
 }
 BOOKING_RULES = {'Powerboat': {'truck_mins': 90, 'crane_mins': 0},'Sailboat DT': {'truck_mins': 180, 'crane_mins': 60},'Sailboat MT': {'truck_mins': 180, 'crane_mins': 90}}
 
@@ -188,8 +188,8 @@ def load_all_data_from_sheets():
                 print(f"ERROR: Job {job.job_id} has non-datetime scheduled_start_datetime: {type(job.scheduled_start_datetime)} - {job.scheduled_start_datetime}")
             if not isinstance(job.scheduled_end_datetime, (datetime.datetime, type(None))):
                 print(f"ERROR: Job {job.job_id} has non-datetime scheduled_end_datetime: {type(job.scheduled_end_datetime)} - {job.scheduled_end_datetime}")
-            if job.j17_busy_end_datetime is not None and not isinstance(job.j17_busy_end_datetime, datetime.datetime):
-                print(f"ERROR: Job {job.job_id} has non-datetime j17_busy_end_datetime: {type(job.j17_busy_end_datetime)} - {job.j17_busy_end_datetime}")
+            if job.S17_busy_end_datetime is not None and not isinstance(job.S17_busy_end_datetime, datetime.datetime):
+                print(f"ERROR: Job {job.job_id} has non-datetime S17_busy_end_datetime: {type(job.S17_busy_end_datetime)} - {job.S17_busy_end_datetime}")
 
         SCHEDULED_JOBS[:] = [job for job in all_jobs if job.job_status == "Scheduled"]
         PARKED_JOBS.clear()
@@ -1095,7 +1095,7 @@ def _compile_truck_schedules(jobs):
 
         # Process crane truck schedule and last location (if different end time or location logic)
         crane_id = getattr(job, 'assigned_crane_truck_id', None)
-        crane_end_time = getattr(job, 'j17_busy_end_datetime', None)
+        crane_end_time = getattr(job, 'S17_busy_end_datetime', None)
         if crane_id and job.scheduled_start_datetime and crane_end_time:
             schedule.setdefault(crane_id, []).append((job.scheduled_start_datetime, crane_end_time))
             
@@ -1173,7 +1173,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     rules = BOOKING_RULES.get(boat.boat_type, {'truck_mins': 90, 'crane_mins': 0})
     hauler_duration = timedelta(minutes=rules['truck_mins'])
     crane_duration  = timedelta(minutes=rules['crane_mins'])
-    j17_needed      = crane_duration.total_seconds() > 0
+    S17_needed      = crane_duration.total_seconds() > 0
 
     ramp_obj = get_ramp_details(all_settings['selected_ramp_id'])
 
@@ -1265,13 +1265,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         continue
 
                     # If you need the crane:
-                    j17_end_dt = None
-                    if j17_needed:
-                        j17_end_dt = start_dt_with_travel + crane_duration
+                    S17_end_dt = None
+                    if S17_needed:
+                        S17_end_dt = start_dt_with_travel + crane_duration
                         if not check_truck_availability_optimized(
-                            "J17",
+                            "S17",
                             start_dt_with_travel,
-                            j17_end_dt,
+                            S17_end_dt,
                             compiled_schedule
                         ):
                             current_slot_dt += timedelta(minutes=15)
@@ -1283,8 +1283,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         'time':           aware_start_dt.time(),
                         'truck_id':       hauler.truck_id,
                         'hauler_end_dt':  hauler_end_dt,
-                        'j17_needed':     j17_needed,
-                        'j17_end_dt':     j17_end_dt,
+                        'S17_needed':     S17_needed,
+                        'S17_end_dt':     S17_end_dt,
                         'ramp_id':        all_settings['selected_ramp_id'],
                         'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
                         'high_tide_times':   window.get('high_tide_times', []),
@@ -1588,15 +1588,15 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
         # Use the precise, pre-calculated start and end times from the selected slot
         start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'], tzinfo=timezone.utc)
         hauler_end_dt = selected_slot['hauler_end_dt']
-        j17_end_dt = selected_slot.get('j17_end_dt')
+        S17_end_dt = selected_slot.get('S17_end_dt')
         
         new_job = Job(
             customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
             scheduled_start_datetime=start_dt,
             scheduled_end_datetime=hauler_end_dt,
             assigned_hauling_truck_id=selected_slot['truck_id'],
-            assigned_crane_truck_id=17   if selected_slot.get('j17_needed') else None,
-            j17_busy_end_datetime=j17_end_dt,
+            assigned_crane_truck_id=17   if selected_slot.get('S17_needed') else None,
+            S17_busy_end_datetime=S17_end_dt,
             pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
             job_status="Scheduled", pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
         )
@@ -1616,7 +1616,7 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
 
 
 
-def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks, duration, j17_duration, service_type):
+def get_S17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks, duration, S17_duration, service_type):
     """
     Attempts to group a sailboat crane job with an existing crane job at the same ramp within ±7 days.
     """
@@ -1627,7 +1627,7 @@ def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks
     date_range = [requested_date + datetime.timedelta(days=delta) for delta in range(-7, 8)]
 
     for scheduled_job in SCHEDULED_JOBS:
-        if scheduled_job.job_status != "Scheduled" or scheduled_job.crane_truck_id != "J17":
+        if scheduled_job.job_status != "Scheduled" or scheduled_job.crane_truck_id != "S17":
             continue
         if scheduled_job.ramp_id != ramp_obj.ramp_id:
             continue
@@ -1638,7 +1638,7 @@ def get_j17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks
         check_date = scheduled_job.scheduled_date
         slot = _check_and_create_slot_detail(
             check_date, trucks, ramp_obj, True,
-            duration, j17_duration, boat, customer, service_type
+            duration, S17_duration, boat, customer, service_type
         )
         if slot:
             return slot
