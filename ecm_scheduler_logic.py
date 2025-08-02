@@ -363,6 +363,19 @@ def load_all_data_from_sheets():
 
         # --- NEW: PROACTIVELY GEOCDE COMMON LOCATIONS ---
         DEBUG_MESSAGES.append("DEBUG: Pre-geocoding common locations...")
+
+                # --- BUILD TRUE CRANE-DAY CALENDAR ---
+        global CANDIDATE_CRANE_DAYS
+        CANDIDATE_CRANE_DAYS = generate_crane_day_candidates(
+            look_ahead_days=60,        # scan the next 60 days
+            tide_start_hour=10,        # only high tides ≥10:00
+            tide_end_hour=14           # and <14:00
+        )
+        DEBUG_MESSAGES.append(
+            f"DEBUG: Populated CANDIDATE_CRANE_DAYS with "
+            f"{sum(len(v) for v in CANDIDATE_CRANE_DAYS.values())} entries"
+        )
+
         
         # Geocode Yard Address (this call ensures YARD_COORDS is set and potentially cached)
         # It relies on get_location_coords's internal logic to check if YARD_COORDS already exists
