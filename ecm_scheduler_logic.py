@@ -1,6 +1,6 @@
 import csv
 import os
-import datetime
+import datetime                 # your existing “import datetime”
 import pandas as pd
 import calendar
 import requests
@@ -9,9 +9,8 @@ import json
 import streamlit as st
 from st_supabase_connection import SupabaseConnection, execute_query
 from datetime import timedelta, time, timezone
-from collections import Counter
-import streamlit as st 
-from geopy.geocoders import Nominatim # Change GoogleV3 to Nominatim
+from collections import Counter, defaultdict   # pull in defaultdict here
+from geopy.geocoders import Nominatim
 
 _geolocator = Nominatim(user_agent="ecm_boat_scheduler_app")
 _location_coords_cache = {} # Ensure this line is present here
@@ -142,6 +141,92 @@ def get_db_connection():
     )
 
 # In ecm_scheduler_logic.py
+
+### New code Aug 2 from ChatGPT
+
+def build_truck_day_map(scheduled_jobs):
+    """
+    Return a nested dict: { truck_id: { date: [Job, …] } }.
+    Each list is sorted by start time.
+    """
+    truck_day = defaultdict(lambda: defaultdict(list))
+    for job in scheduled_jobs:
+        if job.scheduled_start_datetime and job.assigned_hauling_truck_id:
+            d = job.scheduled_start_datetime.date()
+            tid = job.assigned_hauling_truck_id
+            truck_day[tid][d].append(job)
+        # if you also want to group by crane truck:
+        if job.scheduled_start_datetime and job.assigned_crane_truck_id:
+            d = job.scheduled_start_datetime.date()
+            tid = job.assigned_crane_truck_id
+            truck_day[tid][d].append(job)
+
+    # sort each day’s jobs by start time
+    for tid, days in truck_day.items():
+        for d, jobs in days.items():
+            jobs.sort(key=lambda j: j.scheduled_start_datetime)
+    return truck_day
+
+def grouping_bonus(truck_day_map, truck_id, date, start_time, end_time):
+    """
+    Returns 0–1: higher when this slot squeezes into an existing truck-day gap.
+    """
+    jobs = truck_day_map.get(truck_id, {}).get(date, [])
+    if not jobs:
+        return 0.0
+
+    best_gap = float('inf')
+    for job in jobs:
+        # gap before candidate
+        delta1 = abs((job.scheduled_end_datetime.time().hour*3600 + job.scheduled_end_datetime.time().minute*60)
+                     - (start_time.hour*3600 + start_time.minute*60))
+        # gap after candidate
+        delta2 = abs((job.scheduled_start_datetime.time().hour*3600 + job.scheduled_start_datetime.time().minute*60)
+                     - (end_time.hour*3600 + end_time.minute*60))
+        best_gap = min(best_gap, delta1, delta2)
+
+    # normalize: 0 gap → 1.0 bonus; 30 min (1,800 s) or more → 0
+    return max(0.0, (1800 - best_gap) / 1800)
+
+def score_slot(slot, truck_day_map, requested_date):
+    """
+    Compute a composite score for one candidate slot.
+    slot must have: .date, .start_time, .end_time, .truck_id, .high_tide_times.
+    """
+    score = 0.0
+
+    # 1) basic feasibility (all passed to slot finder) → +1
+    score += 1.0
+
+    # 2) date proximity: best = same day, linearly down to 0 at +30 days
+    delta_days = (slot.date - requested_date).days
+    if delta_days >= 0:
+        score += max(0.0, (30 - delta_days) / 30)
+
+    # 3) grouping bonus (0–1) weighted heavily
+    gb = grouping_bonus(truck_day_map, slot.truck_id, slot.date,
+                        slot.start_time, slot.end_time)
+    score += gb * 2.0
+
+    # 4) early‐start bonus: if it's that truck’s first job and starts within 30 m of open
+    today_jobs = truck_day_map.get(slot.truck_id, {}).get(slot.date, [])
+    is_first = not today_jobs or today_jobs[0].scheduled_start_datetime.time() > slot.start_time
+    if is_first:
+        open_time = TRUCK_OPERATING_HOURS[slot.truck_id][slot.date.weekday()][0]
+        open_secs = open_time.hour*3600 + open_time.minute*60
+        start_secs = slot.start_time.hour*3600 + slot.start_time.minute*60
+        if 0 <= (start_secs - open_secs) <= 1800:
+            score += 1.0
+
+    # 5) tide alignment bonus if primary tide is 10–14h
+    if slot.high_tide_times:
+        ht = slot.high_tide_times[0]
+        if datetime.time(10,0) <= ht <= datetime.time(14,0):
+            score += 0.5
+
+    return score
+
+
 
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
