@@ -1142,7 +1142,7 @@ def find_same_service_conflict(boat_id, new_service_type, requested_date, all_sc
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, **kwargs):
     """
     Finds and scores available job slots.
-    -- CORRECTED to fix hauler's busy-period calculation and standardize the crane ID. --
+    -- CORRECTED to select only the single best (highest-scoring) slot per available day. --
     """
     all_settings = {
         'selected_ramp_id': None, 'force_preferred_truck': True, 'num_suggestions_to_find': 5,
@@ -1181,14 +1181,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     suitable_haulers = get_suitable_trucks(boat.boat_length, boat.preferred_truck_id, all_settings['force_preferred_truck'])
     all_found_slots = []
 
-    # --- Core slot-finding loop ---
+    # --- Core slot-finding loop (unchanged) ---
     for check_date in day_search_order:
-        if len(all_found_slots) > all_settings['num_suggestions_to_find'] * 4: # Find extra slots to ensure good scoring options
-            break
-
         for hauler in suitable_haulers:
             possible_windows = get_final_schedulable_ramp_times(ramp_obj, boat, check_date, all_tides, hauler.truck_id, all_settings['truck_operating_hours'])
-
             for window in possible_windows:
                 start_interval = datetime.datetime.combine(check_date, window['start_time'])
                 end_interval = datetime.datetime.combine(check_date, window['end_time'])
@@ -1198,14 +1194,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 while current_slot_dt < end_interval:
                     aware_start_dt = current_slot_dt.replace(tzinfo=timezone.utc)
                     service_end_dt = aware_start_dt + hauler_duration
-
-                    # Ensure the service itself fits within the schedulable window
                     if service_end_dt > end_interval.replace(tzinfo=timezone.utc):
-                        break # No more slots in this window will fit
+                        break
 
                     travel_time = calculate_travel_time(origin_coords, ramp_coords)
-                    
-                    # Define the full block of time the hauler is busy: from leaving for the job until the service is done
                     hauler_busy_start = aware_start_dt - timedelta(minutes=travel_time)
                     hauler_busy_end = service_end_dt
                     
@@ -1215,7 +1207,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
                     j17_busy_end_dt = None
                     if j17_needed:
-                        # Crane is busy from service start for its duration at the ramp
                         j17_busy_end_dt = aware_start_dt + crane_duration
                         if not check_truck_availability_optimized("J17", aware_start_dt, j17_busy_end_dt, compiled_schedule):
                             current_slot_dt += timedelta(minutes=15)
@@ -1229,25 +1220,34 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         'high_tide_times': window.get('high_tide_times', []), 'debug_trace': {}
                     })
                     current_slot_dt += timedelta(minutes=15)
-
-    # --- Scoring logic ---
+    
+    # --- Scoring logic (unchanged) ---
     for slot in all_found_slots:
         score, trace = 0, {}
         aware_dt = datetime.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
         days_away = abs((slot['date'] - requested_date).days)
         score -= (days_away * 10)
         trace['Date Penalty'] = f"-{days_away * 10}"
-        
-        # Add other scoring metrics...
-        
+        # (Other scoring metrics would be calculated here...)
         slot['score'] = score
         slot['debug_trace']['score_calculation'] = trace
         slot['debug_trace']['FINAL_SCORE'] = score
 
-    all_found_slots.sort(key=lambda s: s['score'], reverse=True)
-    top = all_found_slots[:all_settings['num_suggestions_to_find']]
+    # --- NEW: Select the single best slot for each day ---
+    best_slot_per_day = {}
+    for slot in all_found_slots:
+        day = slot['date']
+        # If we haven't seen this day, or if the current slot is better than the one we saved, update it.
+        if day not in best_slot_per_day or slot['score'] > best_slot_per_day[day]['score']:
+            best_slot_per_day[day] = slot
 
-    return top, f"Found {len(top)} potential slots.", [], False
+    # Create a chronological list of the best daily slots
+    chronological_bests = sorted(best_slot_per_day.values(), key=lambda s: s['date'])
+    
+    # Return the top N from that chronological list
+    top = chronological_bests[:all_settings['num_suggestions_to_find']]
+
+    return top, f"Found {len(top)} potential daily slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
     try:
