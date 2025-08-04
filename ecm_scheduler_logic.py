@@ -372,9 +372,9 @@ def save_job(job_to_save):
         else:
             # Use the corrected payload for inserts
             insert_data = {k: v for k, v in payload.items() if k != 'job_id'}
+            insert_data.pop('S17_busy_end_datetime', None)  # remove phantom column
+            insert_data.pop('hauler_end_dt',            None)  # remove phantom column
             response = conn.table("jobs").insert(insert_data).execute()
-            new_id = response.data[0]['job_id']
-            job_to_save.job_id = new_id
     except Exception as e:
         st.error(f"Database save error for job {job_id or '(new)'}")
         st.exception(e)
