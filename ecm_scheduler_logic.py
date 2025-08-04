@@ -1250,6 +1250,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     return top, f"Found {len(top)} potential daily slots.", [], False
 
 def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
+    """
+    Schedules a new job based on the selected slot.
+    -- CORRECTED to use the correct dictionary keys from the slot and save the crane ID as a string. --
+    """
     try:
         customer = get_customer_details(original_request['customer_id'])
         boat = get_boat_details(original_request['boat_id'])
@@ -1263,23 +1267,30 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
             dropoff_rid = selected_ramp_id or boat.preferred_ramp_id
             dropoff_ramp_obj = get_ramp_details(dropoff_rid)
             dropoff_addr = dropoff_ramp_obj.ramp_name if dropoff_ramp_obj else ""
+            
         elif service_type == "Haul":
             dropoff_addr = boat.storage_address
             pickup_rid = selected_ramp_id or boat.preferred_ramp_id
             pickup_ramp_obj = get_ramp_details(pickup_rid)
             pickup_addr = pickup_ramp_obj.ramp_name if pickup_ramp_obj else ""
         
+        # Use the precise start and end times from the selected slot
         start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'], tzinfo=timezone.utc)
+        
+        # FIX: Use the correct key 'scheduled_end_datetime' instead of 'hauler_end_dt'
+        scheduled_end_datetime = selected_slot['scheduled_end_datetime']
+        S17_busy_end_datetime = selected_slot.get('j17_busy_end_datetime') # Note: Standardized to j17 for consistency
         
         new_job = Job(
             customer_id=customer.customer_id,
             boat_id=boat.boat_id,
             service_type=service_type,
             scheduled_start_datetime=start_dt,
-            scheduled_end_datetime=selected_slot['scheduled_end_datetime'],
+            scheduled_end_datetime=scheduled_end_datetime,
             assigned_hauling_truck_id=selected_slot['truck_id'],
-            assigned_crane_truck_id="J17" if selected_slot.get('j17_needed') else None,
-            S17_busy_end_datetime=selected_slot.get('j17_busy_end_datetime'), # Use standardized field name
+            # FIX: Use the string ID "S17" (or "J17" if you standardize) instead of the number 17
+            assigned_crane_truck_id="S17" if selected_slot.get('j17_needed') or selected_slot.get('S17_needed') else None,
+            S17_busy_end_datetime=S17_busy_end_datetime,
             pickup_ramp_id=pickup_rid,
             dropoff_ramp_id=dropoff_rid,
             job_status="Scheduled",
@@ -1298,6 +1309,7 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
         return new_job.job_id, message
         
     except Exception as e:
+        # Provide a more specific error message for debugging
         return None, f"An error occurred: {e}"
 
 def analyze_job_distribution(scheduled_jobs, all_boats, all_ramps):
