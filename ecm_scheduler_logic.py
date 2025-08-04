@@ -197,7 +197,12 @@ def load_all_data_from_sheets():
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
         
         if isinstance(jobs_resp.data, list):
-            all_jobs = [Job(**row) for row in jobs_resp.data if job_is_within_date_range(row, datetime.datetime.now())]
+            # ✅ CORRECTED CODE: Check for 'scheduled_date' here before creating the Job object.
+            all_jobs = [
+                Job(**row)
+                for row in jobs_resp.data
+                if 'scheduled_date' in row and job_is_within_date_range(row, datetime.datetime.now())
+            ]
         else:
             print(f"WARNING: jobs_resp.data was not a list: {jobs_resp.data}")
             all_jobs = []
@@ -206,7 +211,6 @@ def load_all_data_from_sheets():
         SCHEDULED_JOBS.extend([job for job in all_jobs if job.job_status == "Scheduled"])
         PARKED_JOBS.clear()
         PARKED_JOBS.update({job.job_id: job for job in all_jobs if job.job_status == "Parked"})
-
 
         # --- Trucks ---
         trucks_resp = execute_query(conn.table("trucks").select("*"), ttl=0)
