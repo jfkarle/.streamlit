@@ -191,7 +191,8 @@ def load_all_data_from_sheets():
             if job.S17_busy_end_datetime is not None and not isinstance(job.S17_busy_end_datetime, datetime.datetime):
                 print(f"ERROR: Job {job.job_id} has non-datetime S17_busy_end_datetime: {type(job.S17_busy_end_datetime)} - {job.S17_busy_end_datetime}")
 
-        SCHEDULED_JOBS[:] = [job for job in all_jobs if job.job_status == "Scheduled"]
+        SCHEDULED_JOBS.clear() 
+        SCHEDULED_JOBS.extend([job for job in all_jobs if job.job_status == "Scheduled"])
         PARKED_JOBS.clear()
         PARKED_JOBS.update({job.job_id: job for job in all_jobs if job.job_status == "Parked"})
 
