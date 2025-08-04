@@ -189,12 +189,9 @@ def load_all_data_from_sheets():
         # --- Jobs ---
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
         
-        # ✅ CORRECTED CODE: Check if jobs_resp.data is a list before iterating.
         if isinstance(jobs_resp.data, list):
-            all_jobs = [Job(**row) for row in jobs_resp.data]
+            all_jobs = [Job(**row) for row in jobs_resp.data if job_is_within_date_range(row, datetime.datetime.now())]
         else:
-            # Handle the case where data is not a list (e.g., an error).
-            # For now, we'll treat it as an empty list to prevent the error.
             print(f"WARNING: jobs_resp.data was not a list: {jobs_resp.data}")
             all_jobs = []
 
