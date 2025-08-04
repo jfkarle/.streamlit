@@ -175,11 +175,18 @@ def generate_crane_day_candidates(
     return candidates
 
 def job_is_within_date_range(job_row, current_date, days_to_consider=21):
-    job_date = datetime.datetime.fromisoformat(job_row['scheduled_date']) if job_row['scheduled_date'] else None
-    if not job_date:
+    # ✅ CORRECTED CODE: Use .get() to safely access the 'scheduled_date' key.
+    job_date_str = job_row.get('scheduled_date')
+    if not job_date_str:
         return False
-    return (current_date - timedelta(days=days_to_consider)) <= job_date <= (current_date + timedelta(days=days_to_consider))
+    
+    try:
+        job_date = datetime.datetime.fromisoformat(job_date_str)
+    except (ValueError, TypeError):
+        return False
 
+    return (current_date - timedelta(days=days_to_consider)) <= job_date <= (current_date + timedelta(days=days_to_consider))
+    
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS, CANDIDATE_CRANE_DAYS
