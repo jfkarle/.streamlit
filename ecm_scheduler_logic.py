@@ -174,6 +174,12 @@ def generate_crane_day_candidates(
                     break  # only one candidate per day
     return candidates
 
+def job_is_within_date_range(job_row, current_date, days_to_consider=21):
+    job_date = datetime.datetime.fromisoformat(job_row['scheduled_date']) if job_row['scheduled_date'] else None
+    if not job_date:
+        return False
+    return (current_date - timedelta(days=days_to_consider)) <= job_date <= (current_date + timedelta(days=days_to_consider))
+
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS, CANDIDATE_CRANE_DAYS
@@ -182,17 +188,12 @@ def load_all_data_from_sheets():
 
         # --- Jobs ---
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
-        all_jobs = [Job(**row) for row in jobs_resp.data]
-        for job in all_jobs:
-            if not isinstance(job.scheduled_start_datetime, (datetime.datetime, type(None))):
-                print(f"ERROR: Job {job.job_id} has non-datetime scheduled_start_datetime: {type(job.scheduled_start_datetime)} - {job.scheduled_start_datetime}")
-            if not isinstance(job.scheduled_end_datetime, (datetime.datetime, type(None))):
-                print(f"ERROR: Job {job.job_id} has non-datetime scheduled_end_datetime: {type(job.scheduled_end_datetime)} - {job.scheduled_end_datetime}")
-            if job.S17_busy_end_datetime is not None and not isinstance(job.S17_busy_end_datetime, datetime.datetime):
-                print(f"ERROR: Job {job.job_id} has non-datetime S17_busy_end_datetime: {type(job.S17_busy_end_datetime)} - {job.S17_busy_end_datetime}")
 
-        SCHEDULED_JOBS.clear() 
+        all_jobs = [Job(**row) for row in jobs_resp.data if job_is_within_date_range(row, datetime.datetime.now())]
+
+        SCHEDULED_JOBS.clear()
         SCHEDULED_JOBS.extend([job for job in all_jobs if job.job_status == "Scheduled"])
+        
         PARKED_JOBS.clear()
         PARKED_JOBS.update({job.job_id: job for job in all_jobs if job.job_status == "Parked"})
 
