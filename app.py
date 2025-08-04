@@ -729,7 +729,7 @@ def show_reporting_page():
             id_to_name_map = {t.truck_id: t.truck_name for t in ecm.ECM_TRUCKS.values()}
 
             cols = st.columns((2, 1, 2, 1, 1, 3))
-            fields = ["Date/Time", "Service", "Customer", "Haul Truck", "Crane", "Actions"]
+            fields = ["Date/Time", "Service", "Customer", "Ramp", "Haul Truck", "Crane", "Actions"]
             for col, field in zip(cols, fields):
                 col.markdown(f"**{field}**")
             st.markdown("---")
