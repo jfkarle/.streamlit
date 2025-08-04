@@ -857,6 +857,7 @@ def show_reporting_page():
                     st.button("Reschedule", key=f"reschedule_{job.job_id}", on_click=reschedule_parked_job, args=(job.job_id,), use_container_width=True)
         else:
             st.write("No jobs are currently parked.")
+
 def show_settings_page():
     st.header("Application Settings")
     tab_list = ["Scheduling Rules", "Truck Schedules", "Developer Tools", "Tide Charts"]
@@ -864,8 +865,13 @@ def show_settings_page():
 
     with tab1:
         st.subheader("Scheduling Defaults")
-        st.session_state.num_suggestions = st.number_input("Number of Suggested Dates to Return", min_value=1, max_value=10, value=st.session_state.get('num_suggestions', 3), step=1)
-        
+        st.session_state.num_suggestions = st.number_input(
+            "Number of suggestions to find per request",
+            min_value=1,
+            max_value=10,
+            value=st.session_state.get('num_suggestions', 3),
+            step=1
+        )
         st.markdown("---")
         st.subheader("Geographic Rules")
         st.number_input(
@@ -876,28 +882,13 @@ def show_settings_page():
             key='max_job_distance',
             help="Enforces that a truck's next job must be within this many miles of its previous job's location."
         )
-        
         st.markdown("---")
-        st.subheader("Advanced Logic")
-        st.toggle(
-            "Prioritize Sailboats on Prime Tide Days",
-            value=st.session_state.get('sailboat_priority_enabled', True),
-            key='sailboat_priority_enabled'
-        )
-        st.toggle(
-            "Optimize Ramp Blackout by Tide",
-            value=st.session_state.get('ramp_tide_blackout_enabled', True),
-            key='ramp_tide_blackout_enabled'
-        )
-
-    with tab2:
-        st.subheader("Truck & Crane Weekly Hours")
         st.info("NOTE: Changes made here are saved permanently to the database.")
         name_to_id_map = {t.truck_name: t.truck_id for t in ecm.ECM_TRUCKS.values()}
-        all_truck_names = sorted(list(name_to_id_map.keys()))
-        selected_truck_name = st.selectbox("Select a resource to edit:", all_truck_names)
+        all_truck_names = sorted(name_to_id_map.keys())
+        selected_truck_name = st.selectbox("Select a truck to edit:", all_truck_names)
         if selected_truck_name:
-            selected_truck_id = name_to_id_map.get(selected_truck_name)
+            selected_truck_id = name_to_id_map[selected_truck_name]
             st.markdown("---")
             with st.form(f"form_{selected_truck_name.replace('/', '_')}"):
                 st.write(f"**Editing hours for {selected_truck_name}**")
@@ -907,12 +898,26 @@ def show_settings_page():
                     current_hours = ecm.TRUCK_OPERATING_HOURS.get(selected_truck_id, {}).get(i)
                     is_working = current_hours is not None
                     start_time, end_time = current_hours if is_working else (datetime.time(8, 0), datetime.time(16, 0))
-                    summary = f"{day_name}: {ecm.format_time_for_display(start_time)} - {ecm.format_time_for_display(end_time)}" if is_working else f"{day_name}: Off Duty"
+                    summary = (
+                        f"{day_name}: {ecm.format_time_for_display(start_time)} – {ecm.format_time_for_display(end_time)}"
+                        if is_working else
+                        f"{day_name}: Off Duty"
+                    )
                     with st.expander(summary):
                         col1, col2, col3 = st.columns([1, 2, 2])
                         working = col1.checkbox("Working", value=is_working, key=f"{selected_truck_name}_{i}_working")
-                        new_start = col2.time_input("Start", value=start_time, key=f"{selected_truck_name}_{i}_start", disabled=not working)
-                        new_end = col3.time_input("End", value=end_time, key=f"{selected_truck_name}_{i}_end", disabled=not working)
+                        new_start = col2.time_input(
+                            "Start",
+                            value=start_time,
+                            key=f"{selected_truck_name}_{i}_start",
+                            disabled=not working
+                        )
+                        new_end = col3.time_input(
+                            "End",
+                            value=end_time,
+                            key=f"{selected_truck_name}_{i}_end",
+                            disabled=not working
+                        )
                         new_hours[i] = (new_start, new_end) if working else None
                 if st.form_submit_button("Save Hours"):
                     success, message = ecm.update_truck_schedule(selected_truck_name, new_hours)
@@ -923,17 +928,17 @@ def show_settings_page():
                     else:
                         st.error(message)
 
+    with tab2:
+        st.subheader("Developer Tools & Overrides")
+        # ... (other developer tools here)
+
     with tab3:
         st.subheader("QA & Data Generation Tools")
-        st.write("This tool simulates a season of incoming job requests to populate the calendar for testing.")
-        
         num_jobs_to_gen = st.number_input("Total number of jobs to simulate:", min_value=1, max_value=200, value=50, step=1)
-        
         if st.button("Simulate Job Requests"):
-            with st.spinner(f"Simulating {num_jobs_to_gen} job requests... This may take a moment."):
-                # --- FIX: Call the new function with the correct arguments ---
+            with st.spinner(f"Simulating {num_jobs_to_gen} job requests..."):
                 summary = ecm.simulate_job_requests(
-                    total_jobs_to_gen=num_jobs_to_gen, 
+                    total_jobs_to_gen=num_jobs_to_gen,
                     truck_hours=st.session_state.truck_operating_hours
                 )
             st.success(summary)
@@ -953,17 +958,22 @@ def show_settings_page():
         def select_day(date_obj):
             st.session_state.selected_tide_day = date_obj
         month_index = month_names.index(selected_month_name) + 1
+
         tide_data = ecm.get_monthly_tides_for_scituate(selected_year, month_index)
         if not tide_data:
             st.warning("Could not retrieve tide data.")
         else:
-            st.markdown("---")
             cal = calendar.Calendar()
             cal_data = cal.monthdatescalendar(selected_year, month_index)
+            # Header row
             header_cols = st.columns(7)
             for i, day_name in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
-                header_cols[i].markdown(f"<p style='text-align: center; font-weight: bold;'>{day_name}</p>", unsafe_allow_html=True)
+                header_cols[i].markdown(
+                    f"<p style='text-align: center; font-weight: bold;'>{day_name}</p>",
+                    unsafe_allow_html=True
+                )
             st.divider()
+            # Calendar grid
             for week in cal_data:
                 cols = st.columns(7)
                 for i, day in enumerate(week):
@@ -972,10 +982,15 @@ def show_settings_page():
                             st.container(height=55, border=False)
                         else:
                             st.button(
-                                str(day.day), key=f"day_{day}", on_click=select_day, args=(day,), use_container_width=True,
+                                str(day.day),
+                                key=f"day_{day}",
+                                on_click=select_day,
+                                args=(day,),
+                                use_container_width=True,
                                 type="primary" if st.session_state.get('selected_tide_day') == day else "secondary"
                             )
             st.divider()
+
             if selected_day := st.session_state.get('selected_tide_day'):
                 if selected_day.year == selected_year and selected_day.month == month_index:
                     day_str = selected_day.strftime("%A, %B %d, %Y")
@@ -984,14 +999,24 @@ def show_settings_page():
                     if not tides_for_day:
                         st.write("No tide data available for this day.")
                     else:
-                        high_tides = [f"{ecm.format_time_for_display(t['time'])} ({float(t['height']):.1f}')" for t in tides_for_day if t['type'] == 'H']
-                        low_tides = [f"{ecm.format_time_for_display(t['time'])} ({float(t['height']):.1f}')" for t in tides_for_day if t['type'] == 'L']
+                        high_tides = [
+                            f"{ecm.format_time_for_display(t['time'])} ({float(t['height']):.1f}')"
+                            for t in tides_for_day if t['type'] == 'H'
+                        ]
+                        low_tides = [
+                            f"{ecm.format_time_for_display(t['time'])} ({float(t['height']):.1f}')"
+                            for t in tides_for_day if t['type'] == 'L'
+                        ]
                         tide_col1, tide_col2 = st.columns(2)
-                        tide_col1.metric("🌊 High Tides", " / ".join(high_tides) if high_tides else "N/A")
-                        tide_col2.metric("💧 Low Tides", " / ".join(low_tides) if low_tides else "N/A")
+                        tide_col1.metric(
+                            "🌊 High Tides",
+                            " / ".join(high_tides) if high_tides else "N/A"
+                        )
+                        tide_col2.metric(
+                            "💧 Low Tides",
+                            " / ".join(low_tides) if low_tides else "N/A"
+                        )
 
-
-# --- Session State Initialization ---
 
 def initialize_session_state():
     defaults = {
