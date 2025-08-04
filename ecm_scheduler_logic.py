@@ -352,39 +352,39 @@ def save_job(job_to_save):
     conn = get_db_connection()
     job_dict = job_to_save.__dict__
 
-    # Create a new dictionary for the database payload
+    # Build the payload, serializing datetimes to ISO strings
     payload = {}
     for key, value in job_dict.items():
-        # Check if the value is a datetime object
         if isinstance(value, datetime.datetime):
-            # Convert it to an ISO 8601 formatted string
             payload[key] = value.isoformat()
         else:
-            # Otherwise, keep the value as is
             payload[key] = value
 
     job_id = payload.get('job_id')
     try:
         if job_id and any(j.job_id == job_id for j in SCHEDULED_JOBS + list(PARKED_JOBS.values())):
-            # Use the corrected payload for updates
+            # UPDATE existing record
             update_data = {k: v for k, v in payload.items() if k != 'job_id'}
             conn.table("jobs").update(update_data).eq("job_id", job_id).execute()
         else:
-            # Use the corrected payload for inserts
+            # INSERT new record
             insert_data = {k: v for k, v in payload.items() if k != 'job_id'}
-            # Remove phantom columns so they don't break the schema
+            # remove phantom columns so they don't break the schema
             insert_data.pop('S17_busy_end_datetime', None)
             insert_data.pop('hauler_end_dt',            None)
-            # Insert and ask Supabase to return the new job_id
+
+            # tell PostgREST to return the newly created row(s)
             response = (
                 conn
                 .table("jobs")
-                .insert(insert_data)
-                .select("job_id")
+                .insert(insert_data, returning="representation")
                 .execute()
             )
+
+            # grab the new job_id back out
             new_id = response.data[0]['job_id']
             job_to_save.job_id = new_id
+
     except Exception as e:
         st.error(f"Database save error for job {job_id or '(new)'}")
         st.exception(e)
