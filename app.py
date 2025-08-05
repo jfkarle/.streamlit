@@ -30,7 +30,7 @@ from ecm_scheduler_logic import load_all_data_from_sheets
 load_all_data_from_sheets()   # this populates LOADED_BOATS, etc.
 
 # immediately after:
-st.sidebar.write(f"🔍 Loaded {len(LOADED_BOATS)} boats from Supabase")
+st.sidebar.write(f"🔍 Loaded {len(ecm.LOADED_BOATS)} boats from Supabase")
 
 
 def create_gauge(value, max_value, label):
