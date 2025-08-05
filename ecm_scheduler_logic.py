@@ -18,21 +18,20 @@ from st_supabase_connection import SupabaseConnection, execute_query
 
 st.sidebar.write("🔑 Available secrets: " + ", ".join(st.secrets.keys()))
 
-SUPA_URL = st.secrets["SUPA_URL"]
-SUPA_KEY = st.secrets["SUPA_KEY"]
+# 1) Read whatever the UI handed you
+raw_url = st.secrets["SUPA_URL"]
+raw_key = st.secrets["SUPA_KEY"]
+
+# 2) Clean them up into single lines
+SUPA_URL = raw_url.strip()
+SUPA_KEY = raw_key.strip().replace("\n", "")
+
+# 3) Now initialize Supabase
 supabase = create_client(SUPA_URL, SUPA_KEY)
-# ─── QUICK SANITY CHECK (ADD THIS HERE) ───
-# Fetch every row from your 'boats' table and print the count
+
+# 4) Sanity check
 resp = supabase.table("boats").select("*").execute()
 st.sidebar.write(f"🔍 Loaded {len(resp.data or [])} boats from Supabase")
-
-
-
-#SUPA_URL = st.environ["SUPA_URL"]
-#SUPA_KEY = st.environ["SUPA_KEY"]
-
-
-
 _geolocator = Nominatim(user_agent="ecm_boat_scheduler_app")
 _location_coords_cache = {} # Ensure this line is present here
 
