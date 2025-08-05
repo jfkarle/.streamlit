@@ -16,6 +16,8 @@ import os
 from supabase import create_client
 from st_supabase_connection import SupabaseConnection, execute_query
 
+st.sidebar.write("🔑 Available secrets: " + ", ".join(st.secrets.keys()))
+
 SUPA_URL = st.secrets["SUPABASE_URL"]
 SUPA_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
 supabase = create_client(SUPA_URL, SUPA_KEY)
