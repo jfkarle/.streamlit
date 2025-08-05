@@ -18,8 +18,8 @@ from st_supabase_connection import SupabaseConnection, execute_query
 
 st.sidebar.write("🔑 Available secrets: " + ", ".join(st.secrets.keys()))
 
-SUPA_URL = st.secrets["SUPABASE_URL"]
-SUPA_KEY = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
+SUPA_URL = st.secrets["SUPA_URL"]
+SUPA_KEY = st.secrets["SUPA_KEY"]
 supabase = create_client(SUPA_URL, SUPA_KEY)
 # ─── QUICK SANITY CHECK (ADD THIS HERE) ───
 # Fetch every row from your 'boats' table and print the count
