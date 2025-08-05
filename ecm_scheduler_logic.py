@@ -15,8 +15,8 @@ from geopy.geocoders import Nominatim
 import os
 from supabase import create_client
 
-SUPA_URL = os.environ["SUPA_URL"]
-SUPA_KEY = os.environ["SUPA_KEY"]
+SUPA_URL = st.secrets["SUPA_URL"]
+SUPA_KEY = st.secrets["SUPA_KEY"]
 supabase = create_client(SUPA_URL, SUPA_KEY)
 
 
