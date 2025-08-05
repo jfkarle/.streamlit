@@ -183,7 +183,6 @@ def generate_crane_day_candidates(
     return candidates
 
 def job_is_within_date_range(job_row, current_date, days_to_consider=21):
-    # ✅ CORRECTED CODE: Use .get() to safely access the 'scheduled_date' key.
     job_date_str = job_row.get('scheduled_date')
     if not job_date_str:
         return False
