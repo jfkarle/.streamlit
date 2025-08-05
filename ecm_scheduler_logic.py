@@ -205,11 +205,7 @@ def load_all_data_from_sheets():
         
         if isinstance(jobs_resp.data, list):
             # ✅ CORRECTED CODE: Check for 'scheduled_date' here before creating the Job object.
-            all_jobs = [
-                Job(**row)
-                for row in jobs_resp.data
-                if 'scheduled_date' in row and job_is_within_date_range(row, datetime.datetime.now())
-            ]
+            all_jobs = [Job(**row) for row in jobs_resp.data if 'scheduled_date' in row and job_is_within_date_range(row, datetime.datetime.now())]
         else:
             print(f"WARNING: jobs_resp.data was not a list: {jobs_resp.data}")
             all_jobs = []
