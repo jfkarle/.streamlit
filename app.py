@@ -32,7 +32,6 @@ load_all_data_from_sheets()   # this populates LOADED_BOATS, etc.
 # immediately after:
 st.sidebar.write(f"🔍 Loaded {len(ecm.LOADED_BOATS)} boats from Supabase")
 
-
 def create_gauge(value, max_value, label):
     """Generates an SVG string for a semi-circle gauge chart that displays an absolute value."""
     if max_value == 0: 
