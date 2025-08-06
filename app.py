@@ -505,14 +505,17 @@ def show_scheduler_page():
 
     # --- SIDEBAR UI ---
     st.sidebar.header("New Job Request")
+
+    # Only show the search input if no customer is already selected
     if not st.session_state.get("selected_customer_id"):
         inp = st.sidebar.text_input(
             "Search for Customer or Boat ID:",
             value=st.session_state.get("customer_search_input", ""),
-            placeholder="e.g., 'Olivia' or 'B5001'"
+            placeholder="e.g., 'Bobby D' or '5001'"
         )
         st.session_state.customer_search_input = inp
         term = inp.lower().strip()
+
         if term:
             # 1️⃣ match on customer name
             customer_matches = [
@@ -524,13 +527,13 @@ def show_scheduler_page():
                 b for b in LOADED_BOATS.values()
                 if term in str(b.boat_id).lower()
             ]
-            # 3️⃣ bring in those boats' customers too
+            # 3️⃣ add the boats' customers
             for b in boat_matches:
                 cust = LOADED_CUSTOMERS.get(b.customer_id)
                 if cust and cust not in customer_matches:
                     customer_matches.append(cust)
 
-            # dedupe & sort
+            # dedupe & sort alphabetically
             unique = {c.customer_id: c for c in customer_matches}
             sorted_list = sorted(unique.values(), key=lambda c: c.customer_name)
 
