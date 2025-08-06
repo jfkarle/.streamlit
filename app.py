@@ -24,12 +24,9 @@ st.set_page_config(layout="wide")
 
 # --- Helper Functions for UI ---
 
-
 from ecm_scheduler_logic import load_all_data_from_sheets
-
 load_all_data_from_sheets()   # this populates LOADED_BOATS, etc.
 
-# immediately after:
 st.sidebar.write(f"🔍 Loaded {len(ecm.LOADED_BOATS)} boats from Supabase")
 
 def create_gauge(value, max_value, label):
@@ -415,218 +412,240 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
 
 def show_scheduler_page():
     """
-    Renders the “Schedule New Boat” page sidebar:
-    1. Search for customers by name or boats by ID.
-    2. Let the user select a customer, then a boat.
-    3. Once both are selected, display scheduling controls.
+    Displays the entire Schedule New Boat page and handles the new interactive conflict warning.
     """
-    import datetime
-    import streamlit as st
-    import ecm_scheduler_logic as ecm  # make sure this alias matches your import
-    
-    st.sidebar.header("New Job Request")
+    # --- EXISTING LOGIC: Handle Seasonal Return Trip Prompt ---
+    if job_info := st.session_state.get('last_seasonal_job'):
+        st.success(st.session_state.get('confirmation_message', "Job Scheduled!"))
+        st.markdown("---")
+        
+        opposite_service = "Haul" if job_info['original_service'] == "Launch" else "Launch"
+        st.info(f"**Would you like to schedule the corresponding '{opposite_service}' for this boat?**")
 
-    # ── Step 0: Initialize local vars to avoid UnboundLocalError ──
+        def setup_return_trip():
+            st.session_state.selected_customer_id = job_info['customer_id']
+            st.session_state.rebooking_details = {
+                'service_type': opposite_service,
+                'customer_id': job_info['customer_id'],
+                'boat_id': job_info['boat_id']
+            }
+            st.session_state.last_seasonal_job = None
+            st.session_state.confirmation_message = None
+
+        def finish_scheduling():
+            st.session_state.last_seasonal_job = None
+            st.session_state.confirmation_message = None
+            st.session_state.selected_customer_id = None
+            st.session_state.selected_boat_id = None
+            st.session_state.customer_search_input = ""
+
+        col1, col2, _ = st.columns([1.5, 1, 3])
+        col1.button(f"🗓️ Yes, Schedule {opposite_service}", on_click=setup_return_trip, use_container_width=True)
+        col2.button("No, Finish", on_click=finish_scheduling, use_container_width=True)
+        return
+
+    # --- DEFINE CALLBACKS ---
+    def schedule_another():
+        st.session_state.pop("confirmation_message", None)
+        st.session_state.selected_customer_id = None
+        st.session_state.selected_boat_id = None
+        st.session_state.customer_search_input = ""
+
+    def select_customer(cust_id):
+        st.session_state.selected_customer_id = cust_id
+        st.session_state.selected_boat_id = None
+        st.session_state.customer_search_input = ecm.LOADED_CUSTOMERS[cust_id].customer_name
+
+    def clear_selection():
+        st.session_state.selected_customer_id = None
+        st.session_state.selected_boat_id = None
+        st.session_state.customer_search_input = ""
+
+    # --- NEW: CONFLICT WARNING UI (CORRECTED) ---
+    if conflict_job := st.session_state.get('conflict_warning_details'):
+        customer = ecm.get_customer_details(conflict_job.customer_id)
+        customer_name = customer.customer_name if customer else "This customer"
+        
+        st.warning(f"""
+        **⚠️ Scheduling Conflict Detected** {customer_name} is already scheduled for a **{conflict_job.service_type}** service on **{conflict_job.scheduled_start_datetime.strftime('%A, %B %d, %Y')}**.
+
+        Scheduling the same service again within 30 days is unusual.
+        """)
+        
+        def override_conflict():
+            st.session_state.conflict_override_acknowledged = True
+            st.session_state.conflict_warning_details = None
+
+        def cancel_conflict():
+            st.session_state.conflict_override_acknowledged = False
+            st.session_state.conflict_warning_details = None
+
+        c1, c2, _ = st.columns([1.5, 1.5, 3])
+        c1.button("Continue Anyway (Override)", on_click=override_conflict, type="primary", use_container_width=True)
+        c2.button("Change Request", on_click=cancel_conflict, use_container_width=True)
+        return  # halt until user chooses
+
+    # --- EXISTING LOGIC: Message Handling ---
+    if info_msg := st.session_state.get('info_message'):
+        st.info(info_msg)
+        if reasons := st.session_state.get('failure_reasons'):
+            for reason in reasons:
+                st.warning(reason)
+        st.session_state.info_message = ""
+        st.session_state.failure_reasons = []
+
+    if st.session_state.get("confirmation_message"):
+        st.success(f"✅ {st.session_state.confirmation_message}")
+        st.button("Schedule Another Job", on_click=schedule_another)
+        return
+
+    # --- SIDEBAR UI: New Job Request ---
+    st.sidebar.header("New Job Request")
     customer = None
     boat = None
 
-    # ── Step 1: If no customer selected, show search box ──
-    if not st.session_state.get("selected_customer_id"):
-        inp = st.sidebar.text_input(
+    # 1️⃣ Search input if no customer selected
+    if not st.session_state.get('selected_customer_id'):
+        st.session_state.customer_search_input = st.sidebar.text_input(
             "Search for Customer or Boat ID:",
-            value=st.session_state.get("customer_search_input", ""),
-            placeholder="e.g., 'Bobby D' or '5001'"
+            value=st.session_state.get('customer_search_input', ''),
+            placeholder="e.g. 'Olivia' or 'B5001'"
         )
-        st.session_state["customer_search_input"] = inp
-        term = inp.lower().strip()
-
-        if term:
-            # 1a) Match customers by name
-            cust_matches = [
-                c for c in ecm.LOADED_CUSTOMERS.values()
-                if term in c.customer_name.lower()
-            ]
-            # 1b) Match boats by ID and pull in their customers
-            boat_matches = [
-                b for b in ecm.LOADED_BOATS.values()
-                if term in str(b.boat_id).lower()
-            ]
+        search_term = st.session_state.customer_search_input.lower().strip()
+        if search_term:
+            # match on customer name and boat ID
+            cust_matches = [c for c in ecm.LOADED_CUSTOMERS.values() if search_term in c.customer_name.lower()]
+            boat_matches = [b for b in ecm.LOADED_BOATS.values() if search_term in str(b.boat_id)]
+            # also include those boats' customers
             for b in boat_matches:
-                c = ecm.LOADED_CUSTOMERS.get(b.customer_id)
-                if c and c not in cust_matches:
-                    cust_matches.append(c)
-
-            # Dedupe & sort alphabetically
-            unique = {c.customer_id: c for c in cust_matches}.values()
-            sorted_custs = sorted(unique, key=lambda c: c.customer_name)
-
+                cust = ecm.LOADED_CUSTOMERS.get(b.customer_id)
+                if cust and cust not in cust_matches:
+                    cust_matches.append(cust)
+            unique = {c.customer_id: c for c in cust_matches}
+            sorted_custs = sorted(unique.values(), key=lambda c: c.customer_name)
             if sorted_custs:
                 st.sidebar.write("---")
                 with st.sidebar.container(height=250):
                     for c in sorted_custs:
-                        st.button(
-                            label=c.customer_name,
-                            key=f"select_{c.customer_id}",
-                            on_click=lambda cid=c.customer_id: st.session_state.__setitem__("selected_customer_id", cid),
-                            use_container_width=True
-                        )
+                        st.button(c.customer_name,
+                                  key=f"select_{c.customer_id}",
+                                  on_click=lambda cid=c.customer_id: select_customer(cid),
+                                  use_container_width=True)
             else:
                 st.sidebar.warning("No matches found.")
 
-    # ── Step 2: If a customer is selected, lock it in and show their boats ──
-    if st.session_state.get("selected_customer_id"):
-        cid = st.session_state.selected_customer_id
-        customer = ecm.LOADED_CUSTOMERS.get(cid)
+    # 2️⃣ Once a customer is selected
+    if st.session_state.get('selected_customer_id'):
+        customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
         if not customer:
-            # invalid ID, reset and rerun
-            st.session_state["selected_customer_id"] = None
-            st.session_state["customer_search_input"] = ""
-            st.experimental_rerun()
+            clear_selection()
+            st.rerun()
 
-        # Display selected customer
         st.sidebar.text_input("Selected Customer:", value=customer.customer_name, disabled=True)
-        st.sidebar.button(
-            "Clear Selection",
-            on_click=lambda: st.session_state.update({
-                "selected_customer_id": None,
-                "selected_boat_id": None,
-                "customer_search_input": ""
-            }),
-            use_container_width=True
-        )
+        st.sidebar.button("Clear Selection", on_click=clear_selection, use_container_width=True)
 
-        # List this customer’s boats
-        boats_for_customer = [
-            b for b in ecm.LOADED_BOATS.values()
-            if b.customer_id == customer.customer_id
-        ]
+        boats_for_customer = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id]
         if not boats_for_customer:
             st.sidebar.error(f"No boats found for {customer.customer_name}.")
         elif len(boats_for_customer) == 1:
-            st.session_state["selected_boat_id"] = boats_for_customer[0].boat_id
+            st.session_state.selected_boat_id = boats_for_customer[0].boat_id
         else:
-            opts = {
-                f"{b.boat_length}' {b.boat_type} (ID: {b.boat_id})": b.boat_id
-                for b in boats_for_customer
-            }
-            choice = st.sidebar.selectbox(
-                "Select Boat:",
-                ["-- Select a boat --"] + list(opts.keys())
-            )
-            if choice != "-- Select a boat --":
-                st.session_state["selected_boat_id"] = opts[choice]
+            boat_opts = {f"{b.boat_length}' {b.boat_type} (ID: {b.boat_id})": b.boat_id for b in boats_for_customer}
+            opts_with_prompt = {"-- Select a boat --": None, **boat_opts}
+            choice = st.sidebar.selectbox("Select Boat:", list(opts_with_prompt.keys()))
+            st.session_state.selected_boat_id = opts_with_prompt[choice]
 
-    # ── Step 3: If both customer & boat are chosen, show scheduling form ──
-    if customer and st.session_state.get("selected_boat_id"):
+    # --- SCHEDULING FORM: once customer + boat chosen ---
+    if customer and st.session_state.get('selected_boat_id'):
         boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
-        if boat:
-            st.sidebar.write("---")
-            st.sidebar.subheader("Selected Customer & Boat")
-            st.sidebar.write(f"**Customer:** {customer.customer_name}")
-            st.sidebar.write(f"**Boat ID:** {boat.boat_id}")
-            st.sidebar.write(f"**Boat Type:** {boat.boat_type}")
-            st.sidebar.write(f"**Boat Length:** {boat.boat_length} ft")
-            st.sidebar.write(f"**ECM Boat:** {'Yes' if boat.is_ecm_boat else 'No'}")
-            st.sidebar.write("---")
+        service_type = st.sidebar.selectbox("Service Type:", ["Launch", "Haul", "Sandblast", "Paint"])
+        req_date = st.sidebar.date_input("Requested Date:", min_value=datetime.date.today())
+        override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
 
-            # Service type & date
-            service_type = st.sidebar.selectbox(
-                "Select Service Type:",
-                ["Launch", "Haul", "Transport"]
+        if st.sidebar.button("Find Best Slot"):
+            slots, msg, warnings, forced = ecm.find_available_job_slots(
+                customer_id=customer.customer_id,
+                boat_id=boat.boat_id,
+                service_type=service_type,
+                requested_date_str=req_date.strftime("%Y-%m-%d"),
+                selected_ramp_id=None,
+                force_preferred_truck=not override,
+                relax_ramp=False,
+                ignore_forced_search=override or st.session_state.get('conflict_override_acknowledged', False)
             )
-            req_date = st.sidebar.date_input(
-                "Requested Date:",
-                datetime.date.today() + datetime.timedelta(days=1)
-            )
+            st.session_state.found_slots = slots
+            st.session_state.failure_reasons = warnings
+            st.session_state.was_forced_search = forced
+            st.session_state.current_job_request = {
+                'customer_id': customer.customer_id,
+                'boat_id': boat.boat_id,
+                'service_type': service_type,
+                'requested_date_str': req_date.strftime("%Y-%m-%d"),
+                'ignore_forced_search': override
+            }
+            st.session_state.search_requested_date = req_date
+            st.session_state.info_message = msg
+            st.session_state.conflict_warning_details = None
 
-            # Ramp selection for Launch/Haul
-            ramp_id = None
-            if service_type in ("Launch", "Haul"):
-                ramp_id = st.sidebar.selectbox(
-                    "Select Ramp:",
-                    list(ecm.ECM_RAMPS.keys()),
-                    format_func=lambda rid: ecm.ECM_RAMPS[rid].ramp_name
-                )
+            # start paging at page 0
+            if slots:
+                st.session_state.slot_page_index = 0
 
-            # Additional options
-            relax_truck = st.sidebar.checkbox("Relax Truck (Use any capable truck)")
-            override    = st.sidebar.checkbox("MANAGER: Override Crane Day Block")
-
-            if st.sidebar.button("Find Best Slot"):
-                # Call your existing slot‐finding function here, e.g.:
-                slots, msg, warnings, forced = ecm.find_available_job_slots(
-                    customer_id=customer.customer_id,
-                    boat_id=boat.boat_id,
-                    service_type=service_type,
-                    requested_date_str=req_date.strftime("%Y-%m-%d"),
-                    selected_ramp_id=ramp_id,
-                    force_preferred_truck=(not relax_truck),
-                    relax_ramp=False,
-                    ignore_forced_search=override
-                )
-                
     # --- SLOT DISPLAY AND PAGINATION ---
-    if st.session_state.found_slots and not st.session_state.selected_slot:
-        st.subheader("Please select your preferred slot:")
-        total_slots = len(st.session_state.found_slots)
-        page_index = st.session_state.slot_page_index
-        slots_per_page = 3
+    if st.session_state.get('found_slots') and not st.session_state.get('selected_slot'):
+        found = st.session_state.found_slots
+        total = len(found)
+        page = st.session_state.get('slot_page_index', 0)
+        per_page = 3
 
-        nav_cols = st.columns([1, 1, 5, 1, 1])
-        nav_cols[0].button("⬅️ Prev", on_click=lambda: st.session_state.update(slot_page_index=page_index - slots_per_page), disabled=(page_index == 0), use_container_width=True)
-        nav_cols[1].button("Next ➡️", on_click=lambda: st.session_state.update(slot_page_index=page_index + slots_per_page), disabled=(page_index + slots_per_page >= total_slots), use_container_width=True)
-        if total_slots > 0: 
-            nav_cols[3].write(f"_{min(page_index + 1, total_slots)}-{min(page_index + slots_per_page, total_slots)} of {total_slots}_")
+        st.subheader("Select a Slot:")
+        cols = st.columns([1,1,5,1,1])
+        cols[0].button("← Prev", on_click=lambda: st.session_state.update(slot_page_index=max(page-1, 0)))
+        cols[1].button("Next →", on_click=lambda: st.session_state.update(slot_page_index=min(page+1, (total-1)//per_page)))
+        if total:
+            cols[3].write(f"{page*per_page+1}–{min((page+1)*per_page, total)} of {total}")
         st.markdown("---")
-        
-        cols = st.columns(3)
-        for i, slot in enumerate(st.session_state.found_slots[page_index : page_index + slots_per_page]):
-            with cols[i % 3]:
-                with st.container(border=True):
-                    score_val = int(round(slot.get('debug_trace', {}).get('FINAL_SCORE', 0)))
-                    st.metric(label="Efficiency Score", value=score_val)
-                    st.markdown("---")
-                    ramp_details = ecm.get_ramp_details(slot.get('ramp_id'))
-                    st.markdown(f"""
-                    **Date:** {slot['date'].strftime('%a, %b %d, %Y')}  
-                    **Time:** {ecm.format_time_for_display(slot.get('time'))}  
-                    **Truck:** {slot.get('truck_id', 'N/A')}  
-                    **Ramp:** {ramp_details.ramp_name if ramp_details else "N/A"}
-                    """)
-                    st.caption(f"Tide Rule: {slot.get('tide_rule_concise', 'N/A')}")
-                    st.markdown(format_tides_for_display(slot, st.session_state.truck_operating_hours), unsafe_allow_html=True)
 
-                    if 'debug_trace' in slot:
-                        with st.expander("Show Calculation Details"):
-                            st.json(slot['debug_trace'])
-                    
-                    st.button("Select this slot", key=f"select_slot_{page_index + i}", on_click=handle_slot_selection, args=(slot,), use_container_width=True)
+        for slot in found[page*per_page:(page+1)*per_page]:
+            c1, c2, c3, c4, c5 = st.columns([1,2,3,2,1])
+            c1.metric("Ramp", slot.ramp_name)
+            c2.metric("Start", slot.start_datetime.strftime("%b %d, %Y"))
+            c3.write(slot.details_markdown)
+            c4.metric("Truck", slot.truck_name)
+            c5.button("Select", key=f"sel_{slot.slot_id}", on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
 
-    elif st.session_state.selected_slot:
-        slot = st.session_state.selected_slot
-        st.subheader("Preview & Confirm Selection:")
-        st.success(f"Considering: **{slot['date'].strftime('%Y-%m-%d %A')} at {ecm.format_time_for_display(slot.get('time'))}** with Truck **{slot.get('truck_id')}**.")
-        
-        if st.button("CONFIRM THIS JOB"):
-            parked_job_id_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
-            new_job_id, message = ecm.confirm_and_schedule_job(st.session_state.current_job_request, slot, parked_job_to_remove=parked_job_id_to_remove)
-            if new_job_id:
-                st.session_state.confirmation_message = message
-                service_type = st.session_state.current_job_request.get('service_type')
-                if service_type in ["Launch", "Haul"]:
-                    st.session_state.last_seasonal_job = {
-                        "customer_id": st.session_state.current_job_request.get('customer_id'),
-                        "boat_id": st.session_state.current_job_request.get('boat_id'),
-                        "original_service": service_type
-                    }
-                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'rebooking_details', 'conflict_warning_details']:
-                    st.session_state.pop(key, None)
-                st.rerun()
-            else: 
-                st.error(f"Failed to confirm job: {message}")
         return
-    
-    return
+
+    # --- PREVIEW & CONFIRM SELECTION ---
+    if st.session_state.get('selected_slot'):
+        slot = st.session_state.selected_slot
+        st.subheader("Preview & Confirm Job")
+        st.success(slot.confirmation_text)
+
+        if st.button("CONFIRM THIS JOB"):
+            parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
+            new_id, message = ecm.confirm_and_schedule_job(
+                st.session_state.current_job_request,
+                slot,
+                parked_job_to_remove=parked_to_remove
+            )
+            if new_id:
+                st.session_state.confirmation_message = message
+                svc = st.session_state.current_job_request['service_type']
+                if svc in ["Launch", "Haul"]:
+                    st.session_state.last_seasonal_job = {
+                        'customer_id': customer.customer_id,
+                        'boat_id': boat.boat_id,
+                        'original_service': svc
+                    }
+                # clear state for a fresh start
+                for key in ['found_slots', 'selected_slot', 'current_job_request',
+                            'search_requested_date', 'rebooking_details',
+                            'failure_reasons', 'was_forced_search']:
+                    st.session_state.pop(key, None)
+
+                st.button("🔄 Schedule Another Job", on_click=schedule_another)
+            return
                 
 def show_reporting_page():
     """
