@@ -505,29 +505,45 @@ def show_scheduler_page():
 
     # --- SIDEBAR UI ---
     st.sidebar.header("New Job Request")
-    
-    customer = None
-    boat = None
-    if not st.session_state.get('selected_customer_id'):
-        st.session_state.customer_search_input = st.sidebar.text_input(
-            "Search for Customer or Boat ID:", value=st.session_state.get('customer_search_input', ''),
+    if not st.session_state.get("selected_customer_id"):
+        inp = st.sidebar.text_input(
+            "Search for Customer or Boat ID:",
+            value=st.session_state.get("customer_search_input", ""),
             placeholder="e.g., 'Olivia' or 'B5001'"
         )
-        search_term = st.session_state.customer_search_input.lower().strip()
-        if search_term:
-            customer_results = [c for c in ecm.LOADED_CUSTOMERS.values() if search_term in c.customer_name.lower()]
-            boat_results = [b for b in ecm.LOADED_BOATS.values() if search_term in str(b.boat_id).lower()]
-            customers_from_boat_search = [ecm.LOADED_CUSTOMERS.get(b.customer_id) for b in boat_results if b and ecm.LOADED_CUSTOMERS.get(b.customer_id)]
-            combined_customers = {c.customer_id: c for c in customer_results}
-            for c in customers_from_boat_search:
-                if c: combined_customers[c.customer_id] = c
-            
-            sorted_customers = sorted(combined_customers.values(), key=lambda c: c.customer_name)
-            if sorted_customers:
+        st.session_state.customer_search_input = inp
+        term = inp.lower().strip()
+        if term:
+            # 1️⃣ match on customer name
+            customer_matches = [
+                c for c in LOADED_CUSTOMERS.values()
+                if term in c.customer_name.lower()
+            ]
+            # 2️⃣ match on boat ID
+            boat_matches = [
+                b for b in LOADED_BOATS.values()
+                if term in str(b.boat_id).lower()
+            ]
+            # 3️⃣ bring in those boats' customers too
+            for b in boat_matches:
+                cust = LOADED_CUSTOMERS.get(b.customer_id)
+                if cust and cust not in customer_matches:
+                    customer_matches.append(cust)
+
+            # dedupe & sort
+            unique = {c.customer_id: c for c in customer_matches}
+            sorted_list = sorted(unique.values(), key=lambda c: c.customer_name)
+
+            if sorted_list:
                 st.sidebar.write("---")
                 with st.sidebar.container(height=250):
-                    for cust in sorted_customers:
-                        st.button(f"{cust.customer_name}", key=f"select_{cust.customer_id}", on_click=select_customer, args=(cust.customer_id,), use_container_width=True)
+                    for c in sorted_list:
+                        st.button(
+                            label=c.customer_name,
+                            key=f"select_{c.customer_id}",
+                            on_click=lambda cid=c.customer_id: select_customer(cid),
+                            use_container_width=True
+                        )
             else:
                 st.sidebar.warning("No matches found.")
     
