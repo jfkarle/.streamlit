@@ -263,7 +263,7 @@ def load_all_data_from_sheets():
         LOADED_CUSTOMERS.update({
             int(row["customer_id"]): Customer(
                 c_id = row["customer_id"],
-                name = row.get("customer", "")
+                name = row.get("Customer", "")
             )
             for row in cust_resp.data
             if row.get("customer_id")
