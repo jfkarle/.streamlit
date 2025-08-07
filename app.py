@@ -609,33 +609,18 @@ def show_scheduler_page():
         override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
 
         if st.sidebar.button("Find Best Slot"):
-        # The find function still returns dictionaries
-            slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
-                customer_id=customer.customer_id,
-                boat_id=boat.boat_id,
-                service_type=service_type,
-                requested_date_str=req_date.strftime("%Y-%m-%d"),
-                selected_ramp_id=None, # This seems to be intentionally None here
-                force_preferred_truck=not override,
-                relax_ramp=False,
-                ignore_forced_search=override or st.session_state.get('conflict_override_acknowledged', False)
-            )
-    # Convert the list of dictionaries into a list of SlotDetail objects
-    st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
-    
-    st.session_state.failure_reasons = warnings
-    st.session_state.was_forced_search = forced
-    st.session_state.current_job_request = {
-        'customer_id': customer.customer_id,
-        'boat_id': boat.boat_id,
-        'service_type': service_type,
-        'requested_date_str': req_date.strftime("%Y-%m-%d"),
-        'ignore_forced_search': override
-    }
-    st.session_state.search_requested_date = req_date
-    st.session_state.info_message = msg
-    st.session_state.conflict_warning_details = None
+        slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
+            customer_id=customer.customer_id,
+            boat_id=boat.boat_id,
+            service_type=service_type,
+            requested_date_str=req_date.strftime("%Y-%m-%d"),
+            selected_ramp_id=None,
+            force_preferred_truck=not override,
+            relax_ramp=False,
+            ignore_forced_search=override or st.session_state.get('conflict_override_acknowledged', False)
+        )
 
+    # The list comprehension now correctly uses 'slot_dicts'
     st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
     st.session_state.failure_reasons = warnings
     st.session_state.was_forced_search = forced
