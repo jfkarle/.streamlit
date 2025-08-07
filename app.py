@@ -669,16 +669,14 @@ def show_scheduler_page():
             cols[3].write(f"{page*per_page+1}–{min((page+1)*per_page, total)} of {total}")
         st.markdown("---")
         
-        # --- MODIFIED CODE START ---
         for slot in found[page*per_page:(page+1)*per_page]:
-            with st.container(border=True): # <-- ADDED THIS LINE
+            with st.container(border=True): # <-- This is the line that adds the card
                 c1, c2, c3, c4, c5 = st.columns([1,2,3,2,1])
                 c1.metric("Ramp", slot.ramp_name)
                 c2.metric("Start", slot.start_datetime.strftime("%b %d, %Y"))
                 c3.write(slot.details_markdown)
                 c4.metric("Truck", slot.truck_name)
                 c5.button("Select", key=f"sel_{slot.slot_id}", on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
-        # --- MODIFIED CODE END ---
         
         return
 
