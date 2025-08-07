@@ -601,14 +601,24 @@ def show_scheduler_page():
             choice = st.sidebar.selectbox("Select Boat:", list(opts_with_prompt.keys()))
             st.session_state.selected_boat_id = opts_with_prompt[choice]
 
-    # --- SCHEDULING FORM: once customer + boat chosen ---
+    # SCHEDULING FORM: once customer + boat chosen
     if customer and st.session_state.get('selected_boat_id'):
         boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
         service_type = st.sidebar.selectbox("Service Type:", ["Launch", "Haul", "Sandblast", "Paint"])
         req_date = st.sidebar.date_input("Requested Date:", min_value=datetime.date.today())
         override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
 
-        # Initialize slot_dicts to an empty list BEFORE the button check
+        # First get the list of ramps that are compatible with the boat type
+        ramps_for_boat = ecm.find_available_ramps_for_boat(boat, ecm.ECM_RAMPS)
+        
+        # Then, use that list to populate the selectbox
+        selected_ramp_id = st.sidebar.selectbox(
+            "Ramp:", 
+            options=ramps_for_boat, 
+            format_func=lambda x: ecm.ECM_RAMPS[x].ramp_name
+        )
+
+        # Initialize slots to an empty list before the button check to prevent UnboundLocalError
         slot_dicts = []
         msg = ""
         warnings = []
@@ -620,13 +630,13 @@ def show_scheduler_page():
                 boat_id=boat.boat_id,
                 service_type=service_type,
                 requested_date_str=req_date.strftime("%Y-%m-%d"),
-                selected_ramp_id=None,
+                selected_ramp_id=selected_ramp_id, # This is the corrected line
                 force_preferred_truck=not override,
                 relax_ramp=False,
                 ignore_forced_search=override or st.session_state.get('conflict_override_acknowledged', False)
             )
 
-        # The list comprehension will now always work
+        # Now this line will always work
         st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
         st.session_state.failure_reasons = warnings
         st.session_state.was_forced_search = forced
@@ -640,8 +650,7 @@ def show_scheduler_page():
         st.session_state.search_requested_date = req_date
         st.session_state.info_message = msg
         st.session_state.conflict_warning_details = None
-
-        # If slots were found, start pagination at the first page
+        
         if st.session_state.found_slots:
             st.session_state.slot_page_index = 0
 
