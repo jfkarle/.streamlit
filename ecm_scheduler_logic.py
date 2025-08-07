@@ -258,16 +258,16 @@ def load_all_data_from_sheets():
         })
 
              # --- Customers ---
-        cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
-        LOADED_CUSTOMERS.clear()
-        LOADED_CUSTOMERS.update({
-            int(row["customer_id"]): Customer(
-                c_id = row["customer_id"],
-                name = row.get("Customer", "")
-            )
-            for row in cust_resp.data
-            if row.get("customer_id")
-        })
+            cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
+            LOADED_CUSTOMERS.clear()
+            LOADED_CUSTOMERS.update({
+                int(row["customer_id"]): Customer(
+                    c_id = row["customer_id"],
+                    name = row.get("Customer", "")
+                )
+                for row in cust_resp.data
+                if row.get("customer_id")
+            })
 
         # Add this line below to see what the query returns
         print(f"Supabase customer query result: {customer_data.data}")
