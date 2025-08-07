@@ -40,13 +40,16 @@ class SlotDetail:
         self.raw_data = slot_dict
         
         # --- Basic Attributes ---
-        self.date = slot_dict['date']
-        self.time = slot_dict['time']
-        self.truck_id = slot_dict['truck_id']
-        self.ramp_id = slot_dict['ramp_id']
+        self.date = slot_dict.get('date')
+        self.time = slot_dict.get('time')
+        self.truck_id = slot_dict.get('truck_id')
+        self.ramp_id = slot_dict.get('ramp_id')
 
         # --- Derived Attributes for Display ---
-        self.start_datetime = datetime.datetime.combine(self.date, self.time)
+        if self.date and self.time:
+            self.start_datetime = datetime.datetime.combine(self.date, self.time)
+        else:
+            self.start_datetime = None
         
         truck_obj = ecm.ECM_TRUCKS.get(self.truck_id)
         self.truck_name = truck_obj.truck_name if truck_obj else "N/A"
@@ -54,16 +57,21 @@ class SlotDetail:
         ramp_obj = ecm.get_ramp_details(self.ramp_id)
         self.ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
         
-        # --- Formatted Details for Display ---
-        tide_times = slot_dict.get('high_tide_times', [])
-        tide_str = " / ".join([ecm.format_time_for_display(t) for t in tide_times]) or 'N/A'
-        self.details_markdown = f"""
-        - **Tide Rule:** {slot_dict.get('tide_rule_concise', 'N/A')}
-        - **High Tides:** {tide_str}
-        """
-
-        # --- Unique ID for Streamlit buttons ---
         self.slot_id = str(uuid.uuid4())
+        self.customer_id = slot_dict.get('customer_id', 'N/A')
+        self.boat_id = slot_dict.get('boat_id', 'N/A')
+        self.service_type = slot_dict.get('service_type', 'N/A')
+        
+    @property
+    def confirmation_text(self):
+        customer = ecm.get_customer_details(self.customer_id)
+        boat = ecm.get_boat_details(self.boat_id)
+        
+        return (
+            f"You are about to schedule a **{self.service_type}** for **{customer.customer_name}**'s "
+            f"{boat.boat_length}' {boat.boat_type} on **{self.start_datetime.strftime('%A, %B %d, %Y')}** "
+            f"at **{self.start_datetime.strftime('%I:%M %p')}** using **{self.truck_name}** at **{self.ramp_name}**."
+        )
 
     # This allows the object to still be used like a dictionary,
     # which is needed by the `confirm_and_schedule_job` function.
@@ -605,7 +613,7 @@ def show_scheduler_page():
     if customer and st.session_state.get('selected_boat_id'):
         boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
         service_type = st.sidebar.selectbox("Service Type:", ["Launch", "Haul", "Sandblast", "Paint"])
-        req_date = st.sidebar.date_input("Requested Date:", min_value=datetime.date.today())
+        req_date = st.sidebar.date_input("Requested Date:", min_value=None)
         override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
 
         # First get the list of ramps that are compatible with the boat type
@@ -671,16 +679,29 @@ def show_scheduler_page():
         
         for slot in found[page*per_page:(page+1)*per_page]:
             with st.container(border=True):
-                c1, c2, c3, c4, c5 = st.columns([1, 2, 3, 2, 1])
-                c1.metric("Ramp", slot.ramp_name)
-                # MODIFIED: Combine Date and Time in a single metric
-                c2.metric("Start", f"{slot.start_datetime.strftime('%b %d, %Y')} at {slot.start_datetime.strftime('%I:%M %p')}")
-                c3.write(slot.details_markdown)
-                c4.metric("Truck", slot.truck_name)
-                c5.button("Select", key=f"sel_{slot.slot_id}", on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
-        
-        return
+                # Using columns for a structured layout within the card
+                col1, col2, col3, col4 = st.columns([1, 2, 4, 2])
+                
+                # Column 1: Ramp Info
+                with col1:
+                    st.metric("Ramp", slot.ramp_name)
+                
+                # Column 2: Date & Time Info
+                with col2:
+                    st.metric("Date", slot.start_datetime.strftime("%b %d, %Y"))
+                    st.metric("Time", slot.start_datetime.strftime("%I:%M %p"))
 
+                # Column 3: Tide and Truck Details
+                with col3:
+                    st.markdown(f"**Tide Rule:** {slot.raw_data.get('tide_rule_concise', 'N/A')}")
+                    tide_times = slot.raw_data.get('high_tide_times', [])
+                    tide_str = " / ".join([ecm.format_time_for_display(t) for t in tide_times]) or 'N/A'
+                    st.markdown(f"**High Tides:** {tide_str}")
+
+                # Column 4: Select Button
+                with col4:
+                    st.button("Select", key=f"sel_{slot.slot_id}", use_container_width=True, on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
+                    
     # --- PREVIEW & CONFIRM SELECTION ---
     if st.session_state.get('selected_slot'):
         slot = st.session_state.selected_slot
