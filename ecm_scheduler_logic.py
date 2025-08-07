@@ -1162,26 +1162,6 @@ def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_sche
         if start_dt < busy_end and end_dt > busy_start: return False
     return True
 
-def find_same_service_conflict(boat_id, new_service_type, requested_date, all_scheduled_jobs):
-    """
-    Checks if the same service is already scheduled for a boat within a 30-day window.
-    Args:
-        boat_id (int): The ID of the boat to check.
-        new_service_type (str): The service being requested (e.g., "Launch", "Haul").
-        requested_date (datetime.date): The new date being requested.
-        all_scheduled_jobs (list): A list of all currently scheduled Job objects.
-    Returns:
-        Job: The conflicting Job object if found, otherwise None.
-    """
-    thirty_days = datetime.timedelta(days=30)
-    for job in all_scheduled_jobs:
-        if job.boat_id == boat_id and job.service_type == new_service_type:
-            if job.scheduled_start_datetime:
-                # Check if the existing job date is within 30 days of the new requested date
-                if abs(job.scheduled_start_datetime.date() - requested_date) <= thirty_days:
-                    return job # Return the specific job that is causing the conflict
-    return None
-
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, **kwargs):
     """
     Finds and scores available job slots, ensuring consistent keys for confirmation.
@@ -1534,6 +1514,20 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
     except Exception as e:
         return None, f"An error occurred: {e}"
 
+def find_available_ramps_for_boat(boat, all_ramps):
+    """
+    Finds ramps suitable for a given boat by checking the boat's type against a ramp's allowed boat types.
+    """
+    matching_ramps = {
+        ramp_id: ramp for ramp_id, ramp in all_ramps.items()
+        if boat.boat_type in ramp.allowed_boat_types
+    }
+    
+    # Fallback: if no specific ramps match, return all of them to allow a manual override.
+    if not matching_ramps:
+        return all_ramps.keys()
+
+    return matching_ramps.keys()
 
 
 def get_S17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks, duration, S17_duration, service_type):
