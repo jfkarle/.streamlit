@@ -8,6 +8,7 @@ import os
 import datetime
 import ecm_scheduler_logic as ecm
 import json
+import uuid
 from geopy.geocoders import Nominatim
 from datetime import timezone
 from reportlab.lib.pagesizes import letter
@@ -28,6 +29,51 @@ from ecm_scheduler_logic import load_all_data_from_sheets
 load_all_data_from_sheets()   # this populates LOADED_BOATS, etc.
 
 st.sidebar.write(f"🔍 Loaded {len(ecm.LOADED_BOATS)} boats from Supabase")
+
+# --- Helper Functions for UI ---
+
+import uuid # Make sure to import uuid at the top of app.py
+
+class SlotDetail:
+    """A wrapper class to make slot dictionaries easier to use in the UI."""
+    def __init__(self, slot_dict):
+        self.raw_data = slot_dict
+        
+        # --- Basic Attributes ---
+        self.date = slot_dict['date']
+        self.time = slot_dict['time']
+        self.truck_id = slot_dict['truck_id']
+        self.ramp_id = slot_dict['ramp_id']
+
+        # --- Derived Attributes for Display ---
+        self.start_datetime = datetime.datetime.combine(self.date, self.time)
+        
+        truck_obj = ecm.ECM_TRUCKS.get(self.truck_id)
+        self.truck_name = truck_obj.truck_name if truck_obj else "N/A"
+        
+        ramp_obj = ecm.get_ramp_details(self.ramp_id)
+        self.ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
+        
+        # --- Formatted Details for Display ---
+        tide_times = slot_dict.get('high_tide_times', [])
+        tide_str = " / ".join([ecm.format_time_for_display(t) for t in tide_times]) or 'N/A'
+        self.details_markdown = f"""
+        - **Tide Rule:** {slot_dict.get('tide_rule_concise', 'N/A')}
+        - **High Tides:** {tide_str}
+        """
+
+        # --- Unique ID for Streamlit buttons ---
+        self.slot_id = str(uuid.uuid4())
+
+    # This allows the object to still be used like a dictionary,
+    # which is needed by the `confirm_and_schedule_job` function.
+    def __getitem__(self, key):
+        return self.raw_data[key]
+    
+    def get(self, key, default=None):
+        return self.raw_data.get(key, default)
+
+# ... (the rest of your helper functions)
 
 def create_gauge(value, max_value, label):
     """Generates an SVG string for a semi-circle gauge chart that displays an absolute value."""
@@ -563,17 +609,35 @@ def show_scheduler_page():
         override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
 
         if st.sidebar.button("Find Best Slot"):
-            slots, msg, warnings, forced = ecm.find_available_job_slots(
+        # The find function still returns dictionaries
+            slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
                 customer_id=customer.customer_id,
                 boat_id=boat.boat_id,
                 service_type=service_type,
                 requested_date_str=req_date.strftime("%Y-%m-%d"),
-                selected_ramp_id=None,
+                selected_ramp_id=None, # This seems to be intentionally None here
                 force_preferred_truck=not override,
                 relax_ramp=False,
                 ignore_forced_search=override or st.session_state.get('conflict_override_acknowledged', False)
             )
-            st.session_state.found_slots = slots
+    # Convert the list of dictionaries into a list of SlotDetail objects
+    st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
+    
+    st.session_state.failure_reasons = warnings
+    st.session_state.was_forced_search = forced
+    st.session_state.current_job_request = {
+        'customer_id': customer.customer_id,
+        'boat_id': boat.boat_id,
+        'service_type': service_type,
+        'requested_date_str': req_date.strftime("%Y-%m-%d"),
+        'ignore_forced_search': override
+    }
+    st.session_state.search_requested_date = req_date
+    st.session_state.info_message = msg
+    st.session_state.conflict_warning_details = None
+
+    if st.session_state.found_slots:
+        st.session_state.slot_page_index = 0
             st.session_state.failure_reasons = warnings
             st.session_state.was_forced_search = forced
             st.session_state.current_job_request = {
