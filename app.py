@@ -27,6 +27,11 @@ st.set_page_config(layout="wide")
 from ecm_scheduler_logic import load_all_data_from_sheets
 load_all_data_from_sheets()   # this populates LOADED_BOATS, etc.
 
+# Add this line to check the loaded data
+print(f"Number of customers loaded: {len(ecm.LOADED_CUSTOMERS)}")
+print(f"First 5 customer records: {ecm.LOADED_CUSTOMERS[:5]}")
+
+
 st.sidebar.write(f"🔍 Loaded {len(ecm.LOADED_BOATS)} boats from Supabase")
 
 def create_gauge(value, max_value, label):
@@ -900,7 +905,7 @@ def show_settings_page():
                 if st.form_submit_button("Save Hours"):
                     success, message = ecm.update_truck_schedule(selected_truck_name, new_hours)
                     if success:
-                        ecm.load_all_data_from_sheets()
+                        ecm._data_from_sheets()
                         st.success(message)
                         st.rerun()
                     else:
