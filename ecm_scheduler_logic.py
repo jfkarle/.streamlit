@@ -257,13 +257,13 @@ def load_all_data_from_sheets():
             for row in ramps_resp.data
         })
 
-        # --- Customers ---
+             # --- Customers ---
         cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
         LOADED_CUSTOMERS.clear()
         LOADED_CUSTOMERS.update({
             int(row["customer_id"]): Customer(
-                c_id  = row["customer_id"],
-                name  = row.get("Customers", "")
+                c_id = row["customer_id"],
+                name = row.get("Customer", "")
             )
             for row in cust_resp.data
             if row.get("customer_id")
