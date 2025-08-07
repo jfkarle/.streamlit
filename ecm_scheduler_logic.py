@@ -269,13 +269,7 @@ def load_all_data_from_sheets():
             if row.get("customer_id")
         })
 
-        # Add this line below to see what the query returns
-        print(f"Supabase customer query result: {customer_data.data}")
-
-        # Now, return the data as before
-        return customer_data.data
-    
-        # --- Boats ---
+              # --- Boats ---
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
         LOADED_BOATS.clear()
         LOADED_BOATS.update({
