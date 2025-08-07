@@ -27,11 +27,6 @@ st.set_page_config(layout="wide")
 from ecm_scheduler_logic import load_all_data_from_sheets
 load_all_data_from_sheets()   # this populates LOADED_BOATS, etc.
 
-# Add this line to check the loaded data
-print(f"Number of customers loaded: {len(ecm.LOADED_CUSTOMERS)}")
-print(f"First 5 customer records: {ecm.LOADED_CUSTOMERS[:5]}")
-
-
 st.sidebar.write(f"🔍 Loaded {len(ecm.LOADED_BOATS)} boats from Supabase")
 
 def create_gauge(value, max_value, label):
