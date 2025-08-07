@@ -636,24 +636,23 @@ def show_scheduler_page():
     st.session_state.info_message = msg
     st.session_state.conflict_warning_details = None
 
+    st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
+    st.session_state.failure_reasons = warnings
+    st.session_state.was_forced_search = forced
+    st.session_state.current_job_request = {
+        'customer_id': customer.customer_id,
+        'boat_id': boat.boat_id,
+        'service_type': service_type,
+        'requested_date_str': req_date.strftime("%Y-%m-%d"),
+        'ignore_forced_search': override
+    }
+    st.session_state.search_requested_date = req_date
+    st.session_state.info_message = msg
+    st.session_state.conflict_warning_details = None
+
+    # If slots were found, start pagination at the first page
     if st.session_state.found_slots:
         st.session_state.slot_page_index = 0
-            st.session_state.failure_reasons = warnings
-            st.session_state.was_forced_search = forced
-            st.session_state.current_job_request = {
-                'customer_id': customer.customer_id,
-                'boat_id': boat.boat_id,
-                'service_type': service_type,
-                'requested_date_str': req_date.strftime("%Y-%m-%d"),
-                'ignore_forced_search': override
-            }
-            st.session_state.search_requested_date = req_date
-            st.session_state.info_message = msg
-            st.session_state.conflict_warning_details = None
-
-            # start paging at page 0
-            if slots:
-                st.session_state.slot_page_index = 0
 
     # --- SLOT DISPLAY AND PAGINATION ---
     if st.session_state.get('found_slots') and not st.session_state.get('selected_slot'):
