@@ -670,15 +670,48 @@ def show_scheduler_page():
         st.markdown("---")
         
         for slot in found[page*per_page:(page+1)*per_page]:
-            with st.container(border=True): # <-- This is the line that adds the card
-                c1, c2, c3, c4, c5 = st.columns([1,2,3,2,1])
+            with st.container(border=True):
+                # --- MODIFIED CODE START ---
+                c1, c2, c3, c4, c5 = st.columns([1, 2, 3, 2, 1])
                 c1.metric("Ramp", slot.ramp_name)
                 c2.metric("Start", slot.start_datetime.strftime("%b %d, %Y"))
-                c3.write(slot.details_markdown)
+                c3.write(f"**Time:** {slot.start_datetime.strftime('%I:%M %p')}")
                 c4.metric("Truck", slot.truck_name)
                 c5.button("Select", key=f"sel_{slot.slot_id}", on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
+                # --- MODIFIED CODE END ---
         
         return
+
+    # --- PREVIEW & CONFIRM SELECTION ---
+    if st.session_state.get('selected_slot'):
+        slot = st.session_state.selected_slot
+        st.subheader("Preview & Confirm Job")
+        st.success(slot.confirmation_text)
+
+        if st.button("CONFIRM THIS JOB"):
+            parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
+            new_id, message = ecm.confirm_and_schedule_job(
+                st.session_state.current_job_request,
+                slot,
+                parked_job_to_remove=parked_to_remove
+            )
+            if new_id:
+                st.session_state.confirmation_message = message
+                svc = st.session_state.current_job_request['service_type']
+                if svc in ["Launch", "Haul"]:
+                    st.session_state.last_seasonal_job = {
+                        'customer_id': customer.customer_id,
+                        'boat_id': boat.boat_id,
+                        'original_service': svc
+                    }
+                # clear state for a fresh start
+                for key in ['found_slots', 'selected_slot', 'current_job_request',
+                            'search_requested_date', 'rebooking_details',
+                            'failure_reasons', 'was_forced_search']:
+                    st.session_state.pop(key, None)
+
+                st.button("🔄 Schedule Another Job", on_click=schedule_another)
+            return
 
     # --- PREVIEW & CONFIRM SELECTION ---
     if st.session_state.get('selected_slot'):
