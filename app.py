@@ -598,6 +598,21 @@ def show_scheduler_page():
         st.sidebar.text_input("Selected Customer:", value=customer.customer_name, disabled=True)
         st.sidebar.button("Clear Selection", on_click=clear_selection, use_container_width=True)
 
+        # --- INSERT THE FOLLOWING CODE BLOCK ---
+        # Show details of the boat currently selected for scheduling
+        if st.session_state.get('selected_boat_id'):
+            boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
+            if boat:
+                st.sidebar.markdown("---")
+                st.sidebar.markdown(f"**Boat Details:**")
+                st.sidebar.markdown(f" - **Name:** {boat.boat_name}")
+                st.sidebar.markdown(f" - **Type:** {boat.boat_type}")
+                st.sidebar.markdown(f" - **Length:** {boat.boat_length}'")
+                st.sidebar.markdown(f" - **Draft:** {boat.boat_draft}'")
+                st.sidebar.markdown(f" - **Preferred Ramp:** {ecm.ECM_RAMPS.get(boat.preferred_ramp_id, 'N/A').ramp_name}")
+                
+        # --- END OF CODE BLOCK ---
+
         boats_for_customer = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id]
         if not boats_for_customer:
             st.sidebar.error(f"No boats found for {customer.customer_name}.")
