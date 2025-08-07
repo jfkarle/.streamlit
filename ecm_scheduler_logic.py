@@ -258,7 +258,7 @@ def load_all_data_from_sheets():
         })
 
         # --- Customers ---
-        cust_resp = execute_query(conn.table("customer").select("*"), ttl=0)
+        cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
         LOADED_CUSTOMERS.clear()
         LOADED_CUSTOMERS.update({
             int(row["customer_id"]): Customer(
