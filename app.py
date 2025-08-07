@@ -574,9 +574,9 @@ def show_scheduler_page():
                 with st.sidebar.container(height=250):
                     for c in sorted_custs:
                         st.button(c.customer_name,
-                                  key=f"select_{c.customer_id}",
-                                  on_click=lambda cid=c.customer_id: select_customer(cid),
-                                  use_container_width=True)
+                                 key=f"select_{c.customer_id}",
+                                 on_click=lambda cid=c.customer_id: select_customer(cid),
+                                 use_container_width=True)
             else:
                 st.sidebar.warning("No matches found.")
 
@@ -668,15 +668,18 @@ def show_scheduler_page():
         if total:
             cols[3].write(f"{page*per_page+1}–{min((page+1)*per_page, total)} of {total}")
         st.markdown("---")
-
+        
+        # --- MODIFIED CODE START ---
         for slot in found[page*per_page:(page+1)*per_page]:
-            c1, c2, c3, c4, c5 = st.columns([1,2,3,2,1])
-            c1.metric("Ramp", slot.ramp_name)
-            c2.metric("Start", slot.start_datetime.strftime("%b %d, %Y"))
-            c3.write(slot.details_markdown)
-            c4.metric("Truck", slot.truck_name)
-            c5.button("Select", key=f"sel_{slot.slot_id}", on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
-
+            with st.container(border=True): # <-- ADDED THIS LINE
+                c1, c2, c3, c4, c5 = st.columns([1,2,3,2,1])
+                c1.metric("Ramp", slot.ramp_name)
+                c2.metric("Start", slot.start_datetime.strftime("%b %d, %Y"))
+                c3.write(slot.details_markdown)
+                c4.metric("Truck", slot.truck_name)
+                c5.button("Select", key=f"sel_{slot.slot_id}", on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
+        # --- MODIFIED CODE END ---
+        
         return
 
     # --- PREVIEW & CONFIRM SELECTION ---
@@ -709,6 +712,7 @@ def show_scheduler_page():
 
                 st.button("🔄 Schedule Another Job", on_click=schedule_another)
             return
+
                 
 def show_reporting_page():
     """
