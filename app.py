@@ -745,7 +745,7 @@ if st.session_state.get('selected_boat_id'):
                     st.session_state.pop(key, None)
 
                 st.button("🔄 Schedule Another Job", on_click=schedule_another)
-        return
+    return
 
                 
 def show_reporting_page():
