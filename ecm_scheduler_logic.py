@@ -139,6 +139,78 @@ crane_daily_status = {}
 ECM_TRUCKS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS, TRUCK_OPERATING_HOURS = {}, {}, {}, {}, {}
 SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
+### This helper function will create a new crane day near the requested date if a grouped slot is not found.
+
+def find_new_crane_day_slot(
+    boat,
+    customer,
+    ramp_obj,
+    requested_date,
+    trucks,
+    duration,
+    S17_duration,
+    service_type,
+    search_window_days=30
+):
+    """
+    Finds the nearest available date to create a new S17 crane day
+    and a new slot.
+    """
+    import datetime
+    from .ecm_scheduler_shared import _check_and_create_slot_detail, get_tide_data_for_date_window
+    from .ecm_scheduler_data import SCHEDULED_JOBS, ECM_TRUCKS
+    from .ecm_scheduler_logic import get_ramp_details
+
+    # Create a search order, starting from the requested date and moving outwards.
+    search_order = _generate_day_search_order(requested_date, search_window_days, search_window_days)
+
+    for check_date in search_order:
+        # Check if a crane is already scheduled at this ramp on this date
+        ramp_is_busy = any(
+            (job.pickup_ramp_id == ramp_obj.ramp_id or job.dropoff_ramp_id == ramp_obj.ramp_id) and 
+            job.scheduled_start_datetime.date() == check_date
+            for job in SCHEDULED_JOBS if job.assigned_crane_truck_id == 'S17'
+        )
+
+        # Check if the date is a valid crane day for this ramp based on tides
+        if not ramp_is_busy:
+            tide_data = get_tide_data_for_date_window(ramp_obj, check_date, check_date)
+            candidate_high_tides = [t for t in tide_data.get(check_date, []) if t.get('type') == 'H' and 10 <= t['time'].hour < 14]
+            
+            if candidate_high_tides:
+                # We found a suitable date and time! Create the new slot.
+                primary_high_tide = sorted(candidate_high_tides, key=lambda t: abs(t['time'].hour - 12))[0]
+                
+                new_slot_params = {
+                    'date': check_date,
+                    'time': primary_high_tide['time'],
+                    'crane_day_id': 'NEW_CRANE_DAY', # Use a unique ID to signify a new crane day
+                    'truck_id': 'S17',
+                    'ramp_id': ramp_obj.ramp_id,
+                    'service_type': service_type,
+                    'is_new_crane_day': True,
+                    'high_tide_times': [t['time'] for t in candidate_high_tides]
+                }
+                
+                # Check if this new slot is actually viable
+                new_slot = _check_and_create_slot_detail(
+                    check_date,
+                    'S17',
+                    ramp_obj,
+                    customer,
+                    boat,
+                    trucks,
+                    duration,
+                    S17_duration,
+                    service_type,
+                    start_time=primary_high_tide['time']
+                )
+
+                if new_slot:
+                    return new_slot
+
+    return None # If no suitable new slot is found within the search window.
+    
 def _generate_day_search_order(start_date, look_back, look_forward):
     """Generates a list of dates to check, starting from the center and expanding outwards."""
     search_order = [start_date]
@@ -1547,6 +1619,8 @@ def get_S17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks
             continue
         if scheduled_job.scheduled_date not in date_range:
             continue
+        
+        return None
 
         # Found match, attempt grouping
         check_date = scheduled_job.scheduled_date
