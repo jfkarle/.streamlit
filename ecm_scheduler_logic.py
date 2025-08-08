@@ -1495,28 +1495,20 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
         service_type = original_request['service_type']
         selected_ramp_id = selected_slot.get('ramp_id')
         
-        # --- ADD THESE DEBUG LINES ---
-        st.info(f"DEBUG: Ramp ID from selected slot = {selected_ramp_id}")
-        st.info(f"DEBUG: Crane needed from selected slot = {selected_slot.get('S17_needed')}")
-        # --- END OF DEBUG LINES ---
-        
         pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
         
         if service_type == "Launch":
             pickup_addr = boat.storage_address
             dropoff_rid = selected_ramp_id or boat.preferred_ramp_id
-            # Safety check to prevent crash if ramp is not found
             dropoff_ramp_obj = get_ramp_details(dropoff_rid)
             dropoff_addr = dropoff_ramp_obj.ramp_name if dropoff_ramp_obj else ""
             
         elif service_type == "Haul":
             dropoff_addr = boat.storage_address
             pickup_rid = selected_ramp_id or boat.preferred_ramp_id
-            # Safety check to prevent crash if ramp is not found
             pickup_ramp_obj = get_ramp_details(pickup_rid)
             pickup_addr = pickup_ramp_obj.ramp_name if pickup_ramp_obj else ""
         
-        # Use the precise, pre-calculated start and end times from the selected slot
         start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'], tzinfo=timezone.utc)
         hauler_end_dt = selected_slot['scheduled_end_datetime']
         S17_end_dt    = selected_slot.get('S17_busy_end_datetime')
@@ -1526,14 +1518,14 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
             scheduled_start_datetime=start_dt,
             scheduled_end_datetime=hauler_end_dt,
             assigned_hauling_truck_id=selected_slot['truck_id'],
-            # --- THIS IS THE CORRECTED LINE ---
             assigned_crane_truck_id="S17" if selected_slot.get('S17_needed') else None,
             S17_busy_end_datetime=S17_end_dt,
             pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
             job_status="Scheduled", pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
         )
         
-        SCHEDULED_JOBS.append(new_job)
+        # The line "SCHEDULED_JOBS.append(new_job)" has been removed.
+        # The job will now only be added to the list after it's loaded from the database.
         save_job(new_job)
         
         if parked_job_to_remove and parked_job_to_remove in PARKED_JOBS:
