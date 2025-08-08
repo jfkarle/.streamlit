@@ -707,27 +707,34 @@ def show_scheduler_page():
             col.markdown(f"**{field}**")
         st.divider()
 
-        # --- Loop through slots and display them in self-contained rows ---
+### SLOT SELECTION UI ###
+
+        # --- Loop through slots and display them in a structured, multi-column card ---
         for slot in found[page*per_page:(page+1)*per_page]:
             with st.container(border=True):
-                row_cols = st.columns((3, 2, 2, 1, 2))
+                # Create three columns for logical grouping: Where/When, Details, and Resources
+                col1, col2, col3 = st.columns((2, 3, 2))
 
-                # Column 1: Date & Time
-                row_cols[0].write(slot.start_datetime.strftime("%b %d, %Y at %I:%M %p"))
+                # --- Column 1: Where & When ---
+                with col1:
+                    st.markdown(f"**⚓ Ramp**<br>{slot.ramp_name}", unsafe_allow_html=True)
+                    st.markdown(f"**🗓️ Date & Time**<br>{slot.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
 
-                # Column 2: Ramp
-                row_cols[1].write(slot.ramp_name)
+                # --- Column 2: Technical Details ---
+                with col2:
+                    draft_str = f"{slot.raw_data.get('boat_draft', 0):.1f}'"
+                    st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
+                    
+                    tide_rule = slot.raw_data.get('tide_rule_concise', 'N/A')
+                    st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
 
-                # Column 3: Tide Info
-                tide_times = slot.raw_data.get('high_tide_times', [])
-                primary_tide = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
-                row_cols[2].write(ecm.format_time_for_display(primary_tide) if primary_tide else "N/A")
+                # --- Column 3: Resources & Action ---
+                with col3:
+                    st.markdown(f"**🚚 Truck**<br>{slot.truck_name}", unsafe_allow_html=True)
 
-                # Column 4: Truck
-                row_cols[3].write(slot.truck_name)
-
-                # Column 5: Select Button
-                with row_cols[4]:
+                    crane_needed = "S17 (Required)" if slot.raw_data.get('S17_needed') else "Not Required"
+                    st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
+                    
                     st.button("Select", key=f"sel_{slot.slot_id}", use_container_width=True, on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
             
             st.divider()
