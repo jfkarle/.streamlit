@@ -478,6 +478,8 @@ def save_job(job_to_save):
     except Exception as e:
         st.error(f"Database save error for job {job_id or '(new)'}")
         st.exception(e)
+
+
 def update_truck_schedule(truck_name, new_hours_dict):
     """Deletes all existing schedule entries for a truck and inserts the new ones."""
     try:
