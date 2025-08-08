@@ -829,37 +829,41 @@ def show_reporting_page():
     with tab1:
         st.subheader("Scheduled Jobs Overview")
         if ecm.SCHEDULED_JOBS:
+            # Create a map to look up truck names from IDs, ensuring keys are strings
             id_to_name_map = {str(t.truck_id): t.truck_name for t in ecm.ECM_TRUCKS.values()}
 
-            # MODIFIED: Added "Ramp" and adjusted column widths for 7 columns
+            # Set up 7 columns for the header
             cols = st.columns((2, 1, 2, 2, 1, 1, 3))
             fields = ["Date/Time", "Service", "Customer", "Ramp", "Haul Truck", "Crane", "Actions"]
             for col, field in zip(cols, fields):
                 col.markdown(f"**{field}**")
             st.markdown("---")
 
+            # Sort jobs by date to display them chronologically
             sorted_jobs = sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max.replace(tzinfo=datetime.timezone.utc))
+            
             for j in sorted_jobs:
                 customer = ecm.get_customer_details(j.customer_id)
                 if not customer:
-                    continue # SAFETY CHECK
+                    continue # Safety check
 
-                # MODIFIED: Adjusted for 7 columns
+                # Create 7 columns for each row of job data
                 cols = st.columns((2, 1, 2, 2, 1, 1, 3))
                 
                 cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p") if j.scheduled_start_datetime else "No Date Set")
                 cols[1].write(j.service_type)
                 cols[2].write(customer.customer_name)
                 
-                # ADDED: Find and display the ramp name for the job
+                # Find and display the ramp name for the job
                 ramp_id = j.dropoff_ramp_id or j.pickup_ramp_id
                 ramp_name = ecm.get_ramp_details(ramp_id).ramp_name if ramp_id and ecm.get_ramp_details(ramp_id) else "—"
                 cols[3].write(ramp_name)
 
-                # MODIFIED: Fixed truck/crane name lookup by ensuring data types match
+                # Look up and display truck/crane names, casting IDs to strings for safety
                 cols[4].write(id_to_name_map.get(str(j.assigned_hauling_truck_id), "—"))
                 cols[5].write(id_to_name_map.get(str(j.assigned_crane_truck_id), "—"))
 
+                # Display the action buttons
                 with cols[6]:
                     if st.session_state.get('job_to_cancel') == j.job_id:
                         st.warning("Are you sure?")
@@ -876,13 +880,12 @@ def show_reporting_page():
     
     with tab2:
         st.subheader("Crane Day Candidate Calendar")
-        st.info("Note: This calendar is not yet populated with data.")
-        # The logic below is safe but will show nothing until CANDIDATE_CRANE_DAYS is populated
-        ramp_options = list(ecm.CANDIDATE_CRANE_DAYS.keys())
+        st.info("This calendar shows potential days with ideal tides for crane operations.")
+        ramp_options = {ramp_id: ramp.ramp_name for ramp_id, ramp in ecm.CANDIDATE_CRANE_DAYS.items() if ecm.CANDIDATE_CRANE_DAYS.get(ramp_id)}
         if ramp_options:
-            ramp = st.selectbox("Select a ramp:", ramp_options, key="cal_ramp_sel")
-            if ramp and ecm.CANDIDATE_CRANE_DAYS.get(ramp):
-                display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp])
+            ramp_id = st.selectbox("Select a ramp:", ramp_options.keys(), format_func=lambda x: ramp_options[x], key="cal_ramp_sel")
+            if ramp_id and ecm.CANDIDATE_CRANE_DAYS.get(ramp_id):
+                display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp_id])
             else:
                 st.write("No crane day data for this ramp.")
         else:
@@ -952,7 +955,6 @@ def show_reporting_page():
                 customer = ecm.get_customer_details(job.customer_id)
                 boat = ecm.get_boat_details(job.boat_id)
                 
-                # --- THIS IS THE CORRECTED PART ---
                 if not customer or not boat:
                     continue # SAFETY CHECK: Skip this job if customer or boat data is missing
 
