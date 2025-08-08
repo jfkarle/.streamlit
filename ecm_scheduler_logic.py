@@ -291,10 +291,19 @@ def load_all_data_from_sheets():
         conn = get_db_connection()
 
         # --- Jobs ---
-        jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
-        
+        # MODIFIED: Explicitly list all columns in the select query to bypass any potential schema caching issues.
+        query_columns = (
+            "job_id, customer_id, boat_id, service_type, "
+            "scheduled_start_datetime, scheduled_end_datetime, "
+            "assigned_hauling_truck_id, assigned_crane_truck_id, "
+            "S17_busy_end_datetime, pickup_ramp_id, dropoff_ramp_id, "
+            "pickup_street_address, dropoff_street_address, job_status, notes, "
+            "pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude"
+        )
+        jobs_resp = execute_query(conn.table("jobs").select(query_columns), ttl=0)
+
         if isinstance(jobs_resp.data, list):
-            # MODIFIED: Removed the date filter to load ALL jobs that have a start date
+            # Load all jobs that have a start date
             all_jobs = [Job(**row) for row in jobs_resp.data if row.get('scheduled_start_datetime')]
         else:
             print(f"WARNING: jobs_resp.data was not a list: {jobs_resp.data}")
@@ -383,10 +392,9 @@ def load_all_data_from_sheets():
 
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
-        
+
     except Exception as e:
         st.error(f"Error loading data: {e}")
-        # Re-raise the exception to see the full traceback in the logs
         raise
         
 def save_job(job_to_save):
