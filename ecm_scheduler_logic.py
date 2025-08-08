@@ -1306,8 +1306,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                             continue
                     
                     all_found_slots.append({
-                        'customer_id': customer.customer_id, # <-- ADDED THIS LINE
-                        'boat_id': boat.boat_id,             # <-- ADDED THIS LINE
+                        'customer_id': customer.customer_id,
+                        'boat_id': boat.boat_id,
+                        'service_type': service_type, # <-- THIS IS THE FIX
                         'date': check_date,
                         'time': aware_start_dt.time(),
                         'truck_id': hauler.truck_id,
