@@ -383,62 +383,10 @@ def load_all_data_from_sheets():
 
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
-
-        # --- NEW: PROACTIVELY GEOCODE COMMON LOCATIONS ---
-        DEBUG_MESSAGES.append("DEBUG: Pre-geocoding common locations...")
-        _ = get_location_coords(address=YARD_ADDRESS)
-        for ramp_id, ramp_obj in ECM_RAMPS.items():
-            _ = get_location_coords(
-                ramp_id=ramp_id,
-                initial_latitude=ramp_obj.latitude,
-                initial_longitude=ramp_obj.longitude
-            )
-        for boat_id, boat_obj in LOADED_BOATS.items():
-            if boat_obj.storage_address:
-                _ = get_location_coords(
-                    address=boat_obj.storage_address,
-                    boat_id=boat_obj.boat_id,
-                    initial_latitude=boat_obj.storage_latitude,
-                    initial_longitude=boat_obj.storage_longitude
-                )
-        for job in all_jobs:
-            if job.pickup_street_address:
-                _ = get_location_coords(
-                    address=job.pickup_street_address,
-                    job_id=job.job_id,
-                    job_type='pickup',
-                    initial_latitude=job.pickup_latitude,
-                    initial_longitude=job.pickup_longitude
-                )
-            if job.dropoff_street_address:
-                _ = get_location_coords(
-                    address=job.dropoff_street_address,
-                    job_id=job.job_id,
-                    job_type='dropoff',
-                    initial_latitude=job.dropoff_latitude,
-                    initial_longitude=job.dropoff_longitude
-                )
-        DEBUG_MESSAGES.append("DEBUG: Pre-geocoding complete.")
-
-        # --- BUILD TRUE CRANE-DAY CALENDAR ---
-        CANDIDATE_CRANE_DAYS = generate_crane_day_candidates(
-            look_ahead_days=60,
-            tide_start_hour=10,
-            tide_end_hour=14
-        )
-        DEBUG_MESSAGES.append(
-            f"DEBUG: Populated CANDIDATE_CRANE_DAYS with "
-            f"{sum(len(v) for v in CANDIDATE_CRANE_DAYS.values())} entries"
-        )
-
-        st.toast(
-            f"Loaded data for {len(ECM_TRUCKS)} trucks, "
-            f"{len(ECM_RAMPS)} ramps, {len(LOADED_CUSTOMERS)} customers.",
-            icon="✅"
-        )
-
+        
     except Exception as e:
         st.error(f"Error loading data: {e}")
+        # Re-raise the exception to see the full traceback in the logs
         raise
         
 def save_job(job_to_save):
