@@ -722,7 +722,12 @@ def show_scheduler_page():
 
                 # --- Column 2: Technical Details ---
                 with col2:
-                    draft_str = f"{slot.raw_data.get('boat_draft', 0):.1f}'"
+                    # THIS BLOCK IS NOW CORRECTED TO HANDLE MISSING DRAFT VALUES
+                    draft_value = slot.raw_data.get('boat_draft')
+                    if isinstance(draft_value, (int, float)):
+                        draft_str = f"{draft_value:.1f}'"
+                    else:
+                        draft_str = "N/A"
                     st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
                     
                     tide_rule = slot.raw_data.get('tide_rule_concise', 'N/A')
