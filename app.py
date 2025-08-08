@@ -700,13 +700,6 @@ def show_scheduler_page():
             cols[3].write(f"{page*per_page+1}–{min((page+1)*per_page, total)} of {total}")
         st.markdown("---")
         
-        # --- Create a header for our table ---
-        header_cols = st.columns((3, 2, 2, 1, 2))
-        header_fields = ["Date & Time", "Ramp", "Key High Tide", "Truck", ""] # Hide "Action" header
-        for col, field in zip(header_cols, header_fields):
-            col.markdown(f"**{field}**")
-        st.divider()
-
 ### SLOT SELECTION UI ###
 
         # --- Loop through slots and display them in a structured, multi-column card ---
@@ -722,16 +715,21 @@ def show_scheduler_page():
 
                 # --- Column 2: Technical Details ---
                 with col2:
-                    # THIS BLOCK IS NOW CORRECTED TO HANDLE MISSING DRAFT VALUES
+                    # Safely display the boat's draft
                     draft_value = slot.raw_data.get('boat_draft')
-                    if isinstance(draft_value, (int, float)):
-                        draft_str = f"{draft_value:.1f}'"
-                    else:
-                        draft_str = "N/A"
+                    draft_str = f"{draft_value:.1f}'" if isinstance(draft_value, (int, float)) else "N/A"
                     st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
                     
+                    # Display the tide rule
                     tide_rule = slot.raw_data.get('tide_rule_concise', 'N/A')
                     st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
+                    
+                    # --- THIS IS THE NEWLY ADDED CODE ---
+                    # Find and display the key high tide (closest to noon)
+                    tide_times = slot.raw_data.get('high_tide_times', [])
+                    primary_tide = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
+                    primary_tide_str = ecm.format_time_for_display(primary_tide) if primary_tide else "N/A"
+                    st.markdown(f"**🔑 Key High Tide**<br>{primary_tide_str}", unsafe_allow_html=True)
 
                 # --- Column 3: Resources & Action ---
                 with col3:
