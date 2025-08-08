@@ -701,32 +701,34 @@ def show_scheduler_page():
         st.markdown("---")
         
         # --- Create a header for our table ---
-        header_cols = st.columns((3, 2, 2, 1, 1))
-        header_fields = ["Date & Time", "Ramp", "Key High Tide", "Truck", "Action"]
+        header_cols = st.columns((3, 2, 2, 1, 2))
+        header_fields = ["Date & Time", "Ramp", "Key High Tide", "Truck", ""] # Hide "Action" header
         for col, field in zip(header_cols, header_fields):
             col.markdown(f"**{field}**")
         st.divider()
 
-        # --- Loop through slots and display them in rows ---
+        # --- Loop through slots and display them in self-contained rows ---
         for slot in found[page*per_page:(page+1)*per_page]:
-            row_cols = st.columns((3, 2, 2, 1, 1))
-            
-            # Column 1: Date & Time
-            row_cols[0].write(slot.start_datetime.strftime("%b %d, %Y at %I:%M %p"))
-            
-            # Column 2: Ramp
-            row_cols[1].write(slot.ramp_name)
-            
-            # Column 3: Tide Info
-            tide_times = slot.raw_data.get('high_tide_times', [])
-            primary_tide = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
-            row_cols[2].write(ecm.format_time_for_display(primary_tide) if primary_tide else "N/A")
+            with st.container(border=True):
+                row_cols = st.columns((3, 2, 2, 1, 2))
 
-            # Column 4: Truck
-            row_cols[3].write(slot.truck_name)
+                # Column 1: Date & Time
+                row_cols[0].write(slot.start_datetime.strftime("%b %d, %Y at %I:%M %p"))
 
-            # Column 5: Select Button
-            row_cols[4].button("Select", key=f"sel_{slot.slot_id}", use_container_width=True, on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
+                # Column 2: Ramp
+                row_cols[1].write(slot.ramp_name)
+
+                # Column 3: Tide Info
+                tide_times = slot.raw_data.get('high_tide_times', [])
+                primary_tide = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
+                row_cols[2].write(ecm.format_time_for_display(primary_tide) if primary_tide else "N/A")
+
+                # Column 4: Truck
+                row_cols[3].write(slot.truck_name)
+
+                # Column 5: Select Button
+                with row_cols[4]:
+                    st.button("Select", key=f"sel_{slot.slot_id}", use_container_width=True, on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
             
             st.divider()
                     
