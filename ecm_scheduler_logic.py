@@ -267,14 +267,20 @@ def generate_crane_day_candidates(
     return candidates
 
 def job_is_within_date_range(job_row, current_date, days_to_consider=21):
-    job_date_str = job_row.get('scheduled_date')
+    # CORRECTED to look for 'scheduled_start_datetime' instead of 'scheduled_date'
+    job_date_str = job_row.get('scheduled_start_datetime')
     if not job_date_str:
         return False
     
     try:
-        job_date = datetime.datetime.fromisoformat(job_date_str)
+        # Parse the ISO format string from the database
+        job_date = datetime.datetime.fromisoformat(job_date_str.replace(" ", "T"))
     except (ValueError, TypeError):
         return False
+
+    # Ensure the current date is timezone-aware for a correct comparison
+    if current_date.tzinfo is None:
+        current_date = current_date.replace(tzinfo=timezone.utc)
 
     return (current_date - timedelta(days=days_to_consider)) <= job_date <= (current_date + timedelta(days=days_to_consider))
     
@@ -288,8 +294,8 @@ def load_all_data_from_sheets():
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
         
         if isinstance(jobs_resp.data, list):
-            # ✅ CORRECTED CODE: Check for 'scheduled_date' here before creating the Job object.
-            all_jobs = [Job(**row) for row in jobs_resp.data if 'scheduled_date' in row and job_is_within_date_range(row, datetime.datetime.now())]
+            # CORRECTED to filter by 'scheduled_start_datetime'
+            all_jobs = [Job(**row) for row in jobs_resp.data if job_is_within_date_range(row, datetime.datetime.now())]
         else:
             print(f"WARNING: jobs_resp.data was not a list: {jobs_resp.data}")
             all_jobs = []
