@@ -632,10 +632,18 @@ def show_scheduler_page():
         req_date = st.sidebar.date_input("Requested Date:", min_value=None)
         override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
 
-        # --- THIS IS THE REPLACED RAMP SELECTION LOGIC ---
-        # First get the list of ramps that are compatible with the boat type
-        # Ensure it's a list to safely use the .index() method
         available_ramp_ids = list(ecm.find_available_ramps_for_boat(boat, ecm.ECM_RAMPS))
+
+        # --- NEW: Check for invalid preferred ramp and display a warning ---
+        if boat.preferred_ramp_id and (boat.preferred_ramp_id not in available_ramp_ids):
+            preferred_ramp_obj = ecm.ECM_RAMPS.get(boat.preferred_ramp_id)
+            if preferred_ramp_obj:
+                st.sidebar.warning(
+                    f"Invalid Preference: The customer's preferred ramp "
+                    f"({preferred_ramp_obj.ramp_name}) cannot service this "
+                    f"boat type ({boat.boat_type}). Please choose a valid ramp."
+                )
+        # --- END NEW BLOCK ---
 
         # Determine the default index for the selectbox
         default_ramp_index = 0
@@ -646,10 +654,9 @@ def show_scheduler_page():
         selected_ramp_id = st.sidebar.selectbox(
             "Ramp:",
             options=available_ramp_ids,
-            index=default_ramp_index,  # This sets the default value
+            index=default_ramp_index,
             format_func=lambda ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name
         )
-        # --- END OF REPLACED SECTION ---
 
         # Initialize slots to an empty list before the button check to prevent UnboundLocalError
         slot_dicts = []
@@ -658,8 +665,6 @@ def show_scheduler_page():
         forced = False
 
         if st.sidebar.button("Find Best Slot"):
-            # Reverted to the general-purpose slot finding function because the
-            # new crane-specific logic was incomplete and causing the search to fail.
             slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
                 customer_id=customer.customer_id,
                 boat_id=boat.boat_id,
@@ -700,8 +705,6 @@ def show_scheduler_page():
             cols[3].write(f"{page*per_page+1}–{min((page+1)*per_page, total)} of {total}")
         st.markdown("---")
         
-### SLOT SELECTION UI ###
-
         # --- Loop through slots and display them in a structured, multi-column card ---
         for slot in found[page*per_page:(page+1)*per_page]:
             with st.container(border=True):
@@ -724,7 +727,6 @@ def show_scheduler_page():
                     tide_rule = slot.raw_data.get('tide_rule_concise', 'N/A')
                     st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
                     
-                    # --- THIS IS THE NEWLY ADDED CODE ---
                     # Find and display the key high tide (closest to noon)
                     tide_times = slot.raw_data.get('high_tide_times', [])
                     primary_tide = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
@@ -740,8 +742,6 @@ def show_scheduler_page():
                     
                     st.button("Select", key=f"sel_{slot.slot_id}", use_container_width=True, on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
             
-            st.divider()
-                    
     # --- PREVIEW & CONFIRM SELECTION ---
     if st.session_state.get('selected_slot'):
         slot = st.session_state.selected_slot
@@ -753,7 +753,7 @@ def show_scheduler_page():
             new_id, message = ecm.confirm_and_schedule_job(
                 st.session_state.current_job_request,
                 slot,
-                parked_job_to_remove=parked_to_remove
+                parked_job_to_remove=parked_job_to_remove
             )
             if new_id:
                 st.session_state.confirmation_message = message
