@@ -598,6 +598,18 @@ def show_scheduler_page():
         st.sidebar.text_input("Selected Customer:", value=customer.customer_name, disabled=True)
         st.sidebar.button("Clear Selection", on_click=clear_selection, use_container_width=True)
         
+        boats_for_customer = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id]
+        
+        if not boats_for_customer:
+            st.sidebar.error(f"No boats found for {customer.customer_name}.")
+        elif len(boats_for_customer) == 1:
+            st.session_state.selected_boat_id = boats_for_customer[0].boat_id
+        else:
+            boat_opts = {f"{b.boat_length}' {b.boat_type} (ID: {b.boat_id})": b.boat_id for b in boats_for_customer}
+            opts_with_prompt = {"-- Select a boat --": None, **boat_opts}
+            choice = st.sidebar.selectbox("Select Boat:", list(opts_with_prompt.keys()))
+            st.session_state.selected_boat_id = opts_with_prompt[choice]
+
         # Show details of the boat currently selected for scheduling
         if st.session_state.get('selected_boat_id'):
             boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
@@ -612,19 +624,7 @@ def show_scheduler_page():
                 ramp_obj = ecm.ECM_RAMPS.get(boat.preferred_ramp_id)
                 ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
                 st.sidebar.markdown(f"- **Preferred Ramp:** {ramp_name}")
-
-        boats_for_customer = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id]
-        
-        if not boats_for_customer:
-            st.sidebar.error(f"No boats found for {customer.customer_name}.")
-        elif len(boats_for_customer) == 1:
-            st.session_state.selected_boat_id = boats_for_customer[0].boat_id
-        else:
-            boat_opts = {f"{b.boat_length}' {b.boat_type} (ID: {b.boat_id})": b.boat_id for b in boats_for_customer}
-            opts_with_prompt = {"-- Select a boat --": None, **boat_opts}
-            choice = st.sidebar.selectbox("Select Boat:", list(opts_with_prompt.keys()))
-            st.session_state.selected_boat_id = opts_with_prompt[choice]
-
+    
     # SCHEDULING FORM: once customer + boat chosen
     if customer and st.session_state.get('selected_boat_id'):
         boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
