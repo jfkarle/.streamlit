@@ -463,7 +463,9 @@ def save_job(job_to_save):
             # INSERT new record
             insert_data = {k: v for k, v in payload.items() if k != 'job_id'}
             
-            # --- THE TWO PROBLEMATIC .pop() LINES HAVE BEEN REMOVED ---
+            # CORRECTED: Remove the 'S17_busy_end_datetime' key before insert,
+            # as it does not exist as a column in the database.
+            insert_data.pop('S17_busy_end_datetime', None)
 
             # tell PostgREST to return the newly created row(s)
             response = (
