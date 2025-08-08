@@ -597,22 +597,24 @@ def show_scheduler_page():
 
         st.sidebar.text_input("Selected Customer:", value=customer.customer_name, disabled=True)
         st.sidebar.button("Clear Selection", on_click=clear_selection, use_container_width=True)
+        
+        # Show details of the boat currently selected for scheduling
+        if st.session_state.get('selected_boat_id'):
+            boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
+            if boat:
+                st.sidebar.markdown("---")
+                st.sidebar.markdown("**Boat Details:**")
+                st.sidebar.markdown(f"- **Type:** {boat.boat_type or 'N/A'}")
+                st.sidebar.markdown(f"- **Length:** {boat.boat_length or 'N/A'}'")
+                st.sidebar.markdown(f"- **Draft:** {boat.draft_ft or 'N/A'}'")
 
-        # --- INSERT THE FOLLOWING CODE BLOCK ---
-# Show details of the boat currently selected for scheduling
-if st.session_state.get('selected_boat_id'):
-    boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
-    if boat:
-        st.sidebar.markdown("---")
-        st.sidebar.markdown(f"**Boat Details:**")
-        st.sidebar.markdown(f" - **Name:** {boat.get('boat_name', 'N/A')}")
-        st.sidebar.markdown(f" - **Type:** {boat.get('boat_type', 'N/A')}")
-        st.sidebar.markdown(f" - **Length:** {boat.get('boat_length', 'N/A')}'")
-        st.sidebar.markdown(f" - **Draft:** {boat.get('boat_draft', 'N/A')}'")
-        st.sidebar.markdown(f" - **Preferred Ramp:** {ecm.ECM_RAMPS.get(boat.get('preferred_ramp_id'), 'N/A').ramp_name}")
-# --- END OF CODE BLOCK ---
+                # Safely get the ramp name to prevent errors
+                ramp_obj = ecm.ECM_RAMPS.get(boat.preferred_ramp_id)
+                ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
+                st.sidebar.markdown(f"- **Preferred Ramp:** {ramp_name}")
 
         boats_for_customer = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id]
+        
         if not boats_for_customer:
             st.sidebar.error(f"No boats found for {customer.customer_name}.")
         elif len(boats_for_customer) == 1:
@@ -647,48 +649,19 @@ if st.session_state.get('selected_boat_id'):
         forced = False
 
         if st.sidebar.button("Find Best Slot"):
-            # This is the new, combined logic. It replaces your old call.
-
-            # First, attempt to find a grouped slot.
-            grouped_slot_dict = ecm.get_S17_crane_grouping_slot(
-                boat=boat,
-                customer=customer,
-                ramp_obj=ecm.get_ramp_details(selected_ramp_id), # Get the ramp object
-                requested_date=req_date,
-                trucks=['S17'],
-                duration=1,
-                S17_duration=2,
-                service_type=service_type
+            # Reverted to the general-purpose slot finding function because the
+            # new crane-specific logic was incomplete and causing the search to fail.
+            slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
+                customer_id=customer.customer_id,
+                boat_id=boat.boat_id,
+                service_type=service_type,
+                requested_date_str=req_date.strftime("%Y-%m-%d"),
+                selected_ramp_id=selected_ramp_id,
+                num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
+                manager_override=override
             )
-            
-            slot_dicts = []
-            if grouped_slot_dict:
-                slot_dicts = [grouped_slot_dict]
-                msg = "Found a suggested grouped slot."
-                warnings = []
-                forced = False
-            else:
-                # If no grouped slot was found, fall back to creating a new crane day.
-                new_slot_dict = ecm.find_new_crane_day_slot(
-                    boat=boat,
-                    customer=customer,
-                    ramp_obj=ecm.get_ramp_details(selected_ramp_id),
-                    requested_date=req_date,
-                    trucks=['S17'],
-                    duration=1,
-                    S17_duration=2,
-                    service_type=service_type
-                )
-                if new_slot_dict:
-                    slot_dicts = [new_slot_dict]
-                    msg = "No grouped slot found, created a new crane day slot."
-                    warnings = []
-                    forced = True # A new slot is a type of forced solution
-                else:
-                    msg = "Could not find a suitable slot."
-                    warnings = ["No existing grouped slots and no suitable days to create a new crane day."]
-                    forced = False
-            
+
+            # Process the results and update the session state
             st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
             st.session_state.failure_reasons = warnings
             st.session_state.was_forced_search = forced
@@ -702,9 +675,6 @@ if st.session_state.get('selected_boat_id'):
             st.session_state.search_requested_date = req_date
             st.session_state.info_message = msg
             st.session_state.conflict_warning_details = None
-        
-        if st.session_state.found_slots:
-            st.session_state.slot_page_index = 0
 
     # --- SLOT DISPLAY AND PAGINATION ---
     if st.session_state.get('found_slots') and not st.session_state.get('selected_slot'):
