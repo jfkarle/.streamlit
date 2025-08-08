@@ -632,15 +632,24 @@ def show_scheduler_page():
         req_date = st.sidebar.date_input("Requested Date:", min_value=None)
         override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
 
+        # --- THIS IS THE REPLACED RAMP SELECTION LOGIC ---
         # First get the list of ramps that are compatible with the boat type
-        ramps_for_boat = ecm.find_available_ramps_for_boat(boat, ecm.ECM_RAMPS)
-        
-        # Then, use that list to populate the selectbox
+        # Ensure it's a list to safely use the .index() method
+        available_ramp_ids = list(ecm.find_available_ramps_for_boat(boat, ecm.ECM_RAMPS))
+
+        # Determine the default index for the selectbox
+        default_ramp_index = 0
+        if boat.preferred_ramp_id and boat.preferred_ramp_id in available_ramp_ids:
+            default_ramp_index = available_ramp_ids.index(boat.preferred_ramp_id)
+
+        # Use that list and default index to populate the selectbox
         selected_ramp_id = st.sidebar.selectbox(
-            "Ramp:", 
-            options=ramps_for_boat, 
-            format_func=lambda x: ecm.ECM_RAMPS[x].ramp_name
+            "Ramp:",
+            options=available_ramp_ids,
+            index=default_ramp_index,  # This sets the default value
+            format_func=lambda ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name
         )
+        # --- END OF REPLACED SECTION ---
 
         # Initialize slots to an empty list before the button check to prevent UnboundLocalError
         slot_dicts = []
