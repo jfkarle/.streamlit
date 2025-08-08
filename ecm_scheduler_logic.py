@@ -1316,6 +1316,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         'ramp_id': all_settings['selected_ramp_id'],
                         'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
                         'high_tide_times': window.get('high_tide_times', []),
+                        'boat_draft': boat.draft_ft, # <-- THIS IS THE NEWLY ADDED LINE
                         'debug_trace': {}
                     })
                     current_slot_dt += timedelta(minutes=15)
