@@ -1550,6 +1550,11 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
         service_type = original_request['service_type']
         selected_ramp_id = selected_slot.get('ramp_id')
         
+        # --- ADD THESE DEBUG LINES ---
+        st.info(f"DEBUG: Ramp ID from selected slot = {selected_ramp_id}")
+        st.info(f"DEBUG: Crane needed from selected slot = {selected_slot.get('S17_needed')}")
+        # --- END OF DEBUG LINES ---
+        
         pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
         
         if service_type == "Launch":
