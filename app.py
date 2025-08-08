@@ -647,31 +647,61 @@ if st.session_state.get('selected_boat_id'):
         forced = False
 
         if st.sidebar.button("Find Best Slot"):
-            slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
-                customer_id=customer.customer_id,
-                boat_id=boat.boat_id,
-                service_type=service_type,
-                requested_date_str=req_date.strftime("%Y-%m-%d"),
-                selected_ramp_id=selected_ramp_id, # This is the corrected line
-                force_preferred_truck=not override,
-                relax_ramp=False,
-                ignore_forced_search=override or st.session_state.get('conflict_override_acknowledged', False)
-            )
+            # This is the new, combined logic. It replaces your old call.
 
-        # Now this line will always work
-        st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
-        st.session_state.failure_reasons = warnings
-        st.session_state.was_forced_search = forced
-        st.session_state.current_job_request = {
-            'customer_id': customer.customer_id,
-            'boat_id': boat.boat_id,
-            'service_type': service_type,
-            'requested_date_str': req_date.strftime("%Y-%m-%d"),
-            'ignore_forced_search': override
-        }
-        st.session_state.search_requested_date = req_date
-        st.session_state.info_message = msg
-        st.session_state.conflict_warning_details = None
+            # First, attempt to find a grouped slot.
+            grouped_slot_dict = ecm.get_S17_crane_grouping_slot(
+                boat=boat,
+                customer=customer,
+                ramp_obj=ecm.get_ramp_details(selected_ramp_id), # Get the ramp object
+                requested_date=req_date,
+                trucks=['S17'],
+                duration=1,
+                S17_duration=2,
+                service_type=service_type
+            )
+            
+            slot_dicts = []
+            if grouped_slot_dict:
+                slot_dicts = [grouped_slot_dict]
+                msg = "Found a suggested grouped slot."
+                warnings = []
+                forced = False
+            else:
+                # If no grouped slot was found, fall back to creating a new crane day.
+                new_slot_dict = ecm.find_new_crane_day_slot(
+                    boat=boat,
+                    customer=customer,
+                    ramp_obj=ecm.get_ramp_details(selected_ramp_id),
+                    requested_date=req_date,
+                    trucks=['S17'],
+                    duration=1,
+                    S17_duration=2,
+                    service_type=service_type
+                )
+                if new_slot_dict:
+                    slot_dicts = [new_slot_dict]
+                    msg = "No grouped slot found, created a new crane day slot."
+                    warnings = []
+                    forced = True # A new slot is a type of forced solution
+                else:
+                    msg = "Could not find a suitable slot."
+                    warnings = ["No existing grouped slots and no suitable days to create a new crane day."]
+                    forced = False
+            
+            st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
+            st.session_state.failure_reasons = warnings
+            st.session_state.was_forced_search = forced
+            st.session_state.current_job_request = {
+                'customer_id': customer.customer_id,
+                'boat_id': boat.boat_id,
+                'service_type': service_type,
+                'requested_date_str': req_date.strftime("%Y-%m-%d"),
+                'ignore_forced_search': override
+            }
+            st.session_state.search_requested_date = req_date
+            st.session_state.info_message = msg
+            st.session_state.conflict_warning_details = None
         
         if st.session_state.found_slots:
             st.session_state.slot_page_index = 0
