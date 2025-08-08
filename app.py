@@ -634,7 +634,7 @@ def show_scheduler_page():
 
         available_ramp_ids = list(ecm.find_available_ramps_for_boat(boat, ecm.ECM_RAMPS))
 
-        # --- NEW: Check for invalid preferred ramp and display a warning ---
+        # Check for invalid preferred ramp and display a warning
         if boat.preferred_ramp_id and (boat.preferred_ramp_id not in available_ramp_ids):
             preferred_ramp_obj = ecm.ECM_RAMPS.get(boat.preferred_ramp_id)
             if preferred_ramp_obj:
@@ -643,7 +643,6 @@ def show_scheduler_page():
                     f"({preferred_ramp_obj.ramp_name}) cannot service this "
                     f"boat type ({boat.boat_type}). Please choose a valid ramp."
                 )
-        # --- END NEW BLOCK ---
 
         # Determine the default index for the selectbox
         default_ramp_index = 0
@@ -703,7 +702,6 @@ def show_scheduler_page():
         cols[1].button("Next →", on_click=lambda: st.session_state.update(slot_page_index=min(page+1, (total-1)//per_page)))
         if total:
             cols[3].write(f"{page*per_page+1}–{min((page+1)*per_page, total)} of {total}")
-        st.markdown("---")
         
         # --- Loop through slots and display them in a structured, multi-column card ---
         for slot in found[page*per_page:(page+1)*per_page]:
@@ -753,12 +751,17 @@ def show_scheduler_page():
             new_id, message = ecm.confirm_and_schedule_job(
                 st.session_state.current_job_request,
                 slot,
-                parked_job_to_remove=parked_job_to_remove
+                parked_job_to_remove=parked_to_remove
             )
             if new_id:
                 st.session_state.confirmation_message = message
                 svc = st.session_state.current_job_request['service_type']
                 if svc in ["Launch", "Haul"]:
+                    # --- THIS IS THE CORRECTED BLOCK ---
+                    # Re-fetch customer and boat objects using the ID from the confirmed slot
+                    # to ensure they are available in this scope, preventing the NameError.
+                    customer = ecm.get_customer_details(slot.customer_id)
+                    boat = ecm.get_boat_details(slot.boat_id)
                     st.session_state.last_seasonal_job = {
                         'customer_id': customer.customer_id,
                         'boat_id': boat.boat_id,
@@ -769,8 +772,7 @@ def show_scheduler_page():
                             'search_requested_date', 'rebooking_details',
                             'failure_reasons', 'was_forced_search']:
                     st.session_state.pop(key, None)
-
-                st.button("🔄 Schedule Another Job", on_click=schedule_another)
+                st.rerun() # Rerun immediately to show the success message
                 
 def show_reporting_page():
     """
