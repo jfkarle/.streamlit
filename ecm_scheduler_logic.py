@@ -1305,8 +1305,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                             current_slot_dt += timedelta(minutes=15)
                             continue
                     
-                    # Ensure all keys created here match what confirm_and_schedule_job expects
                     all_found_slots.append({
+                        'customer_id': customer.customer_id, # <-- ADDED THIS LINE
+                        'boat_id': boat.boat_id,             # <-- ADDED THIS LINE
                         'date': check_date,
                         'time': aware_start_dt.time(),
                         'truck_id': hauler.truck_id,
@@ -1316,7 +1317,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         'ramp_id': all_settings['selected_ramp_id'],
                         'tide_rule_concise': window.get('tide_rule_concise', 'N/A'),
                         'high_tide_times': window.get('high_tide_times', []),
-                        'boat_draft': boat.draft_ft, # <-- THIS IS THE NEWLY ADDED LINE
+                        'boat_draft': boat.draft_ft,
                         'debug_trace': {}
                     })
                     current_slot_dt += timedelta(minutes=15)
