@@ -294,7 +294,7 @@ def load_all_data_from_sheets():
         jobs_resp = execute_query(conn.table("jobs").select("*"), ttl=0)
         
         if isinstance(jobs_resp.data, list):
-            # --- MODIFIED: Removed the job_is_within_date_range filter to load ALL jobs ---
+            # MODIFIED: Removed the date filter to load ALL jobs that have a start date
             all_jobs = [Job(**row) for row in jobs_resp.data if row.get('scheduled_start_datetime')]
         else:
             print(f"WARNING: jobs_resp.data was not a list: {jobs_resp.data}")
