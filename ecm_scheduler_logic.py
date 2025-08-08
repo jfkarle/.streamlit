@@ -462,9 +462,8 @@ def save_job(job_to_save):
         else:
             # INSERT new record
             insert_data = {k: v for k, v in payload.items() if k != 'job_id'}
-            # remove phantom columns so they don't break the schema
-            insert_data.pop('S17_busy_end_datetime', None)
-            insert_data.pop('hauler_end_dt',            None)
+            
+            # --- THE TWO PROBLEMATIC .pop() LINES HAVE BEEN REMOVED ---
 
             # tell PostgREST to return the newly created row(s)
             response = (
@@ -481,7 +480,6 @@ def save_job(job_to_save):
     except Exception as e:
         st.error(f"Database save error for job {job_id or '(new)'}")
         st.exception(e)
-
 
 def update_truck_schedule(truck_name, new_hours_dict):
     """Deletes all existing schedule entries for a truck and inserts the new ones."""
