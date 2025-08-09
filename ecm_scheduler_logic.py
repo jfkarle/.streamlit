@@ -812,7 +812,6 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
                     tide_dt_obj = datetime.datetime.strptime(datetime_to_parse, "%Y/%m/%d %a %I:%M %p")
                     
                     # This part remains the same
-                    tide_dt_obj = tide_dt_obj.replace(year=begin_date.year)
                     current_date = tide_dt_obj.date()
 
                     if begin_date <= current_date <= end_date:
