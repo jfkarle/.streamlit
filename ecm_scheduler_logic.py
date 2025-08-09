@@ -1544,6 +1544,7 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
         )
         
         save_job(new_job)
+        SCHEDULED_JOBS.append(new_job)
         
         if parked_job_to_remove and parked_job_to_remove in PARKED_JOBS:
             del PARKED_JOBS[parked_job_to_remove]
