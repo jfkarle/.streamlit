@@ -1520,21 +1520,29 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
         
         start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'], tzinfo=timezone.utc)
         hauler_end_dt = selected_slot['scheduled_end_datetime']
-        S17_end_dt    = selected_slot.get('S17_busy_end_datetime')
+        S17_end_dt      = selected_slot.get('S17_busy_end_datetime')
         
+        # --- START: Corrected Logic ---
+        # 1. Find the actual numeric ID for the crane truck named "S17".
+        s17_truck_id = None
+        for truck in ECM_TRUCKS.values():
+            if truck.truck_name == "S17":
+                s17_truck_id = truck.truck_id
+                break
+        # --- END: Corrected Logic ---
+
         new_job = Job(
             customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
             scheduled_start_datetime=start_dt,
             scheduled_end_datetime=hauler_end_dt,
             assigned_hauling_truck_id=selected_slot['truck_id'],
-            assigned_crane_truck_id="S17" if selected_slot.get('S17_needed') else None,
+            # 2. Use the numeric ID variable here instead of the hardcoded text "S17".
+            assigned_crane_truck_id=s17_truck_id if selected_slot.get('S17_needed') else None,
             S17_busy_end_datetime=S17_end_dt,
             pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
             job_status="Scheduled", pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
         )
         
-        # The line "SCHEDULED_JOBS.append(new_job)" has been removed.
-        # The job will now only be added to the list after it's loaded from the database.
         save_job(new_job)
         
         if parked_job_to_remove and parked_job_to_remove in PARKED_JOBS:
