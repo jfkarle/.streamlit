@@ -769,7 +769,6 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
     """
     Parses an annual NOAA tide prediction text file for a specific date range.
     """
-    # --- NEW DEBUG LINE ---
     _log_debug(f"Attempting to parse file: {filepath} for dates {begin_date} to {end_date}")
     grouped_tides = {}
     
@@ -785,15 +784,21 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
                     continue
 
                 try:
+                    # Capture all necessary parts from the line
                     date_str = parts[0]
+                    day_of_week_str = parts[1]
                     time_str = parts[2]
                     am_pm_str = parts[3]
                     height_str = parts[4]
                     type_str = parts[-1]
 
-                    datetime_to_parse = f"{date_str} {time_str} {am_pm_str}"
-                    tide_dt_obj = datetime.datetime.strptime(datetime_to_parse, "%Y/%m/%d %I:%M %p")
+                    # --- FIX 1 of 2: Include the day of the week in the string to be parsed ---
+                    datetime_to_parse = f"{date_str} {day_of_week_str} {time_str} {am_pm_str}"
                     
+                    # --- FIX 2 of 2: Add '%a' to the format to handle "Mon", "Tue", etc. ---
+                    tide_dt_obj = datetime.datetime.strptime(datetime_to_parse, "%Y/%m/%d %a %I:%M %p")
+                    
+                    # This part remains the same
                     tide_dt_obj = tide_dt_obj.replace(year=begin_date.year)
                     current_date = tide_dt_obj.date()
 
@@ -806,7 +811,6 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
                         grouped_tides.setdefault(current_date, []).append(tide_info)
 
                 except (ValueError, IndexError) as e:
-                    # --- MODIFIED DEBUG LINE ---
                     _log_debug(f"--> PARSE ERROR on line: '{line}'. Details: {e}")
                     continue
     except FileNotFoundError:
@@ -814,7 +818,6 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
     except Exception as e:
         _log_debug(f"ERROR: General error reading local tide file {filepath}: {e}")
 
-    # --- NEW DEBUG LINE ---
     _log_debug(f"Finished parsing. Found {len(grouped_tides)} days with valid tides.")
     return grouped_tides
 
