@@ -1314,6 +1314,7 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                     
                     # If we get here, we found a valid slot
                     return {
+                        'boat_id': boat.boat_id,
                         'customer_id': customer_id, # <-- ADD THIS LINE
                         "date": search_date, "time": slot_start_time, "truck_id": truck.truck_id,
                         "ramp_id": ramp_id, "service_type": service_type, "S17_needed": crane_needed,
