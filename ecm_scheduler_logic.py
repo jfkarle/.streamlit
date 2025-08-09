@@ -858,7 +858,7 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
     _log_debug(f"Finished parsing. Found {len(grouped_tides)} days with valid tides.")
     return grouped_tides
 
-_noaa_tides_for_range(station_id, start_date, end_date):
+def fetch_noaa_tides_for_range(station_id, start_date, end_date):
     # Construct local file path
     local_filepath = f"tide_data/{station_id}_annual.txt" # Adjust folder name if different
 
