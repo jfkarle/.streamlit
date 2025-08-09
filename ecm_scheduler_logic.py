@@ -1385,6 +1385,7 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
     return None
 
 # --- REPLACEMENT: The new efficiency-driven slot finding engine ---
+
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, **kwargs):
     """
     Finds available slots based on a 5-point efficiency-first blueprint.
@@ -1392,10 +1393,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
     fetch_scheduled_jobs() # Ensures the schedule is always up-to-date
 
-    # --- ADD THIS DEBUG BLOCK ---
+    # --- DEBUG BLOCK 1: See what jobs are loaded ---
     st.sidebar.write("--- DEBUG: All Scheduled Jobs ---")
     st.sidebar.json([job.__dict__ for job in SCHEDULED_JOBS])
-    # --- END DEBUG BLOCK ---
     
     # --- Validation Block ---
     if not requested_date_str:
@@ -1410,7 +1410,15 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
     _log_debug("Master schedule compiled.")
 
+    # --- DEBUG BLOCK 2: See the conflict schedule that was built ---
+    st.sidebar.write("--- DEBUG: Compiled Truck Schedule ---")
+    st.sidebar.json(compiled_schedule)
+
     boat = get_boat_details(boat_id)
+    # This check prevents a crash if the boat_id is invalid
+    if not boat:
+        return [], f"Could not find details for boat ID: {boat_id}", [], True
+        
     crane_needed = "Sailboat" in boat.boat_type
     
     found_slots = []
@@ -1419,7 +1427,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     _log_debug("PHASE 1: Searching for existing crane jobs at the selected ramp...")
     search_window = [requested_date + timedelta(days=i) for i in range(-7, 8)]
     
-    # MODIFIED LOGIC: Find days where the crane is already at the selected ramp.
     s17_id = get_s17_truck_id()
     active_crane_days_at_ramp = {
         job.scheduled_start_datetime.date()
@@ -1433,7 +1440,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     sorted_active_days = sorted(list(active_crane_days_at_ramp), key=lambda d: abs(d - requested_date))
     
     for day in sorted_active_days:
-        # We no longer need to check if it's an ideal day here, because an active crane day is by definition a good day to add another job.
         _log_debug(f"Found existing crane day. Searching for piggyback slot on: {day}")
         slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id)
         if slot:
@@ -1450,7 +1456,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     search_dates = []
     if crane_needed:
         potential_dates = [d for r, d in IDEAL_CRANE_DAYS if str(r) == str(selected_ramp_id) and d >= requested_date]
-        search_dates = sorted(potential_dates)[:30] # Using 30-day limit
+        search_dates = sorted(potential_dates)[:30]
         _log_debug(f"Crane needed. Searching the next {len(search_dates)} ideal days starting from {requested_date}.")
     else:
         search_dates = [requested_date + timedelta(days=i) for i in range(14)]
@@ -1469,6 +1475,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], "Could not find any available slots within the search window.", [], True
 
 # --- REPLACEMENT: The enhanced testing utility ---
+
 def simulate_job_requests(total_jobs_to_gen=50):
     """
     A smarter simulation utility to test the new efficiency logic.
