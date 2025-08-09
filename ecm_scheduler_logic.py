@@ -331,7 +331,8 @@ def load_all_data_from_sheets():
         ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
         ECM_RAMPS.clear()
         ECM_RAMPS.update({
-            row["ramp_id"]: Ramp(
+            # V-- THIS IS THE FIX --V
+            str(row["ramp_id"]): Ramp(
                 r_id        = row["ramp_id"],
                 name        = row.get("ramp_name"),
                 station     = row.get("noaa_station_id"),
