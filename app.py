@@ -856,7 +856,8 @@ def show_reporting_page():
                 
                 # Find and display the ramp name for the job
                 ramp_id = j.dropoff_ramp_id or j.pickup_ramp_id
-                ramp_name = ecm.get_ramp_details(ramp_id).ramp_name if ramp_id and ecm.get_ramp_details(ramp_id) else "—"
+                # V-- FIX: Convert ramp_id to a string for the lookup --V
+                ramp_name = ecm.get_ramp_details(str(ramp_id)).ramp_name if ramp_id and ecm.get_ramp_details(str(ramp_id)) else "—"
                 cols[3].write(ramp_name)
 
                 # Look up and display truck/crane names, casting IDs to strings for safety
