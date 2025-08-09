@@ -1392,11 +1392,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
     fetch_scheduled_jobs() # Ensures the schedule is always up-to-date
 
-# --- ADD THIS DEBUG BLOCK ---
+    # --- ADD THIS DEBUG BLOCK ---
     st.sidebar.write("--- DEBUG: All Scheduled Jobs ---")
     st.sidebar.json([job.__dict__ for job in SCHEDULED_JOBS])
     # --- END DEBUG BLOCK ---
-
     
     # --- Validation Block ---
     if not requested_date_str:
