@@ -768,9 +768,11 @@ def get_monthly_tides_for_scituate(year, month):
 def _parse_annual_tide_file(filepath, begin_date, end_date):
     """
     Parses an annual NOAA tide prediction text file for a specific date range.
-    Returns data in the same format as fetch_noaa_tides_for_range's grouped_tides.
     """
+    # --- NEW DEBUG LINE ---
+    _log_debug(f"Attempting to parse file: {filepath} for dates {begin_date} to {end_date}")
     grouped_tides = {}
+    
     try:
         with open(filepath, 'r') as f:
             for line in f:
@@ -792,12 +794,7 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
                     datetime_to_parse = f"{date_str} {time_str} {am_pm_str}"
                     tide_dt_obj = datetime.datetime.strptime(datetime_to_parse, "%Y/%m/%d %I:%M %p")
                     
-                    # --- THIS IS THE FIX ---
-                    # Ignore the year from the file and use the year we are searching for.
-                    # This makes your annual tide file reusable for any year.
                     tide_dt_obj = tide_dt_obj.replace(year=begin_date.year)
-                    # --- END OF FIX ---
-                    
                     current_date = tide_dt_obj.date()
 
                     if begin_date <= current_date <= end_date:
@@ -809,13 +806,16 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
                         grouped_tides.setdefault(current_date, []).append(tide_info)
 
                 except (ValueError, IndexError) as e:
-                    _log_debug(f"WARNING: Error processing tide data line in {filepath}: '{line}' - {e}")
+                    # --- MODIFIED DEBUG LINE ---
+                    _log_debug(f"--> PARSE ERROR on line: '{line}'. Details: {e}")
                     continue
     except FileNotFoundError:
         _log_debug(f"ERROR: Local tide file not found: {filepath}")
     except Exception as e:
         _log_debug(f"ERROR: General error reading local tide file {filepath}: {e}")
 
+    # --- NEW DEBUG LINE ---
+    _log_debug(f"Finished parsing. Found {len(grouped_tides)} days with valid tides.")
     return grouped_tides
 
 def fetch_noaa_tides_for_range(station_id, start_date, end_date):
