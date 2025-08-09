@@ -853,6 +853,17 @@ def show_reporting_page():
                 cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p") if j.scheduled_start_datetime else "No Date Set")
                 cols[1].write(j.service_type)
                 cols[2].write(customer.customer_name)
+
+                # --- START: TEMPORARY DEBUGGING CODE ---
+                ramp_id_to_check = j.dropoff_ramp_id or j.pickup_ramp_id
+                if ramp_id_to_check:
+                    print(f"--- DEBUG FOR JOB {j.job_id} ---")
+                    print(f"1. Looking for ramp_id: '{ramp_id_to_check}'")
+                    # The next line assumes the main ramp dictionary is ecm.ECM_RAMPS
+                    # This will show us all the ramp IDs your app actually knows about.
+                    print(f"2. Available ramp keys: {list(ecm.ECM_RAMPS.keys())}")
+                    print("--- END DEBUG ---")
+                # --- END: TEMPORARY DEBUGGING CODE ---
                 
                 # Find and display the ramp name for the job
                 ramp_id = j.dropoff_ramp_id or j.pickup_ramp_id
