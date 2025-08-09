@@ -1361,7 +1361,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         _log_debug(f"Searching for piggyback slot on active day: {day}")
         # 2. Pass the pre-calculated schedule into the helper function.
         #    NOTE: You must also modify _find_slot_on_day to accept this new argument.
-        slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule)
+        slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id)
         if slot:
             found_slots.append(slot)
         if len(found_slots) >= num_suggestions_to_find:
@@ -1384,7 +1384,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
     for day in search_dates:
         # 3. Also pass the pre-calculated schedule here.
-        slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule)
+        slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id)
         if slot:
             found_slots.append(slot)
         if len(found_slots) >= num_suggestions_to_find:
