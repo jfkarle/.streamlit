@@ -44,16 +44,21 @@ def _log_debug(msg):
     DEBUG_MESSAGES.insert(0, f"{datetime.datetime.now().strftime('%H:%M:%S')}: {msg}")
 
 def fetch_scheduled_jobs():
-    """Fetches and updates the global SCHEDULED_JOBS list from the database."""
+    """
+    Fetches and updates the global SCHEDULED_JOBS list from the database
+    with all required columns.
+    """
     global SCHEDULED_JOBS
     try:
         conn = get_db_connection()
+        # CORRECTED: This now includes all columns to create complete Job objects.
         query_columns = (
             "job_id, customer_id, boat_id, service_type, "
             "scheduled_start_datetime, scheduled_end_datetime, "
             "assigned_hauling_truck_id, assigned_crane_truck_id, "
             "S17_busy_end_datetime, pickup_ramp_id, dropoff_ramp_id, "
-            "pickup_street_address, dropoff_street_address, job_status, notes"
+            "pickup_street_address, dropoff_street_address, job_status, notes, "
+            "pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude"
         )
         jobs_resp = execute_query(conn.table("jobs").select(query_columns).eq("job_status", "Scheduled"), ttl=0)
         
