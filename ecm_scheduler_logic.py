@@ -775,30 +775,31 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
         with open(filepath, 'r') as f:
             for line in f:
                 line = line.strip()
-                # More robustly skip header lines by only processing lines that start with the year.
                 if not line or not line[0].isdigit():
                     continue
 
-                # Expected parts: ['2025/01/01', 'Wed', '12:01', 'AM', '8.81', '269', 'H']
                 parts = line.split()
-
                 if len(parts) < 6:
-                    DEBUG_MESSAGES.append(f"WARNING: Skipping malformed tide data line in {filepath}: {line}")
                     continue
 
                 try:
-                    # Correctly parse the data row based on the actual file format
                     date_str = parts[0]
                     time_str = parts[2]
                     am_pm_str = parts[3]
                     height_str = parts[4]
-                    type_str = parts[-1] # The 'H' or 'L' is the last element
+                    type_str = parts[-1]
 
                     datetime_to_parse = f"{date_str} {time_str} {am_pm_str}"
                     tide_dt_obj = datetime.datetime.strptime(datetime_to_parse, "%Y/%m/%d %I:%M %p")
+                    
+                    # --- THIS IS THE FIX ---
+                    # Ignore the year from the file and use the year we are searching for.
+                    # This makes your annual tide file reusable for any year.
+                    tide_dt_obj = tide_dt_obj.replace(year=begin_date.year)
+                    # --- END OF FIX ---
+                    
                     current_date = tide_dt_obj.date()
 
-                    # Only process data within the requested date range
                     if begin_date <= current_date <= end_date:
                         tide_info = {
                             'type': type_str.upper(),
@@ -808,12 +809,12 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
                         grouped_tides.setdefault(current_date, []).append(tide_info)
 
                 except (ValueError, IndexError) as e:
-                    DEBUG_MESSAGES.append(f"WARNING: Error processing tide data line in {filepath}: '{line}' - {e}")
+                    _log_debug(f"WARNING: Error processing tide data line in {filepath}: '{line}' - {e}")
                     continue
     except FileNotFoundError:
-        DEBUG_MESSAGES.append(f"ERROR: Local tide file not found: {filepath}")
+        _log_debug(f"ERROR: Local tide file not found: {filepath}")
     except Exception as e:
-        DEBUG_MESSAGES.append(f"ERROR: General error reading local tide file {filepath}: {e}")
+        _log_debug(f"ERROR: General error reading local tide file {filepath}: {e}")
 
     return grouped_tides
 
