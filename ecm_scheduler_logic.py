@@ -151,6 +151,13 @@ SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
 ### This helper function will create a new crane day near the requested date if a grouped slot is not found.
 
+def get_s17_truck_id():
+    """Finds the numeric truck_id for the truck named 'S17'."""
+    for truck_id, truck_obj in ECM_TRUCKS.items():
+        if truck_obj.truck_name == "S17":
+            return truck_id
+    return None # Return None if S17 is not found
+
 def find_new_crane_day_slot(
     boat,
     customer,
