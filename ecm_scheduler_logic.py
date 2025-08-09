@@ -16,8 +16,6 @@ import os
 from supabase import create_client
 from st_supabase_connection import SupabaseConnection, execute_query
 
-st.sidebar.write("🔑 Available secrets: " + ", ".join(st.secrets.keys()))
-
 def _log_debug(msg):
     """Adds a timestamped message to the global debug log."""
     # Ensure DEBUG_MESSAGES is treated as a global variable
@@ -36,8 +34,6 @@ SUPA_KEY = raw_key.strip().replace("\n", "")
 supabase = create_client(SUPA_URL, SUPA_KEY)
 
 # 4) Sanity check
-resp = supabase.table("boats").select("*").execute()
-st.sidebar.write(f"🔍 Loaded {len(resp.data or [])} boats from Supabase")
 _geolocator = Nominatim(user_agent="ecm_boat_scheduler_app")
 _location_coords_cache = {} # Ensure this line is present here
 
