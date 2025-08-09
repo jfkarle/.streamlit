@@ -1328,21 +1328,19 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
 # --- REPLACEMENT: The new efficiency-driven slot finding engine ---
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, **kwargs):
     """
-    The new efficiency-driven slot finding engine.
+    Finds available slots based on a 5-point efficiency-first blueprint.
     """
     global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
 
-    # --- THIS VALIDATION BLOCK IS NEW ---
-    # 1. Validate the incoming date string before using it.
+    # --- Validation Block ---
     if not requested_date_str:
         return [], "Please select a target date before searching.", [], False
     try:
         requested_date = datetime.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
     except ValueError:
         return [], f"The provided date '{requested_date_str}' is not in a valid format (YYYY-MM-DD).", [], False
-    # --- END OF NEW BLOCK ---
 
-    # 2. Compile the master schedule ONCE before any loops start.
+    # --- One-Time Schedule Compilation ---
     _log_debug("Compiling master truck schedule once...")
     compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
     _log_debug("Master schedule compiled.")
@@ -1352,19 +1350,26 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     
     found_slots = []
     
-    # --- PHASE 1: OPPORTUNISTIC EFFICIENCY SEARCH ---
-    _log_debug("PHASE 1: Starting opportunistic search...")
+    # --- PHASE 1: Opportunistic Efficiency Search (Points 3 & 4) ---
+    _log_debug("PHASE 1: Searching for existing crane jobs at the selected ramp...")
     search_window = [requested_date + timedelta(days=i) for i in range(-7, 8)]
     
-    active_days = {job.scheduled_start_datetime.date() for job in SCHEDULED_JOBS if job.scheduled_start_datetime and job.scheduled_start_datetime.date() in search_window}
-    sorted_active_days = sorted(list(active_days), key=lambda d: abs(d - requested_date))
+    # MODIFIED LOGIC: Find days where the crane is already at the selected ramp.
+    s17_id = get_s17_truck_id()
+    active_crane_days_at_ramp = {
+        job.scheduled_start_datetime.date()
+        for job in SCHEDULED_JOBS
+        if job.scheduled_start_datetime
+        and job.scheduled_start_datetime.date() in search_window
+        and job.assigned_crane_truck_id == s17_id
+        and (str(job.pickup_ramp_id) == str(selected_ramp_id) or str(job.dropoff_ramp_id) == str(selected_ramp_id))
+    }
+    
+    sorted_active_days = sorted(list(active_crane_days_at_ramp), key=lambda d: abs(d - requested_date))
     
     for day in sorted_active_days:
-        if crane_needed and (selected_ramp_id, day) not in IDEAL_CRANE_DAYS:
-            _log_debug(f"Skipping active day {day}: Not an ideal crane day.")
-            continue
-        
-        _log_debug(f"Searching for piggyback slot on active day: {day}")
+        # We no longer need to check if it's an ideal day here, because an active crane day is by definition a good day to add another job.
+        _log_debug(f"Found existing crane day. Searching for piggyback slot on: {day}")
         slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id)
         if slot:
             found_slots.append(slot)
@@ -1373,15 +1378,15 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             
     if found_slots:
         _log_debug(f"Found {len(found_slots)} highly efficient slots in Phase 1.")
-        return found_slots, "Found highly efficient slots on already active days.", [], False
+        return found_slots, "Found highly efficient slots on days the crane is already active at that ramp.", [], False
 
-    # --- PHASE 2: FALLBACK SEARCH ---
-    _log_debug("PHASE 2: No efficient slots found, starting fallback search.")
+    # --- PHASE 2: Fallback Search (Point 5) ---
+    _log_debug("PHASE 2: No efficient slots found, starting fallback search for future ideal days.")
     search_dates = []
     if crane_needed:
-        potential_dates = [d for r, d in IDEAL_CRANE_DAYS if str(r) == str(selected_ramp_id)]
-        search_dates = sorted(potential_dates)[:30]
-        _log_debug(f"Crane needed. Searching ideal days: {search_dates}")
+        potential_dates = [d for r, d in IDEAL_CRANE_DAYS if str(r) == str(selected_ramp_id) and d >= requested_date]
+        search_dates = sorted(potential_dates)[:30] # Using 30-day limit
+        _log_debug(f"Crane needed. Searching the next {len(search_dates)} ideal days starting from {requested_date}.")
     else:
         search_dates = [requested_date + timedelta(days=i) for i in range(14)]
         _log_debug(f"No crane. Searching forward from {requested_date}")
@@ -1396,7 +1401,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if found_slots:
         return found_slots, "Found available slots on the next best days.", [], False
     else:
-        return [], "Could not find any available slots within the next 14 days.", [], True
+        return [], "Could not find any available slots within the search window.", [], True
 
 # --- REPLACEMENT: The enhanced testing utility ---
 def simulate_job_requests(total_jobs_to_gen=50):
