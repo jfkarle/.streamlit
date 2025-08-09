@@ -1251,7 +1251,7 @@ def precalculate_ideal_crane_days(year=2025):
 
 # --- NEW HELPER: Finds a slot on a specific day using the new efficiency rules ---
 # Replace your old function with this CORRECTED version
-def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, compiled_schedule):
+def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, compiled_schedule, customer_id):
     """
     Finds the first available slot on a specific day, respecting all efficiency rules.
     """
@@ -1315,6 +1315,7 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                     
                     # If we get here, we found a valid slot
                     return {
+                        'customer_id': customer_id, # <-- ADD THIS LINE
                         "date": search_date, "time": slot_start_time, "truck_id": truck.truck_id,
                         "ramp_id": ramp_id, "service_type": service_type, "S17_needed": crane_needed,
                         "scheduled_end_datetime": slot_end_dt, 
