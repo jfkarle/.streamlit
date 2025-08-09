@@ -37,7 +37,9 @@ _location_coords_cache = {} # Ensure this line is present here
 
 DEBUG_MESSAGES = []
 
-
+def _log_debug(msg):
+    """Adds a timestamped message to the global debug log."""
+    DEBUG_MESSAGES.insert(0, f"{datetime.datetime.now().strftime('%H:%M:%S')}: {msg}")
 
 # --- DATA MODELS (CLASSES) ---
 class Truck:
