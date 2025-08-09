@@ -1698,9 +1698,8 @@ def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remo
             customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
             scheduled_start_datetime=start_dt,
             scheduled_end_datetime=hauler_end_dt,
-            assigned_hauling_truck_id=selected_slot['truck_id'],
-            # 2. Use the numeric ID variable here instead of the hardcoded text "S17".
-            assigned_crane_truck_id=s17_truck_id if selected_slot.get('S17_needed') else None,
+            assigned_hauling_truck_id=str(selected_slot['truck_id']), # Convert to string
+            assigned_crane_truck_id=str(s17_truck_id) if s17_truck_id else None, # Convert to string
             S17_busy_end_datetime=S17_end_dt,
             pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
             job_status="Scheduled", pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
