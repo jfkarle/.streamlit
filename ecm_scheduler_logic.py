@@ -1230,7 +1230,7 @@ def _compile_truck_schedules(jobs):
     return schedule, daily_truck_last_location
 
 def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_schedule):
-    for busy_start, busy_end in compiled_schedule.get(truck_id, []):
+    for busy_start, busy_end in compiled_schedule.get(str(truck_id), []):
         # ADD THIS PRINT STATEMENT
         print(f"DEBUG: Comparing start_dt (type: {type(start_dt)}, value: {start_dt}) "
               f"with busy_end (type: {type(busy_end)}, value: {busy_end})")
