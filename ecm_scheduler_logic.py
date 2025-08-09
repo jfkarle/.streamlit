@@ -1380,7 +1380,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     search_dates = []
     if crane_needed:
         potential_dates = [d for r, d in IDEAL_CRANE_DAYS if str(r) == str(selected_ramp_id)]
-        search_dates = sorted(potential_dates)[:14]
+        search_dates = sorted(potential_dates)[:30]
         _log_debug(f"Crane needed. Searching ideal days: {search_dates}")
     else:
         search_dates = [requested_date + timedelta(days=i) for i in range(14)]
