@@ -1243,7 +1243,8 @@ def precalculate_ideal_crane_days(year=2025):
     _log_debug(f"Pre-calculated {len(IDEAL_CRANE_DAYS)} ideal crane days for the season.")
 
 # --- NEW HELPER: Finds a slot on a specific day using the new efficiency rules ---
-def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed):
+# Replace your old function with this CORRECTED version
+def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, compiled_schedule):
     """
     Finds the first available slot on a specific day, respecting all efficiency rules.
     """
@@ -1267,7 +1268,7 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed):
     hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
     crane_duration = timedelta(minutes=rules.get('crane_mins', 0))
 
-    # Compile schedule for the day
+    # REMOVED THIS LINE - This is the fix!
     # compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
     
     # Get valid working windows for this ramp/boat/day
