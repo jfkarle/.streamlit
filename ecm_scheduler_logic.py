@@ -18,6 +18,12 @@ from st_supabase_connection import SupabaseConnection, execute_query
 
 st.sidebar.write("🔑 Available secrets: " + ", ".join(st.secrets.keys()))
 
+def _log_debug(msg):
+    """Adds a timestamped message to the global debug log."""
+    # Ensure DEBUG_MESSAGES is treated as a global variable
+    global DEBUG_MESSAGES
+    DEBUG_MESSAGES.insert(0, f"{datetime.datetime.now().strftime('%H:%M:%S')}: {msg}")
+
 # 1) Read whatever the UI handed you
 raw_url = st.secrets["SUPA_URL"]
 raw_key = st.secrets["SUPA_KEY"]
