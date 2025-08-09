@@ -282,7 +282,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_x, line1_y, customer.customer_name)
             c.setFont("Helvetica", 7);c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
             c.drawCentredString(text_x, line3_y, f"{ecm._abbreviate_town(job.pickup_street_address)}-{ecm._abbreviate_town(job.dropoff_street_address)}")
-            c.setLineWidth(2);c.line(text_x, y0 - 45, text_x, y_end); c.line(text_x - 10, y_end, text_x + 10, y_end)
+            c.setLineWidth(2);c.line(text_x, y0, text_x, y_end); c.line(text_x - 10, y_end, text_x + 10, y_end)
 
         # Do the same for the crane, ensuring the ID is a STRING
         crane_truck_name = id_to_name_map.get(str(job.assigned_crane_truck_id))
