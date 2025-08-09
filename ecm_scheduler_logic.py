@@ -47,6 +47,30 @@ def _log_debug(msg):
     """Adds a timestamped message to the global debug log."""
     DEBUG_MESSAGES.insert(0, f"{datetime.datetime.now().strftime('%H:%M:%S')}: {msg}")
 
+def fetch_scheduled_jobs():
+    """Fetches and updates the global SCHEDULED_JOBS list from the database."""
+    global SCHEDULED_JOBS
+    try:
+        conn = get_db_connection()
+        query_columns = (
+            "job_id, customer_id, boat_id, service_type, "
+            "scheduled_start_datetime, scheduled_end_datetime, "
+            "assigned_hauling_truck_id, assigned_crane_truck_id, "
+            "S17_busy_end_datetime, pickup_ramp_id, dropoff_ramp_id, "
+            "pickup_street_address, dropoff_street_address, job_status, notes"
+        )
+        jobs_resp = execute_query(conn.table("jobs").select(query_columns).eq("job_status", "Scheduled"), ttl=0)
+        
+        SCHEDULED_JOBS.clear()
+        if isinstance(jobs_resp.data, list):
+            SCHEDULED_JOBS.extend([Job(**row) for row in jobs_resp.data if row.get('scheduled_start_datetime')])
+        
+        _log_debug(f"Refreshed schedule: Found {len(SCHEDULED_JOBS)} jobs.")
+    except Exception as e:
+        st.error(f"Error refreshing jobs from database: {e}")
+
+
+
 # --- DATA MODELS (CLASSES) ---
 class Truck:
     def __init__(self, t_id, name, max_len):
@@ -1332,6 +1356,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     Finds available slots based on a 5-point efficiency-first blueprint.
     """
     global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
+
+    fetch_scheduled_jobs() # Ensures the schedule is always up-to-date
 
     # --- Validation Block ---
     if not requested_date_str:
