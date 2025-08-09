@@ -1268,7 +1268,7 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed):
     crane_duration = timedelta(minutes=rules.get('crane_mins', 0))
 
     # Compile schedule for the day
-    compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
+    # compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
     
     # Get valid working windows for this ramp/boat/day
     all_tides = fetch_noaa_tides_for_range(ramp.noaa_station_id, search_date, search_date)
@@ -1324,6 +1324,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     """
     global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
 
+    # --- THIS BLOCK IS NEW ---
+    # 1. Compile the master schedule ONCE before any loops start.
+    _log_debug("Compiling master truck schedule once...")
+    compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
+    _log_debug("Master schedule compiled.")
+    # --- END OF NEW BLOCK ---
+
     boat = get_boat_details(boat_id)
     requested_date = datetime.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
     crane_needed = "Sailboat" in boat.boat_type
@@ -1343,7 +1350,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             continue
         
         _log_debug(f"Searching for piggyback slot on active day: {day}")
-        slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed)
+        # 2. Pass the pre-calculated schedule into the helper function.
+        #    NOTE: You must also modify _find_slot_on_day to accept this new argument.
+        slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule)
         if slot:
             found_slots.append(slot)
         if len(found_slots) >= num_suggestions_to_find:
@@ -1365,7 +1374,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         _log_debug(f"No crane. Searching forward from {requested_date}")
         
     for day in search_dates:
-        slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed)
+        # 3. Also pass the pre-calculated schedule here.
+        slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule)
         if slot:
             found_slots.append(slot)
         if len(found_slots) >= num_suggestions_to_find:
@@ -1374,7 +1384,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if found_slots:
         return found_slots, "Found available slots on the next best days.", [], False
     else:
-        return [], "Could not find any available slots within the next 14 days.", [], True
+        return [], "Could not find any available slots within the next 14 days.",
 
 # --- REPLACEMENT: The enhanced testing utility ---
 def simulate_job_requests(total_jobs_to_gen=50):
