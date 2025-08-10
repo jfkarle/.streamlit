@@ -558,6 +558,7 @@ def show_scheduler_page():
     customer = None
     boat = None
 
+    # Customer search logic (remains unchanged)
     if not st.session_state.get('selected_customer_id'):
         st.session_state.customer_search_input = st.sidebar.text_input(
             "Search for Customer or Boat ID:",
@@ -585,6 +586,8 @@ def show_scheduler_page():
             else:
                 st.sidebar.warning("No matches found.")
 
+    # --- START OF CORRECTED LOGIC BLOCK ---
+    # This block now handles everything that happens AFTER a customer is selected.
     if st.session_state.get('selected_customer_id'):
         customer = ecm.LOADED_CUSTOMERS.get(st.session_state.selected_customer_id)
         if not customer:
@@ -606,8 +609,11 @@ def show_scheduler_page():
             choice = st.sidebar.selectbox("Select Boat:", list(opts_with_prompt.keys()))
             st.session_state.selected_boat_id = opts_with_prompt[choice]
 
+        # This check is the key to the fix. We only proceed if a boat ID is set.
         if st.session_state.get('selected_boat_id'):
             boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
+
+            # This inner check ensures the rest of the code only runs if the 'boat' object is valid.
             if boat:
                 st.sidebar.markdown("---")
                 st.sidebar.markdown("**Boat Details:**")
@@ -617,54 +623,46 @@ def show_scheduler_page():
                 ramp_obj = ecm.ECM_RAMPS.get(boat.preferred_ramp_id)
                 ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
                 st.sidebar.markdown(f"- **Preferred Ramp:** {ramp_name}")
-    
-    if customer and st.session_state.get('selected_boat_id'):
-        boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
+                
+                # All the following UI elements are now safely inside the `if boat:` block.
+                service_type = st.sidebar.selectbox("Service Type:", ["Launch", "Haul", "Sandblast", "Paint"])
+                req_date = st.sidebar.date_input("Requested Date:", min_value=None)
+                override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
+                
+                # This function is now guaranteed to receive a valid 'boat' object.
+                available_ramp_ids = list(ecm.find_available_ramps_for_boat(boat, ecm.ECM_RAMPS))
 
-        # --- ADD THIS SAFETY CHECK ---
-        if not boat:
-            # If no boat is loaded yet, simply stop and wait for user selection.
-            # This commonly happens when the dropdown is on its default "-- Select a boat --" state.
-            return 
-        # --- END OF FIX ---
+                if boat.preferred_ramp_id and (boat.preferred_ramp_id not in available_ramp_ids):
+                    preferred_ramp_obj = ecm.ECM_RAMPS.get(boat.preferred_ramp_id)
+                    if preferred_ramp_obj:
+                        st.sidebar.warning(f"Invalid Preference: The customer's preferred ramp ({preferred_ramp_obj.ramp_name}) cannot service this boat type ({boat.boat_type}). Please choose a valid ramp.")
 
-        
-        service_type = st.sidebar.selectbox("Service Type:", ["Launch", "Haul", "Sandblast", "Paint"])
-        req_date = st.sidebar.date_input("Requested Date:", min_value=None)
-        override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
-        available_ramp_ids = list(ecm.find_available_ramps_for_boat(boat, ecm.ECM_RAMPS))
+                default_ramp_index = 0
+                if boat.preferred_ramp_id and boat.preferred_ramp_id in available_ramp_ids:
+                    default_ramp_index = available_ramp_ids.index(boat.preferred_ramp_id)
 
-        if boat.preferred_ramp_id and (boat.preferred_ramp_id not in available_ramp_ids):
-            preferred_ramp_obj = ecm.ECM_RAMPS.get(boat.preferred_ramp_id)
-            if preferred_ramp_obj:
-                st.sidebar.warning(f"Invalid Preference: The customer's preferred ramp ({preferred_ramp_obj.ramp_name}) cannot service this boat type ({boat.boat_type}). Please choose a valid ramp.")
+                selected_ramp_id = st.sidebar.selectbox("Ramp:", options=available_ramp_ids, index=default_ramp_index, format_func=lambda ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name)
+                
+                slot_dicts, msg, warnings, forced = [], "", [], False
 
-        default_ramp_index = 0
-        if boat.preferred_ramp_id and boat.preferred_ramp_id in available_ramp_ids:
-            default_ramp_index = available_ramp_ids.index(boat.preferred_ramp_id)
+                if st.sidebar.button("Find Best Slot"):
+                    slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
+                        customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
+                        requested_date_str=req_date.strftime("%Y-%m-%d"), selected_ramp_id=selected_ramp_id,
+                        num_suggestions_to_find=st.session_state.get('num_suggestions', 3), manager_override=override
+                    )
+                    st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
+                    st.session_state.failure_reasons = warnings
+                    st.session_state.was_forced_search = forced
+                    st.session_state.current_job_request = {
+                        'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type,
+                        'requested_date_str': req_date.strftime("%Y-%m-%d"), 'ignore_forced_search': override
+                    }
+                    st.session_state.search_requested_date = req_date
+                    st.session_state.info_message = msg
+                    st.session_state.conflict_warning_details = None
 
-        selected_ramp_id = st.sidebar.selectbox("Ramp:", options=available_ramp_ids, index=default_ramp_index, format_func=lambda ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name)
-        
-        slot_dicts, msg, warnings, forced = [], "", [], False
-
-        if st.sidebar.button("Find Best Slot"):
-            slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
-                customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
-                requested_date_str=req_date.strftime("%Y-%m-%d"), selected_ramp_id=selected_ramp_id,
-                num_suggestions_to_find=st.session_state.get('num_suggestions', 3), manager_override=override
-            )
-            st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
-            st.session_state.failure_reasons = warnings
-            st.session_state.was_forced_search = forced
-            st.session_state.current_job_request = {
-                'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type,
-                'requested_date_str': req_date.strftime("%Y-%m-%d"), 'ignore_forced_search': override
-            }
-            st.session_state.search_requested_date = req_date
-            st.session_state.info_message = msg
-            st.session_state.conflict_warning_details = None
-
-    # --- SLOT DISPLAY AND PAGINATION ---
+    # --- SLOT DISPLAY AND PAGINATION (remains unchanged) ---
     if st.session_state.get('found_slots') and not st.session_state.get('selected_slot'):
         found = st.session_state.found_slots
         total, page, per_page = len(found), st.session_state.get('slot_page_index', 0), 3
@@ -677,9 +675,7 @@ def show_scheduler_page():
         
         for slot in found[page*per_page:(page+1)*per_page]:
     
-            # --- ADD THIS DEBUG LINE ---
             st.json(slot.raw_data) 
-            # --- END DEBUG LINE ---
 
             with st.container(border=True):
                 col1, col2, col3 = st.columns((2, 3, 2))
@@ -707,7 +703,7 @@ def show_scheduler_page():
                     st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
                     st.button("Select", key=f"sel_{slot.slot_id}", use_container_width=True, on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
             
-    # --- PREVIEW & CONFIRM SELECTION ---
+    # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
     if st.session_state.get('selected_slot'):
         slot = st.session_state.selected_slot
         st.subheader("Preview & Confirm Job")
@@ -716,7 +712,7 @@ def show_scheduler_page():
         if st.button("CONFIRM THIS JOB"):
             parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
             new_id, message = ecm.confirm_and_schedule_job(
-                slot, # We only need to pass the slot object now
+                slot,
                 parked_to_remove=parked_to_remove
             )
             if new_id:
