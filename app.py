@@ -1138,6 +1138,28 @@ def show_settings_page():
                             " / ".join(low_tides) if low_tides else "N/A"
                         )
 
+# This code goes inside your show_settings_page() function in app.py
+
+st.subheader("⚠️ Danger Zone")
+
+with st.expander("Permanently Delete All Jobs"):
+    st.warning("This action is irreversible. All scheduled, parked, and completed jobs will be permanently erased from the database.")
+    
+    # Safeguard 1: User must type a confirmation phrase.
+    confirmation_text = st.text_input("To proceed, please type DELETE ALL JOBS in the box below.")
+    
+    # Safeguard 2: The button is disabled until the phrase is typed correctly.
+    is_delete_disabled = (confirmation_text != "DELETE ALL JOBS")
+    
+    if st.button("Permanently Delete All Jobs", disabled=is_delete_disabled, type="primary"):
+        success, message = ecm.delete_all_jobs()
+        if success:
+            st.success(message)
+            st.balloons()
+        else:
+            st.error(message)
+
+
 
 def initialize_session_state():
     defaults = {
