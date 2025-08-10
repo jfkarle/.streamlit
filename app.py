@@ -667,33 +667,36 @@ def show_scheduler_page():
         if total: cols[3].write(f"{page*per_page+1}–{min((page+1)*per_page, total)} of {total}")
         
         for slot in found[page*per_page:(page+1)*per_page]:
-            with st.container(border=True):
-                col1, col2, col3 = st.columns((2, 3, 2))
+    
+    # --- ADD THIS DEBUG LINE ---
+    st.json(slot.raw_data) 
+    # --- END DEBUG LINE ---
 
-                with col1:
-                    # --- THIS IS THE MODIFIED BLOCK TO DISPLAY THE INDICATOR ---
-                    ramp_display_name = slot.ramp_name
-                    if slot.get('is_piggyback'):
-                        ramp_display_name += " (Efficient Slot ⚡️)"
-                    st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
-                    # --- END MODIFIED BLOCK ---
-                    st.markdown(f"**🗓️ Date & Time**<br>{slot.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
+    with st.container(border=True):
+        col1, col2, col3 = st.columns((2, 3, 2))
 
-                with col2:
-                    draft_value = slot.raw_data.get('boat_draft'); draft_str = f"{draft_value:.1f}'" if isinstance(draft_value, (int, float)) else "N/A"
-                    st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
-                    tide_rule = slot.raw_data.get('tide_rule_concise', 'N/A')
-                    st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
-                    tide_times = slot.raw_data.get('high_tide_times', [])
-                    primary_tide = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
-                    primary_tide_str = ecm.format_time_for_display(primary_tide) if primary_tide else "N/A"
-                    st.markdown(f"**🔑 Key High Tide**<br>{primary_tide_str}", unsafe_allow_html=True)
+        with col1:
+            ramp_display_name = slot.ramp_name
+            if slot.get('is_piggyback'):
+                ramp_display_name += " (Efficient Slot ⚡️)"
+            st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
+            st.markdown(f"**🗓️ Date & Time**<br>{slot.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
 
-                with col3:
-                    st.markdown(f"**🚚 Truck**<br>{slot.truck_name}", unsafe_allow_html=True)
-                    crane_needed = "S17 (Required)" if slot.raw_data.get('S17_needed') else "Not Required"
-                    st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
-                    st.button("Select", key=f"sel_{slot.slot_id}", use_container_width=True, on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
+        with col2:
+            draft_value = slot.raw_data.get('boat_draft'); draft_str = f"{draft_value:.1f}'" if isinstance(draft_value, (int, float)) else "N/A"
+            st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
+            tide_rule = slot.raw_data.get('tide_rule_concise', 'N/A')
+            st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
+            tide_times = slot.raw_data.get('high_tide_times', [])
+            primary_tide = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
+            primary_tide_str = ecm.format_time_for_display(primary_tide) if primary_tide else "N/A"
+            st.markdown(f"**🔑 Key High Tide**<br>{primary_tide_str}", unsafe_allow_html=True)
+
+        with col3:
+            st.markdown(f"**🚚 Truck**<br>{slot.truck_name}", unsafe_allow_html=True)
+            crane_needed = "S17 (Required)" if slot.raw_data.get('S17_needed') else "Not Required"
+            st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
+            st.button("Select", key=f"sel_{slot.slot_id}", use_container_width=True, on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
             
     # --- PREVIEW & CONFIRM SELECTION ---
     if st.session_state.get('selected_slot'):
