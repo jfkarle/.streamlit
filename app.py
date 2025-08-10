@@ -998,7 +998,7 @@ def show_settings_page():
                 if st.form_submit_button("Save Hours"):
                     success, message = ecm.update_truck_schedule(selected_truck_name, new_hours)
                     if success:
-                        ecm._data_from_sheets()
+                        ecm.load_all_data_from_sheets()
                         st.success(message)
                         st.rerun()
                     else:
