@@ -1675,8 +1675,8 @@ def confirm_and_schedule_job(selected_slot, parked_job_to_remove=None):
     """
     try:
         # All necessary info is now in the selected_slot object
-        customer = ecm.get_customer_details(selected_slot.get('customer_id'))
-        boat = ecm.get_boat_details(selected_slot.get('boat_id'))
+        customer = get_customer_details(selected_slot.get('customer_id'))
+        boat = get_boat_details(selected_slot.get('boat_id'))
         service_type = selected_slot.get('service_type')
         
         pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
@@ -1725,7 +1725,8 @@ def confirm_and_schedule_job(selected_slot, parked_job_to_remove=None):
         return new_job.job_id, message
         
     except Exception as e:
-        return None, f"An error occurred: {e}"
+        # Added more specific debug info to the error message
+        return None, f"An error occurred in confirm_and_schedule_job: {e}"
 
 def find_available_ramps_for_boat(boat, all_ramps):
     """
