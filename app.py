@@ -668,9 +668,9 @@ def show_scheduler_page():
         
         for slot in found[page*per_page:(page+1)*per_page]:
     
-        # --- ADD THIS DEBUG LINE ---
-        st.json(slot.raw_data) 
-        # --- END DEBUG LINE ---
+            # --- ADD THIS DEBUG LINE ---
+            st.json(slot.raw_data) 
+            # --- END DEBUG LINE ---
 
             with st.container(border=True):
                 col1, col2, col3 = st.columns((2, 3, 2))
