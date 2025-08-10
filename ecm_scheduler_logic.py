@@ -1443,53 +1443,62 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
 def simulate_job_requests(total_jobs_to_gen=50, truck_hours=None):
     """
-    A smarter simulation utility to test the new efficiency logic.
-    Now accepts a temporary truck_hours schedule for "what-if" scenarios.
+    Simulates real-world, seasonal job requests to test scheduler density.
     """
     global SCHEDULED_JOBS, TRUCK_OPERATING_HOURS
     SCHEDULED_JOBS = [] # Reset schedule for simulation
     
-    # --- ADDED: Temporarily use the provided schedule for the simulation ---
     original_truck_hours = TRUCK_OPERATING_HOURS.copy()
     if truck_hours:
         _log_debug("Running simulation with a temporary truck schedule.")
         TRUCK_OPERATING_HOURS = truck_hours
-    # --- END ADDED BLOCK ---
 
-    # 1. Generate a Diverse Job Pool
+    # 1. Generate a Realistic, Seasonal Job Pool
     job_requests = []
     all_boats = list(LOADED_BOATS.values())
-    random.shuffle(all_boats)
-    
     if not all_boats: return "Cannot simulate, no boats loaded."
 
-    busy_week_start = datetime.date(2025, 5, 19) # Simulate a busy spring week
+    for _ in range(total_jobs_to_gen):
+        rand_val = random.random()
+        boat = random.choice(all_boats) # Pick a random boat for each request
 
-    for boat in all_boats[:total_jobs_to_gen]:
-        if random.random() < 0.5:
-            req_date = busy_week_start + timedelta(days=random.randint(0, 4))
+        # 45% chance of a peak season Launch request
+        if rand_val < 0.45:
+            service_type = "Launch"
+            month = random.choice([5, 6, 7]) # May, June, July
+            day = random.randint(1, 28)
+            req_date = datetime.date(2025, month, day)
+        
+        # 45% chance of a peak season Haul request
+        elif rand_val < 0.90:
+            service_type = "Haul"
+            month = random.choice([9, 10]) # September, October
+            day = random.randint(1, 28)
+            req_date = datetime.date(2025, month, day)
+
+        # 10% chance of an off-season job
         else:
-            req_date = datetime.date(2025, random.randint(4, 8), random.randint(1, 28))
+            service_type = random.choice(["Launch", "Haul"])
+            month = random.choice([4, 11]) # April, November
+            day = random.randint(1, 28)
+            req_date = datetime.date(2025, month, day)
             
         job_requests.append({
             "customer_id": boat.customer_id, "boat_id": boat.boat_id,
-            "service_type": "Launch", "requested_date_str": req_date.strftime("%Y-%m-%d"),
-            "selected_ramp_id": boat.preferred_ramp_id
+            "service_type": service_type, "requested_date_str": req_date.strftime("%Y-%m-%d"),
+            "selected_ramp_id": boat.preferred_ramp_id,
+            "relax_truck_preference": True # Assume simulation should be flexible
         })
         
-    # 2. Run the Simulation
+    # 2. Run the Simulation (processing requests in random order to simulate calls)
+    random.shuffle(job_requests)
     successful_bookings = 0
-    print(f"Starting simulation for {len(job_requests)} jobs...")
     
-    for i, request in enumerate(job_requests):
-        print(f"Simulating request {i+1}/{len(job_requests)} for boat {request['boat_id']}...")
+    for request in job_requests:
         slots, _, _, _ = find_available_job_slots(**request)
-        
         if slots:
             confirm_and_schedule_job(request, slots[0])
             successful_bookings += 1
-        else:
-            print(f"--> Could not find a slot for request: {request}")
             
     # 3. Provide a Better Summary
     total_truck_days = len({(j.scheduled_start_datetime.date(), j.assigned_hauling_truck_id) for j in SCHEDULED_JOBS})
@@ -1504,10 +1513,7 @@ def simulate_job_requests(total_jobs_to_gen=50, truck_hours=None):
         f"- Achieved an average of {avg_jobs_per_truck_day:.2f} jobs per truck-day."
     )
     
-    # --- ADDED: Restore the original schedule after simulation is complete ---
-    TRUCK_OPERATING_HOURS = original_truck_hours
-    # --- END ADDED BLOCK ---
-    
+    TRUCK_OPERATING_HOURS = original_truck_hours # Restore original schedule
     _log_debug(summary)
     return summary
 
