@@ -623,8 +623,9 @@ def show_scheduler_page():
 
         # --- ADD THIS SAFETY CHECK ---
         if not boat:
-            st.sidebar.error("Could not load boat details. Please re-select the boat.")
-            return # Stop further execution to prevent the crash
+            # If no boat is loaded yet, simply stop and wait for user selection.
+            # This commonly happens when the dropdown is on its default "-- Select a boat --" state.
+            return 
         # --- END OF FIX ---
 
         
