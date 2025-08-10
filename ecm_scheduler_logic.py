@@ -1301,7 +1301,7 @@ def precalculate_ideal_crane_days(year=2025):
 
 # --- NEW HELPER: Finds a slot on a specific day using the new efficiency rules ---
 # Replace your old function with this CORRECTED version
-def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_check):
+def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_check, is_opportunistic_search=False):
     """
     Finds the first available slot on a specific day, but only for the trucks provided in trucks_to_check.
     """
@@ -1329,7 +1329,7 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
     if is_tide_dependent and not tide_windows_for_day:
         return None
 
-    # --- Main Loop (now iterates through the provided trucks_to_check list) ---
+    # --- Main Loop ---
     for truck in trucks_to_check:
         truck_operating_hours = TRUCK_OPERATING_HOURS.get(truck.truck_id, {}).get(search_date.weekday())
         if not truck_operating_hours:
@@ -1343,39 +1343,34 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                 slot_start_dt = datetime.datetime.combine(search_date, time(hour, minute), tzinfo=timezone.utc)
                 slot_end_dt = slot_start_dt + hauler_duration
 
-                if not (slot_start_dt >= truck_start_dt and slot_end_dt <= truck_end_dt):
-                    continue
-                if not check_truck_availability_optimized(truck.truck_id, slot_start_dt, slot_end_dt, compiled_schedule):
-                    continue
+                if not (slot_start_dt >= truck_start_dt and slot_end_dt <= truck_end_dt): continue
+                if not check_truck_availability_optimized(truck.truck_id, slot_start_dt, slot_end_dt, compiled_schedule): continue
                 
                 tide_check_passed = False
-                if not is_tide_dependent:
-                    tide_check_passed = True
+                if not is_tide_dependent: tide_check_passed = True
                 elif service_type == "Launch":
                     tide_critical_moment = slot_start_dt + timedelta(hours=2)
                     for tide_win in tide_windows_for_day:
                         tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
                         tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
-                        if tide_win_start <= tide_critical_moment <= tide_win_end:
-                            tide_check_passed = True; break
+                        if tide_win_start <= tide_critical_moment <= tide_win_end: tide_check_passed = True; break
                 elif service_type == "Haul":
                     tide_critical_start = slot_start_dt
                     tide_critical_end = slot_start_dt + timedelta(minutes=30)
                     for tide_win in tide_windows_for_day:
                         tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
                         tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
-                        if tide_critical_start < tide_win_end and tide_critical_end > tide_win_start:
-                            tide_check_passed = True; break
+                        if tide_critical_start < tide_win_end and tide_critical_end > tide_win_start: tide_check_passed = True; break
                 
                 if not tide_check_passed: continue
 
                 if crane_needed:
                     s17_id = get_s17_truck_id()
                     crane_end_dt = slot_start_dt + crane_duration
-                    if not check_truck_availability_optimized(s17_id, slot_start_dt, crane_end_dt, compiled_schedule):
-                        continue
+                    if not check_truck_availability_optimized(s17_id, slot_start_dt, crane_end_dt, compiled_schedule): continue
                 
                 return {
+                    'is_piggyback': is_opportunistic_search, # <-- THIS IS THE NEW TAG
                     'boat_id': boat.boat_id, 'customer_id': customer_id, "date": search_date,
                     "time": slot_start_dt.time(), "truck_id": truck.truck_id, "ramp_id": ramp_id,
                     "service_type": service_type, "S17_needed": crane_needed, "scheduled_end_datetime": slot_end_dt, 
@@ -1390,20 +1385,18 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, **kwargs):
     """
-    Finds available slots by first searching ONLY for the preferred truck.
-    Falls back to other trucks ONLY if relax_truck_preference is True.
+    Finds available slots by first searching ONLY for the preferred truck, then
+    falling back to other trucks ONLY if relax_truck_preference is True.
     """
     global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
     
-    # --- ADDED: Read the 'relax_truck_preference' flag from the UI ---
     relax_truck_preference = kwargs.get('relax_truck_preference', False)
-
     fetch_scheduled_jobs()
 
     # --- Validation & Initial Setup ---
     if not requested_date_str: return [], "Please select a target date before searching.", [], False
     try: requested_date = datetime.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
-    except ValueError: return [], f"Date '{requested_date_str}' is not valid.", [], False
+    except ValueError: return [], f"Date '{requested_date_str}' is not valid.", [], True
     
     compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
     boat = get_boat_details(boat_id)
@@ -1412,14 +1405,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     # --- Separate Trucks into Preferred and Others ---
     all_suitable_trucks = get_suitable_trucks(boat.boat_length)
-    preferred_trucks = []
-    other_trucks = []
+    preferred_trucks, other_trucks = [], []
     if boat.preferred_truck_id:
         for t in all_suitable_trucks:
             if t.truck_name == boat.preferred_truck_id: preferred_trucks.append(t)
             else: other_trucks.append(t)
     else:
-        # If no preference, all trucks are considered "other" to allow them to be found
         other_trucks = all_suitable_trucks
 
     # --- Internal Search Function to Avoid Code Duplication ---
@@ -1431,7 +1422,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         active_crane_days = { j.scheduled_start_datetime.date() for j in SCHEDULED_JOBS if j.scheduled_start_datetime and j.scheduled_start_datetime.date() in search_window and j.assigned_crane_truck_id == s17_id and (str(j.pickup_ramp_id) == str(selected_ramp_id) or str(j.dropoff_ramp_id) == str(selected_ramp_id)) }
         sorted_active_days = sorted(list(active_crane_days), key=lambda d: abs(d - requested_date))
         for day in sorted_active_days:
-            slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_search)
+            # PASS THE NEW FLAG HERE
+            slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_search, is_opportunistic_search=True)
             if slot: found.append(slot)
             if len(found) >= num_suggestions_to_find: return found, "Found highly efficient slots."
 
@@ -1442,6 +1434,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         else:
             search_days = [requested_date + timedelta(days=i) for i in range(14)]
         for day in search_days:
+            # Note the flag is omitted (defaults to False) here
             slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_search)
             if slot: found.append(slot)
             if len(found) >= num_suggestions_to_find: break
@@ -1452,15 +1445,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     found_slots, message = [], None
     trucks_to_try = preferred_trucks if boat.preferred_truck_id else other_trucks
 
-    # Attempt 1: Search with only preferred trucks (or all if no preference)
     if trucks_to_try:
         search_type = "preferred" if boat.preferred_truck_id else "any suitable"
-        _log_debug(f"Attempt 1: Searching for {search_type} truck: {[t.truck_name for t in trucks_to_try]}")
         found_slots, message = _run_search(trucks_to_try, search_type)
 
-    # MODIFIED: Attempt 2 only runs if the relax rule is checked
     if not found_slots and relax_truck_preference and other_trucks:
-        _log_debug(f"Attempt 2: Preferred truck unavailable. Searching for other trucks: {[t.truck_name for t in other_trucks]}")
         found_slots, message = _run_search(other_trucks, "other")
 
     return (found_slots, message, [], False) if found_slots else ([], "Could not find any available slots with the specified truck preference.", [], True)
