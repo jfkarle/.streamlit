@@ -1275,10 +1275,9 @@ def precalculate_ideal_crane_days(year=2025):
 
 # --- NEW HELPER: Finds a slot on a specific day using the new efficiency rules ---
 # Replace your old function with this CORRECTED version
-def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, compiled_schedule, customer_id):
+def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_check):
     """
-    Finds the first available slot on a specific day, respecting all efficiency rules,
-    and prioritizing the boat's preferred truck.
+    Finds the first available slot on a specific day, but only for the trucks provided in trucks_to_check.
     """
     ramp = get_ramp_details(str(ramp_id))
     if not ramp: return None
@@ -1302,34 +1301,10 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
     
     is_tide_dependent = ramp.tide_calculation_method not in ["AnyTide", "AnyTideWithDraftRule"]
     if is_tide_dependent and not tide_windows_for_day:
-        _log_debug(f"No valid tide windows found for {ramp.ramp_name} on {search_date}.")
         return None
 
-    # --- NEW: Prioritized Truck Search Logic ---
-    all_suitable_trucks = get_suitable_trucks(boat.boat_length)
-    preferred_truck_obj = None
-    other_trucks = []
-
-    # Separate the preferred truck from the others
-    if boat.preferred_truck_id:
-        for t in all_suitable_trucks:
-            if t.truck_name == boat.preferred_truck_id:
-                preferred_truck_obj = t
-            else:
-                other_trucks.append(t)
-    else:
-        # If no preference, all trucks are "other" trucks
-        other_trucks = all_suitable_trucks
-
-    # Create the search order: preferred truck first, then the rest.
-    truck_search_order = []
-    if preferred_truck_obj:
-        truck_search_order.append(preferred_truck_obj)
-    truck_search_order.extend(other_trucks)
-    # --- END NEW LOGIC ---
-
-    # --- Main Loop (now uses the prioritized truck_search_order) ---
-    for truck in truck_search_order:
+    # --- Main Loop (now iterates through the provided trucks_to_check list) ---
+    for truck in trucks_to_check:
         truck_operating_hours = TRUCK_OPERATING_HOURS.get(truck.truck_id, {}).get(search_date.weekday())
         if not truck_operating_hours:
             continue 
@@ -1356,8 +1331,7 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                         tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
                         tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
                         if tide_win_start <= tide_critical_moment <= tide_win_end:
-                            tide_check_passed = True
-                            break
+                            tide_check_passed = True; break
                 elif service_type == "Haul":
                     tide_critical_start = slot_start_dt
                     tide_critical_end = slot_start_dt + timedelta(minutes=30)
@@ -1365,11 +1339,9 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                         tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
                         tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
                         if tide_critical_start < tide_win_end and tide_critical_end > tide_win_start:
-                            tide_check_passed = True
-                            break
+                            tide_check_passed = True; break
                 
-                if not tide_check_passed:
-                    continue
+                if not tide_check_passed: continue
 
                 if crane_needed:
                     s17_id = get_s17_truck_id()
@@ -1386,7 +1358,6 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                     'high_tide_times': [t['time'] for t in all_tides.get(search_date, []) if t['type'] == 'H'],
                     'boat_draft': boat.draft_ft
                 }
-    
     return None
 
 # --- REPLACEMENT: The new efficiency-driven slot finding engine ---
