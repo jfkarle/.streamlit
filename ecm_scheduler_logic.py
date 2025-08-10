@@ -1312,6 +1312,7 @@ def precalculate_ideal_crane_days(year=2025):
 
 # --- NEW HELPER: Finds a slot on a specific day using the new efficiency rules ---
 # Replace your old function with this CORRECTED version
+
 def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_check, is_opportunistic_search=False):
     """
     Finds the first available slot on a specific day, but only for the trucks provided in trucks_to_check.
@@ -1335,7 +1336,7 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
 
     all_tides = fetch_noaa_tides_for_range(ramp.noaa_station_id, search_date, search_date)
     tide_windows_for_day = calculate_ramp_windows(ramp, boat, all_tides.get(search_date, []), search_date)
-    
+
     is_tide_dependent = ramp.tide_calculation_method not in ["AnyTide", "AnyTideWithDraftRule"]
     if is_tide_dependent and not tide_windows_for_day:
         return None
@@ -1356,7 +1357,7 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
 
                 if not (slot_start_dt >= truck_start_dt and slot_end_dt <= truck_end_dt): continue
                 if not check_truck_availability_optimized(truck.truck_id, slot_start_dt, slot_end_dt, compiled_schedule): continue
-                
+
                 tide_check_passed = False
                 if not is_tide_dependent: tide_check_passed = True
                 elif service_type == "Launch":
@@ -1372,20 +1373,21 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                         tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
                         tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
                         if tide_critical_start < tide_win_end and tide_critical_end > tide_win_start: tide_check_passed = True; break
-                
+
                 if not tide_check_passed: continue
 
+                crane_end_dt = None
                 if crane_needed:
                     s17_id = get_s17_truck_id()
                     crane_end_dt = slot_start_dt + crane_duration
                     if not check_truck_availability_optimized(s17_id, slot_start_dt, crane_end_dt, compiled_schedule): continue
-                
+
                 return {
-                    'is_piggyback': is_opportunistic_search, # <-- THIS IS THE NEW TAG
+                    'is_piggyback': is_opportunistic_search,
                     'boat_id': boat.boat_id, 'customer_id': customer_id, "date": search_date,
                     "time": slot_start_dt.time(), "truck_id": truck.truck_id, "ramp_id": ramp_id,
                     "service_type": service_type, "S17_needed": crane_needed, "scheduled_end_datetime": slot_end_dt, 
-                    "S17_busy_end_datetime": crane_end_dt if crane_needed else None,
+                    "S17_busy_end_datetime": crane_end_dt,
                     'tide_rule_concise': get_concise_tide_rule(ramp, boat),
                     'high_tide_times': [t['time'] for t in all_tides.get(search_date, []) if t['type'] == 'H'],
                     'boat_draft': boat.draft_ft
