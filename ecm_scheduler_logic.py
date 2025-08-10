@@ -183,75 +183,86 @@ def get_s17_truck_id():
             return truck_id
     return None # Return None if S17 is not found
 
-def find_new_crane_day_slot(
-    boat,
-    customer,
-    ramp_obj,
-    requested_date,
-    trucks,
-    duration,
-    S17_duration,
-    service_type,
-    search_window_days=30
-):
+def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_check, is_opportunistic_search=False):
     """
-    Finds the nearest available date to create a new S17 crane day
-    and a new slot.
+    Finds the first available slot on a specific day, but only for the trucks provided in trucks_to_check.
     """
-    import datetime
-    from .ecm_scheduler_shared import _check_and_create_slot_detail, get_tide_data_for_date_window
-    from .ecm_scheduler_data import SCHEDULED_JOBS, ECM_TRUCKS
-    from .ecm_scheduler_logic import get_ramp_details
+    ramp = ecm.get_ramp_details(str(ramp_id))
+    if not ramp: return None
 
-    # Create a search order, starting from the requested date and moving outwards.
-    search_order = _generate_day_search_order(requested_date, search_window_days, search_window_days)
+    # --- Initial Setup ---
+    is_ecm_boat = boat.is_ecm_boat
+    is_launch_season = 4 <= search_date.month <= 7
+    if is_launch_season:
+        start_hour = 9 if not is_ecm_boat else 7
+        time_iterator = range(start_hour, 16)
+    else: # Haul season
+        start_hour = 14 if not is_ecm_boat else 15
+        time_iterator = range(start_hour, 7, -1)
 
-    for check_date in search_order:
-        # Check if a crane is already scheduled at this ramp on this date
-        ramp_is_busy = any(
-            (job.pickup_ramp_id == ramp_obj.ramp_id or job.dropoff_ramp_id == ramp_obj.ramp_id) and 
-            job.scheduled_start_datetime.date() == check_date
-            for job in SCHEDULED_JOBS if job.assigned_crane_truck_id == 'S17'
-        )
+    rules = ecm.BOOKING_RULES.get(boat.boat_type, {})
+    hauler_duration = datetime.timedelta(minutes=rules.get('truck_mins', 90))
+    crane_duration = datetime.timedelta(minutes=rules.get('crane_mins', 0))
 
-        # Check if the date is a valid crane day for this ramp based on tides
-        if not ramp_is_busy:
-            tide_data = get_tide_data_for_date_window(ramp_obj, check_date, check_date)
-            candidate_high_tides = [t for t in tide_data.get(check_date, []) if t.get('type') == 'H' and 10 <= t['time'].hour < 14]
-            
-            if candidate_high_tides:
-                # We found a suitable date and time! Create the new slot.
-                primary_high_tide = sorted(candidate_high_tides, key=lambda t: abs(t['time'].hour - 12))[0]
+    all_tides = ecm.fetch_noaa_tides_for_range(ramp.noaa_station_id, search_date, search_date)
+    tide_windows_for_day = ecm.calculate_ramp_windows(ramp, boat, all_tides.get(search_date, []), search_date)
+    
+    is_tide_dependent = ramp.tide_calculation_method not in ["AnyTide", "AnyTideWithDraftRule"]
+    if is_tide_dependent and not tide_windows_for_day:
+        return None
+
+    # --- Main Loop ---
+    for truck in trucks_to_check:
+        truck_operating_hours = ecm.TRUCK_OPERATING_HOURS.get(truck.truck_id, {}).get(search_date.weekday())
+        if not truck_operating_hours:
+            continue 
+
+        truck_start_dt = datetime.datetime.combine(search_date, truck_operating_hours[0], tzinfo=datetime.timezone.utc)
+        truck_end_dt = datetime.datetime.combine(search_date, truck_operating_hours[1], tzinfo=datetime.timezone.utc)
+
+        for hour in time_iterator:
+            for minute in [0, 15, 30, 45]:
+                slot_start_dt = datetime.datetime.combine(search_date, datetime.time(hour, minute), tzinfo=datetime.timezone.utc)
+                slot_end_dt = slot_start_dt + hauler_duration
+
+                if not (slot_start_dt >= truck_start_dt and slot_end_dt <= truck_end_dt): continue
+                if not ecm.check_truck_availability_optimized(truck.truck_id, slot_start_dt, slot_end_dt, compiled_schedule): continue
                 
-                new_slot_params = {
-                    'date': check_date,
-                    'time': primary_high_tide['time'],
-                    'crane_day_id': 'NEW_CRANE_DAY', # Use a unique ID to signify a new crane day
-                    'truck_id': 'S17',
-                    'ramp_id': ramp_obj.ramp_id,
-                    'service_type': service_type,
-                    'is_new_crane_day': True,
-                    'high_tide_times': [t['time'] for t in candidate_high_tides]
+                tide_check_passed = False
+                if not is_tide_dependent: tide_check_passed = True
+                elif service_type == "Launch":
+                    tide_critical_moment = slot_start_dt + datetime.timedelta(hours=2)
+                    for tide_win in tide_windows_for_day:
+                        tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=datetime.timezone.utc)
+                        tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=datetime.timezone.utc)
+                        if tide_win_start <= tide_critical_moment <= tide_win_end: tide_check_passed = True; break
+                elif service_type == "Haul":
+                    tide_critical_start = slot_start_dt
+                    tide_critical_end = slot_start_dt + datetime.timedelta(minutes=30)
+                    for tide_win in tide_windows_for_day:
+                        tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=datetime.timezone.utc)
+                        tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=datetime.timezone.utc)
+                        if tide_critical_start < tide_win_end and tide_critical_end > tide_win_start: tide_check_passed = True; break
+                
+                if not tide_check_passed: continue
+
+                crane_end_dt = None
+                if crane_needed:
+                    s17_id = ecm.get_s17_truck_id()
+                    crane_end_dt = slot_start_dt + crane_duration
+                    if not ecm.check_truck_availability_optimized(s17_id, slot_start_dt, crane_end_dt, compiled_schedule): continue
+                
+                return {
+                    'is_piggyback': is_opportunistic_search,
+                    'boat_id': boat.boat_id, 'customer_id': customer_id, "date": search_date,
+                    "time": slot_start_dt.time(), "truck_id": truck.truck_id, "ramp_id": ramp_id,
+                    "service_type": service_type, "S17_needed": crane_needed, "scheduled_end_datetime": slot_end_dt, 
+                    "S17_busy_end_datetime": crane_end_dt,
+                    'tide_rule_concise': ecm.get_concise_tide_rule(ramp, boat),
+                    'high_tide_times': [t['time'] for t in all_tides.get(search_date, []) if t['type'] == 'H'],
+                    'boat_draft': boat.draft_ft
                 }
-                
-                # Check if this new slot is actually viable
-                new_slot = _check_and_create_slot_detail(
-                    check_date,
-                    'S17',
-                    ramp_obj,
-                    customer,
-                    boat,
-                    trucks,
-                    duration,
-                    S17_duration,
-                    service_type,
-                    start_time=primary_high_tide['time']
-                )
-
-                if new_slot:
-                    return new_slot
-
-    return None # If no suitable new slot is found within the search window.
+    return None
     
 def _generate_day_search_order(start_date, look_back, look_forward):
     """Generates a list of dates to check, starting from the center and expanding outwards."""
