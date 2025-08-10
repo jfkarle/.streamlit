@@ -1393,91 +1393,80 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, **kwargs):
     """
-    Finds available slots based on a 5-point efficiency-first blueprint.
+    Finds available slots by first searching ONLY for the preferred truck.
+    Falls back to other trucks ONLY if relax_truck_preference is True.
     """
     global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
-    fetch_scheduled_jobs() # Ensures the schedule is always up-to-date
-
-    # --- DEBUG BLOCK 1: See what jobs are loaded ---
-    st.sidebar.write("--- DEBUG: All Scheduled Jobs ---")
-    st.sidebar.json([job.__dict__ for job in SCHEDULED_JOBS])
     
-    # --- Validation Block ---
-    if not requested_date_str:
-        return [], "Please select a target date before searching.", [], False
-    try:
-        requested_date = datetime.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
-    except ValueError:
-        return [], f"The provided date '{requested_date_str}' is not in a valid format (YYYY-MM-DD).", [], False
+    # --- ADDED: Read the 'relax_truck_preference' flag from the UI ---
+    relax_truck_preference = kwargs.get('relax_truck_preference', False)
 
-    # --- One-Time Schedule Compilation ---
-    _log_debug("Compiling master truck schedule once...")
+    fetch_scheduled_jobs()
+
+    # --- Validation & Initial Setup ---
+    if not requested_date_str: return [], "Please select a target date before searching.", [], False
+    try: requested_date = datetime.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
+    except ValueError: return [], f"Date '{requested_date_str}' is not valid.", [], False
+    
     compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
-    _log_debug("Master schedule compiled.")
-
-    # --- DEBUG BLOCK 2: See the conflict schedule that was built ---
-    st.sidebar.write("--- DEBUG: Compiled Truck Schedule ---")
-    st.sidebar.json(compiled_schedule)
-
     boat = get_boat_details(boat_id)
-    # This check prevents a crash if the boat_id is invalid
-    if not boat:
-        return [], f"Could not find details for boat ID: {boat_id}", [], True
-        
+    if not boat: return [], f"Could not find boat ID: {boat_id}", [], True
     crane_needed = "Sailboat" in boat.boat_type
-    
-    found_slots = []
-    
-    # --- PHASE 1: Opportunistic Efficiency Search (Points 3 & 4) ---
-    _log_debug("PHASE 1: Searching for existing crane jobs at the selected ramp...")
-    search_window = [requested_date + timedelta(days=i) for i in range(-7, 8)]
-    
-    s17_id = get_s17_truck_id()
-    active_crane_days_at_ramp = {
-        job.scheduled_start_datetime.date()
-        for job in SCHEDULED_JOBS
-        if job.scheduled_start_datetime
-        and job.scheduled_start_datetime.date() in search_window
-        and job.assigned_crane_truck_id == s17_id
-        and (str(job.pickup_ramp_id) == str(selected_ramp_id) or str(job.dropoff_ramp_id) == str(selected_ramp_id))
-    }
-    
-    sorted_active_days = sorted(list(active_crane_days_at_ramp), key=lambda d: abs(d - requested_date))
-    
-    for day in sorted_active_days:
-        _log_debug(f"Found existing crane day. Searching for piggyback slot on: {day}")
-        slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id)
-        if slot:
-            found_slots.append(slot)
-        if len(found_slots) >= num_suggestions_to_find:
-            break
-            
-    if found_slots:
-        _log_debug(f"Found {len(found_slots)} highly efficient slots in Phase 1.")
-        return found_slots, "Found highly efficient slots on days the crane is already active at that ramp.", [], False
 
-    # --- PHASE 2: Fallback Search (Point 5) ---
-    _log_debug("PHASE 2: No efficient slots found, starting fallback search for future ideal days.")
-    search_dates = []
-    if crane_needed:
-        potential_dates = [d for r, d in IDEAL_CRANE_DAYS if str(r) == str(selected_ramp_id) and d >= requested_date]
-        search_dates = sorted(potential_dates)[:30]
-        _log_debug(f"Crane needed. Searching the next {len(search_dates)} ideal days starting from {requested_date}.")
+    # --- Separate Trucks into Preferred and Others ---
+    all_suitable_trucks = get_suitable_trucks(boat.boat_length)
+    preferred_trucks = []
+    other_trucks = []
+    if boat.preferred_truck_id:
+        for t in all_suitable_trucks:
+            if t.truck_name == boat.preferred_truck_id: preferred_trucks.append(t)
+            else: other_trucks.append(t)
     else:
-        search_dates = [requested_date + timedelta(days=i) for i in range(14)]
-        _log_debug(f"No crane. Searching forward from {requested_date}")
+        # If no preference, all trucks are considered "other" to allow them to be found
+        other_trucks = all_suitable_trucks
+
+    # --- Internal Search Function to Avoid Code Duplication ---
+    def _run_search(trucks_to_search, search_message_type):
+        found = []
+        # Phase 1: Opportunistic Search
+        search_window = [requested_date + timedelta(days=i) for i in range(-7, 8)]
+        s17_id = get_s17_truck_id()
+        active_crane_days = { j.scheduled_start_datetime.date() for j in SCHEDULED_JOBS if j.scheduled_start_datetime and j.scheduled_start_datetime.date() in search_window and j.assigned_crane_truck_id == s17_id and (str(j.pickup_ramp_id) == str(selected_ramp_id) or str(j.dropoff_ramp_id) == str(selected_ramp_id)) }
+        sorted_active_days = sorted(list(active_crane_days), key=lambda d: abs(d - requested_date))
+        for day in sorted_active_days:
+            slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_search)
+            if slot: found.append(slot)
+            if len(found) >= num_suggestions_to_find: return found, "Found highly efficient slots."
+
+        # Phase 2: Fallback Search
+        if crane_needed:
+            potential = [d for r, d in IDEAL_CRANE_DAYS if str(r) == str(selected_ramp_id) and d >= requested_date]
+            search_days = sorted(potential)[:30]
+        else:
+            search_days = [requested_date + timedelta(days=i) for i in range(14)]
+        for day in search_days:
+            slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_search)
+            if slot: found.append(slot)
+            if len(found) >= num_suggestions_to_find: break
         
-    for day in search_dates:
-        slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id)
-        if slot:
-            found_slots.append(slot)
-        if len(found_slots) >= num_suggestions_to_find:
-            break
-            
-    if found_slots:
-        return found_slots, "Found available slots on the next best days.", [], False
-    else:
-        return [], "Could not find any available slots within the search window.", [], True
+        return (found, f"Found slots with {search_message_type} truck.") if found else ([], None)
+
+    # --- Execute the Search ---
+    found_slots, message = [], None
+    trucks_to_try = preferred_trucks if boat.preferred_truck_id else other_trucks
+
+    # Attempt 1: Search with only preferred trucks (or all if no preference)
+    if trucks_to_try:
+        search_type = "preferred" if boat.preferred_truck_id else "any suitable"
+        _log_debug(f"Attempt 1: Searching for {search_type} truck: {[t.truck_name for t in trucks_to_try]}")
+        found_slots, message = _run_search(trucks_to_try, search_type)
+
+    # MODIFIED: Attempt 2 only runs if the relax rule is checked
+    if not found_slots and relax_truck_preference and other_trucks:
+        _log_debug(f"Attempt 2: Preferred truck unavailable. Searching for other trucks: {[t.truck_name for t in other_trucks]}")
+        found_slots, message = _run_search(other_trucks, "other")
+
+    return (found_slots, message, [], False) if found_slots else ([], "Could not find any available slots with the specified truck preference.", [], True)
 
 # --- REPLACEMENT: The enhanced testing utility ---
 
