@@ -1727,6 +1727,21 @@ def confirm_and_schedule_job(selected_slot, parked_job_to_remove=None):
     except Exception as e:
         return None, f"An error occurred in confirm_and_schedule_job: {e}"
 
+def find_available_ramps_for_boat(boat, all_ramps):
+    """
+    Finds ramps suitable for a given boat by checking the boat's type against a ramp's allowed boat types.
+    """
+    matching_ramps = {
+        ramp_id: ramp for ramp_id, ramp in all_ramps.items()
+        if boat.boat_type in ramp.allowed_boat_types
+    }
+    
+    # Fallback: if no specific ramps match, return all of them to allow a manual override.
+    if not matching_ramps:
+        return all_ramps.keys()
+
+    return matching_ramps.keys()
+
 
 def get_S17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks, duration, S17_duration, service_type):
     """
