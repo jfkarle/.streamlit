@@ -620,6 +620,14 @@ def show_scheduler_page():
     
     if customer and st.session_state.get('selected_boat_id'):
         boat = ecm.LOADED_BOATS.get(st.session_state.selected_boat_id)
+
+        # --- ADD THIS SAFETY CHECK ---
+        if not boat:
+            st.sidebar.error("Could not load boat details. Please re-select the boat.")
+            return # Stop further execution to prevent the crash
+        # --- END OF FIX ---
+
+        
         service_type = st.sidebar.selectbox("Service Type:", ["Launch", "Haul", "Sandblast", "Paint"])
         req_date = st.sidebar.date_input("Requested Date:", min_value=None)
         override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
