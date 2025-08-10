@@ -245,9 +245,7 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                         if tide_critical_start < tide_win_end and tide_critical_end > tide_win_start: tide_check_passed = True; break
                 
                 if not tide_check_passed: continue
-                
-                # --- THIS IS THE FIX ---
-                # Initialize crane_end_dt to None to ensure it always exists.
+
                 crane_end_dt = None
                 if crane_needed:
                     s17_id = get_s17_truck_id()
@@ -1404,7 +1402,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     falling back to other trucks ONLY if relax_truck_preference is True.
     """
     global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
-
+    
     relax_truck_preference = kwargs.get('relax_truck_preference', False)
     fetch_scheduled_jobs()
 
@@ -1412,7 +1410,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not requested_date_str: return [], "Please select a target date before searching.", [], False
     try: requested_date = datetime.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
     except ValueError: return [], f"Date '{requested_date_str}' is not valid.", [], True
-
+    
     compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
     boat = get_boat_details(boat_id)
     if not boat: return [], f"Could not find boat ID: {boat_id}", [], True
@@ -1452,7 +1450,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_search, is_opportunistic_search=is_also_opportunistic)
             if slot: found.append(slot)
             if len(found) >= num_suggestions_to_find: break
-
+        
         return (found, f"Found slots with {search_message_type} truck.") if found else ([], None)
 
     # --- Execute the Search ---
