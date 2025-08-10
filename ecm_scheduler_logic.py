@@ -1659,49 +1659,49 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
         'all_boats': {'total': total_all_boats, 'scheduled': len(scheduled_customer_ids), 'launched': len(launched_customer_ids)},
         'ecm_boats': {'total': len(ecm_customer_ids), 'scheduled': len(scheduled_customer_ids.intersection(ecm_customer_ids)), 'launched': len(launched_customer_ids.intersection(ecm_customer_ids))}
     }
-def confirm_and_schedule_job(original_request, selected_slot, parked_job_to_remove=None):
+def confirm_and_schedule_job(selected_slot, parked_job_to_remove=None):
+    """
+    Confirms and saves a job using only the details from the selected_slot object.
+    """
     try:
-        customer = get_customer_details(original_request['customer_id'])
-        boat = get_boat_details(original_request['boat_id'])
-        service_type = original_request['service_type']
-        selected_ramp_id = selected_slot.get('ramp_id')
+        # All necessary info is now in the selected_slot object
+        customer = ecm.get_customer_details(selected_slot.get('customer_id'))
+        boat = ecm.get_boat_details(selected_slot.get('boat_id'))
+        service_type = selected_slot.get('service_type')
         
         pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
         
         if service_type == "Launch":
             pickup_addr = boat.storage_address
-            dropoff_rid = selected_ramp_id or boat.preferred_ramp_id
-            dropoff_ramp_obj = get_ramp_details(dropoff_rid)
+            dropoff_rid = selected_slot.get('ramp_id') or boat.preferred_ramp_id
+            dropoff_ramp_obj = get_ramp_details(str(dropoff_rid)) # Ensure ID is a string
             dropoff_addr = dropoff_ramp_obj.ramp_name if dropoff_ramp_obj else ""
             
         elif service_type == "Haul":
             dropoff_addr = boat.storage_address
-            pickup_rid = selected_ramp_id or boat.preferred_ramp_id
-            pickup_ramp_obj = get_ramp_details(pickup_rid)
+            pickup_rid = selected_slot.get('ramp_id') or boat.preferred_ramp_id
+            pickup_ramp_obj = get_ramp_details(str(pickup_rid)) # Ensure ID is a string
             pickup_addr = pickup_ramp_obj.ramp_name if pickup_ramp_obj else ""
         
-        start_dt = datetime.datetime.combine(selected_slot['date'], selected_slot['time'], tzinfo=timezone.utc)
-        hauler_end_dt = selected_slot['scheduled_end_datetime']
-        S17_end_dt      = selected_slot.get('S17_busy_end_datetime')
+        start_dt = datetime.datetime.combine(selected_slot.get('date'), selected_slot.get('time'), tzinfo=timezone.utc)
         
-        # --- START: Corrected Logic ---
-        # 1. Find the actual numeric ID for the crane truck named "S17".
-        s17_truck_id = None
-        for truck in ECM_TRUCKS.values():
-            if truck.truck_name == "S17":
-                s17_truck_id = truck.truck_id
-                break
-        # --- END: Corrected Logic ---
+        # Find the numeric ID for the crane truck
+        s17_truck_id = get_s17_truck_id()
 
         new_job = Job(
-            customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
+            customer_id=customer.customer_id,
+            boat_id=boat.boat_id,
+            service_type=service_type,
             scheduled_start_datetime=start_dt,
-            scheduled_end_datetime=hauler_end_dt,
-            assigned_hauling_truck_id=str(selected_slot['truck_id']), # Convert to string
-            assigned_crane_truck_id=str(s17_truck_id) if s17_truck_id else None, # Convert to string
-            S17_busy_end_datetime=S17_end_dt,
-            pickup_ramp_id=pickup_rid, dropoff_ramp_id=dropoff_rid,
-            job_status="Scheduled", pickup_street_address=pickup_addr, dropoff_street_address=dropoff_addr
+            scheduled_end_datetime=selected_slot.get('scheduled_end_datetime'),
+            assigned_hauling_truck_id=str(selected_slot.get('truck_id')),
+            assigned_crane_truck_id=str(s17_truck_id) if selected_slot.get('S17_needed') else None,
+            S17_busy_end_datetime=selected_slot.get('S17_busy_end_datetime'),
+            pickup_ramp_id=pickup_rid,
+            dropoff_ramp_id=dropoff_rid,
+            job_status="Scheduled",
+            pickup_street_address=pickup_addr,
+            dropoff_street_address=dropoff_addr
         )
         
         save_job(new_job)
