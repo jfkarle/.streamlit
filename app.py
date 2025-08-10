@@ -706,7 +706,10 @@ def show_scheduler_page():
 
         if st.button("CONFIRM THIS JOB"):
             parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
-            new_id, message = ecm.confirm_and_schedule_job(slot, # We only need to pass the slot object nowparked_to_remove=parked_to_remove)
+            new_id, message = ecm.confirm_and_schedule_job(
+                slot, # We only need to pass the slot object now
+                parked_to_remove=parked_to_remove
+            )
             if new_id:
                 st.session_state.confirmation_message = message
                 svc = st.session_state.current_job_request['service_type']
