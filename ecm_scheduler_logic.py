@@ -1441,13 +1441,21 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
 # --- REPLACEMENT: The enhanced testing utility ---
 
-def simulate_job_requests(total_jobs_to_gen=50):
+def simulate_job_requests(total_jobs_to_gen=50, truck_hours=None):
     """
     A smarter simulation utility to test the new efficiency logic.
+    Now accepts a temporary truck_hours schedule for "what-if" scenarios.
     """
-    global SCHEDULED_JOBS
+    global SCHEDULED_JOBS, TRUCK_OPERATING_HOURS
     SCHEDULED_JOBS = [] # Reset schedule for simulation
     
+    # --- ADDED: Temporarily use the provided schedule for the simulation ---
+    original_truck_hours = TRUCK_OPERATING_HOURS.copy()
+    if truck_hours:
+        _log_debug("Running simulation with a temporary truck schedule.")
+        TRUCK_OPERATING_HOURS = truck_hours
+    # --- END ADDED BLOCK ---
+
     # 1. Generate a Diverse Job Pool
     job_requests = []
     all_boats = list(LOADED_BOATS.values())
@@ -1458,7 +1466,6 @@ def simulate_job_requests(total_jobs_to_gen=50):
     busy_week_start = datetime.date(2025, 5, 19) # Simulate a busy spring week
 
     for boat in all_boats[:total_jobs_to_gen]:
-        # Cluster 50% of requests into one busy week
         if random.random() < 0.5:
             req_date = busy_week_start + timedelta(days=random.randint(0, 4))
         else:
@@ -1479,7 +1486,6 @@ def simulate_job_requests(total_jobs_to_gen=50):
         slots, _, _, _ = find_available_job_slots(**request)
         
         if slots:
-            # Always pick the first (best) suggestion
             confirm_and_schedule_job(request, slots[0])
             successful_bookings += 1
         else:
@@ -1497,6 +1503,11 @@ def simulate_job_requests(total_jobs_to_gen=50):
         f"- Created {total_crane_days} unique crane-days.\n"
         f"- Achieved an average of {avg_jobs_per_truck_day:.2f} jobs per truck-day."
     )
+    
+    # --- ADDED: Restore the original schedule after simulation is complete ---
+    TRUCK_OPERATING_HOURS = original_truck_hours
+    # --- END ADDED BLOCK ---
+    
     _log_debug(summary)
     return summary
 
