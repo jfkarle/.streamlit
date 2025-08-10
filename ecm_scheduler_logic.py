@@ -440,7 +440,33 @@ def load_all_data_from_sheets():
     except Exception as e:
         st.error(f"Error loading data: {e}")
         raise
+
+def delete_all_jobs():
+    """
+    Deletes ALL records from the 'jobs' table in the database.
+    Returns a tuple of (success_boolean, message_string).
+    """
+    try:
+        conn = get_db_connection()
         
+        # To delete all rows, we perform a delete with a filter that matches everything.
+        # This deletes all rows where the job_id is not -1 (which is all of them).
+        conn.table("jobs").delete().neq("job_id", -1).execute()
+
+        _log_debug("Successfully deleted all jobs from the database.")
+        
+        # Also clear the in-memory list to reflect the change immediately
+        global SCHEDULED_JOBS
+        SCHEDULED_JOBS.clear()
+        
+        return True, "Success! All jobs have been permanently deleted from the database."
+        
+    except Exception as e:
+        _log_debug(f"ERROR: Failed to delete all jobs. Details: {e}")
+        st.error(f"An error occurred while trying to delete jobs: {e}")
+        return False, f"Error: Could not delete jobs. Details: {e}"
+
+
 def save_job(job_to_save):
     conn = get_db_connection()
     job_dict = job_to_save.__dict__
