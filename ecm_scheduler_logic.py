@@ -1677,7 +1677,7 @@ def confirm_and_schedule_job(selected_slot, parked_job_to_remove=None):
     Confirms and saves a job using only the details from the selected_slot object.
     """
     try:
-        # All necessary info is now in the selected_slot object
+        # CORRECTED: Removed 'ecm.' prefix from the function calls below
         customer = get_customer_details(selected_slot.get('customer_id'))
         boat = get_boat_details(selected_slot.get('boat_id'))
         service_type = selected_slot.get('service_type')
@@ -1687,13 +1687,13 @@ def confirm_and_schedule_job(selected_slot, parked_job_to_remove=None):
         if service_type == "Launch":
             pickup_addr = boat.storage_address
             dropoff_rid = selected_slot.get('ramp_id') or boat.preferred_ramp_id
-            dropoff_ramp_obj = get_ramp_details(str(dropoff_rid)) # Ensure ID is a string
+            dropoff_ramp_obj = get_ramp_details(str(dropoff_rid))
             dropoff_addr = dropoff_ramp_obj.ramp_name if dropoff_ramp_obj else ""
             
         elif service_type == "Haul":
             dropoff_addr = boat.storage_address
             pickup_rid = selected_slot.get('ramp_id') or boat.preferred_ramp_id
-            pickup_ramp_obj = get_ramp_details(str(pickup_rid)) # Ensure ID is a string
+            pickup_ramp_obj = get_ramp_details(str(pickup_rid))
             pickup_addr = pickup_ramp_obj.ramp_name if pickup_ramp_obj else ""
         
         start_dt = datetime.datetime.combine(selected_slot.get('date'), selected_slot.get('time'), tzinfo=timezone.utc)
@@ -1728,21 +1728,6 @@ def confirm_and_schedule_job(selected_slot, parked_job_to_remove=None):
         
     except Exception as e:
         return None, f"An error occurred in confirm_and_schedule_job: {e}"
-
-def find_available_ramps_for_boat(boat, all_ramps):
-    """
-    Finds ramps suitable for a given boat by checking the boat's type against a ramp's allowed boat types.
-    """
-    matching_ramps = {
-        ramp_id: ramp for ramp_id, ramp in all_ramps.items()
-        if boat.boat_type in ramp.allowed_boat_types
-    }
-    
-    # Fallback: if no specific ramps match, return all of them to allow a manual override.
-    if not matching_ramps:
-        return all_ramps.keys()
-
-    return matching_ramps.keys()
 
 
 def get_S17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks, duration, S17_duration, service_type):
