@@ -1711,7 +1711,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
         # If we found anything, score & pick the top-K
         if found:
-            best = _select_best_slots(found, compiled_schedule, daily_last_locations, requested_date, k=num_suggestions_to_find)
+            best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
             msg = f"Found slots with {search_message_type} truck."
             return (best, msg)
         return ([], None)
