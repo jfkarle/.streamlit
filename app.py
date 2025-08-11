@@ -1075,7 +1075,14 @@ def show_settings_page():
             key='max_job_distance',
             help="Enforces that a truck's next job must be within this many miles of its previous job's location."
         )
-        st.markdown("---")
+        
+
+    # --- TAB 2: Truck Schedules (your heading said "Truck Schedules") ---
+    with tab2:
+        st.subheader("Developer Tools & Overrides")
+        st.info("Developer tools for testing and overriding system behavior.")
+
+    st.markdown("---")
         st.info("NOTE: Changes made here are saved permanently to the database.")
         name_to_id_map = {t.truck_name: t.truck_id for t in ecm.ECM_TRUCKS.values()}
         all_truck_names = sorted(name_to_id_map.keys())
@@ -1110,11 +1117,6 @@ def show_settings_page():
                         st.rerun()
                     else:
                         st.error(message)
-
-    # --- TAB 2: Truck Schedules (your heading said "Truck Schedules") ---
-    with tab2:
-        st.subheader("Developer Tools & Overrides")
-        st.info("Developer tools for testing and overriding system behavior.")
 
     # --- TAB 3: QA & Data Generation Tools ---
     with tab3:
