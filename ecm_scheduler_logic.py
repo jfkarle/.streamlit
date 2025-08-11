@@ -277,7 +277,20 @@ def _generate_day_search_order(start_date, look_back, look_forward):
 
 # --- DATABASE PERSISTENCE FUNCTIONS ---
 @st.cache_resource
+@st.cache_resource
 def get_db_connection():
+    url = (
+        st.secrets.get("SUPABASE_URL")
+        or st.secrets.get("SUPA_URL")
+        or os.environ.get("SUPABASE_URL")
+    )
+    key = (
+        st.secrets.get("SUPABASE_KEY")
+        or st.secrets.get("SUPA_KEY")
+        or os.environ.get("SUPABASE_KEY")
+    )
+    if url and key:
+        return st.connection("supabase", type=SupabaseConnection, url=url.strip(), key=key.strip())
     return st.connection("supabase", type=SupabaseConnection)
 
 from datetime import date
