@@ -1082,41 +1082,41 @@ def show_settings_page():
         st.subheader("Developer Tools & Overrides")
         st.info("Developer tools for testing and overriding system behavior.")
 
-    st.markdown("---")
-        st.info("NOTE: Changes made here are saved permanently to the database.")
-        name_to_id_map = {t.truck_name: t.truck_id for t in ecm.ECM_TRUCKS.values()}
-        all_truck_names = sorted(name_to_id_map.keys())
-        selected_truck_name = st.selectbox("Select a truck to edit:", all_truck_names)
-        if selected_truck_name:
-            selected_truck_id = name_to_id_map[selected_truck_name]
-            st.markdown("---")
-            with st.form(f"form_{selected_truck_name.replace('/', '_')}"):
-                st.write(f"**Editing hours for {selected_truck_name}**")
-                new_hours = {}
-                days_of_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-                for i, day_name in enumerate(days_of_week):
-                    current_hours = ecm.TRUCK_OPERATING_HOURS.get(selected_truck_id, {}).get(i)
-                    is_working = current_hours is not None
-                    start_time, end_time = current_hours if is_working else (datetime.time(8, 0), datetime.time(16, 0))
-                    summary = (
-                        f"{day_name}: {ecm.format_time_for_display(start_time)} – {ecm.format_time_for_display(end_time)}"
-                        if is_working else
-                        f"{day_name}: Off Duty"
-                    )
-                    with st.expander(summary):
-                        col1, col2, col3 = st.columns([1, 2, 2])
-                        working = col1.checkbox("Working", value=is_working, key=f"{selected_truck_name}_{i}_working")
-                        new_start = col2.time_input("Start", value=start_time, key=f"{selected_truck_name}_{i}_start", disabled=not working)
-                        new_end = col3.time_input("End", value=end_time, key=f"{selected_truck_name}_{i}_end", disabled=not working)
-                        new_hours[i] = (new_start, new_end) if working else None
-                if st.form_submit_button("Save Hours"):
-                    success, message = ecm.update_truck_schedule(selected_truck_name, new_hours)
-                    if success:
-                        ecm.load_all_data_from_sheets()
-                        st.success(message)
-                        st.rerun()
-                    else:
-                        st.error(message)
+        st.markdown("---")
+            st.info("NOTE: Changes made here are saved permanently to the database.")
+            name_to_id_map = {t.truck_name: t.truck_id for t in ecm.ECM_TRUCKS.values()}
+            all_truck_names = sorted(name_to_id_map.keys())
+            selected_truck_name = st.selectbox("Select a truck to edit:", all_truck_names)
+            if selected_truck_name:
+                selected_truck_id = name_to_id_map[selected_truck_name]
+                st.markdown("---")
+                with st.form(f"form_{selected_truck_name.replace('/', '_')}"):
+                    st.write(f"**Editing hours for {selected_truck_name}**")
+                    new_hours = {}
+                    days_of_week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                    for i, day_name in enumerate(days_of_week):
+                        current_hours = ecm.TRUCK_OPERATING_HOURS.get(selected_truck_id, {}).get(i)
+                        is_working = current_hours is not None
+                        start_time, end_time = current_hours if is_working else (datetime.time(8, 0), datetime.time(16, 0))
+                        summary = (
+                            f"{day_name}: {ecm.format_time_for_display(start_time)} – {ecm.format_time_for_display(end_time)}"
+                            if is_working else
+                            f"{day_name}: Off Duty"
+                        )
+                        with st.expander(summary):
+                            col1, col2, col3 = st.columns([1, 2, 2])
+                            working = col1.checkbox("Working", value=is_working, key=f"{selected_truck_name}_{i}_working")
+                            new_start = col2.time_input("Start", value=start_time, key=f"{selected_truck_name}_{i}_start", disabled=not working)
+                            new_end = col3.time_input("End", value=end_time, key=f"{selected_truck_name}_{i}_end", disabled=not working)
+                            new_hours[i] = (new_start, new_end) if working else None
+                    if st.form_submit_button("Save Hours"):
+                        success, message = ecm.update_truck_schedule(selected_truck_name, new_hours)
+                        if success:
+                            ecm.load_all_data_from_sheets()
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.error(message)
 
     # --- TAB 3: QA & Data Generation Tools ---
     with tab3:
