@@ -1,6 +1,6 @@
 import streamlit as st
 import datetime
-import ecm_scheduler_logic as ecm
+import ecm_scheduler_logic_dataclass as ecm
 import pandas as pd
 import csv
 import math
