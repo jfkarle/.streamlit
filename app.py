@@ -234,19 +234,29 @@ def display_crane_day_calendar(crane_days_for_ramp):
                     cols[i].markdown(f'<div style="padding:10px; border-radius:5px; border: 2px solid {border_color};background-color:{bg_color}; height: 60px;"><p style="text-align: right; font-weight: {font_weight}; color: black;">{day.day}</p></div>', unsafe_allow_html=True)
 
 def generate_daily_planner_pdf(report_date, jobs_for_day):
+    """
+    Daily planner PDF:
+      - Draws tide windows PER RAMP column using that ramp's NOAA station (Fix B).
+      - Flags any job whose start time is outside its ramp's tide window (Fix C).
+      - Keeps thinner duration strokes for 1.5h/3h jobs.
+    """
     from reportlab.pdfgen import canvas
     from reportlab.lib.units import inch
+    from datetime import time as _time, datetime as _dt, timedelta as _td
 
     # ---- stroke width constants ----
-    JOB_OUTLINE_W       = 2.0   # outer job strokes (your existing look)
-    JOB_DURATION_W_THIN = 0.8   # thinner for 1.5h / 3h
-    JOB_DURATION_W_STD  = 2.0   # standard for everything else
+    JOB_OUTLINE_W       = 2.0   # outer job strokes
+    JOB_DURATION_W_THIN = 0.8   # thin for 1.5h / 3h
+    JOB_DURATION_W_STD  = 2.0   # standard otherwise
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
+
+    # Columns map (unchanged layout)
     planner_columns = ["S20/33", "S21/77", "S23/55", "S17"]
     column_map = {name: i for i, name in enumerate(planner_columns)}
+
     margin, time_col_width = 0.5 * inch, 0.75 * inch
     content_width = width - 2 * margin - time_col_width
     col_width = content_width / len(planner_columns)
@@ -259,99 +269,197 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     bottom_y = margin + 0.5 * inch
     content_height = top_y - bottom_y
 
-    def get_y_for_time(t):
+    def get_y_for_time(t: datetime.time) -> float:
         minutes_into_day = (t.hour * 60 + t.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
         return top_y - ((minutes_into_day / total_minutes) * content_height)
 
-    # --- tides (unchanged from your version) ---
-    high_tide_highlights, low_tide_highlights = [], []
-    primary_high_tide = None
-    if jobs_for_day:
-        ramp_id_for_tides = None
-        first_job = jobs_for_day[0]
-        if first_job.pickup_ramp_id: ramp_id_for_tides = first_job.pickup_ramp_id
-        elif first_job.dropoff_ramp_id: ramp_id_for_tides = first_job.dropoff_ramp_id
-        else: ramp_id_for_tides = "3000001" 
+    # Header
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
 
-        if ramp_id_for_tides:
-            ramp_obj = ecm.get_ramp_details(ramp_id_for_tides)
-            if ramp_obj:
-                all_tides_for_date = ecm.fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, report_date, report_date)
-                tide_data_for_day = all_tides_for_date.get(report_date, [])
-                high_tides_full_data = [t for t in tide_data_for_day if t.get('type') == 'H']
-                low_tides_full_data = [t for t in tide_data_for_day if t.get('type') == 'L']
-                if high_tides_full_data:
-                    noon = datetime.datetime.combine(report_date, datetime.time(12,0), tzinfo=timezone.utc)
-                    primary_high_tide = min(high_tides_full_data, key=lambda t: abs(datetime.datetime.combine(report_date, t['time'], tzinfo=timezone.utc) - noon))
-                def round_time(t):
-                    mins = t.hour * 60 + t.minute;rounded = int(round(mins / 15.0) * 15)
-                    return datetime.time(min(23, rounded // 60), rounded % 60)
-                high_tide_highlights = [round_time(t['time']) for t in high_tides_full_data]
-                low_tide_highlights = [round_time(t['time']) for t in low_tides_full_data]
-
-    c.setFont("Helvetica-Bold", 12);c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
-    if primary_high_tide:
-        tide_time_str = ecm.format_time_for_display(primary_high_tide['time'])
-        tide_height_str = f"{float(primary_high_tide.get('height', 0)):.1f}'"
-        c.setFont("Helvetica-Bold", 9);c.drawString(margin, height - 0.6 * inch, f"High Tide: {tide_time_str} ({tide_height_str})")
-
+    # Column titles
     for i, name in enumerate(planner_columns):
-        c.setFont("Helvetica-Bold", 14);c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
 
-    # Grid
+    # Time grid
     c.setFont("Helvetica-Bold", 9)
     c.drawString(margin + 3, top_y - 9, "7:30")
     for hour in range(start_time_obj.hour + 1, end_time_obj.hour + 1):
-        hour_highlight_color = None
-        for m_check in [0, 15, 30, 45]:
-            check_time = datetime.time(hour, m_check)
-            if check_time in high_tide_highlights: hour_highlight_color = colors.Color(1, 1, 0, alpha=0.4); break
-            elif check_time in low_tide_highlights: hour_highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4); break
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
-            if not (start_time_obj <= current_time <= end_time_obj): continue
+            if not (start_time_obj <= current_time <= end_time_obj):
+                continue
             y = get_y_for_time(current_time)
-            c.setStrokeColorRGB(0.7, 0.7, 0.7); c.setLineWidth(1.0 if minute == 0 else 0.25); c.line(margin, y, width - margin, y)
+            c.setStrokeColorRGB(0.7, 0.7, 0.7)
+            c.setLineWidth(1.0 if minute == 0 else 0.25)
+            c.line(margin, y, width - margin, y)
             if minute == 0:
-                if hour_highlight_color:
-                    c.setFillColor(hour_highlight_color); c.rect(margin + 1, y - 11, time_col_width - 2, 13, fill=1, stroke=0)
                 display_hour = hour if hour <= 12 else hour - 12
-                c.setFont("Helvetica-Bold", 9);c.setFillColorRGB(0,0,0); c.drawString(margin + 3, y - 9, str(display_hour))
-    c.setStrokeColorRGB(0,0,0)
+                c.setFont("Helvetica-Bold", 9)
+                c.setFillColorRGB(0, 0, 0)
+                c.drawString(margin + 3, y - 9, str(display_hour))
+    c.setStrokeColorRGB(0, 0, 0)
     for i in range(len(planner_columns) + 1):
-        x = margin + time_col_width + i * col_width;c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
-    c.line(margin, top_y, margin, bottom_y);c.line(width - margin, top_y, width - margin, bottom_y)
-    c.line(margin, bottom_y, width - margin, bottom_y);c.line(margin, top_y, width - margin, top_y)
+        x = margin + time_col_width + i * col_width
+        c.setLineWidth(0.5)
+        c.line(x, top_y, x, bottom_y)
+    c.line(margin, top_y, margin, bottom_y)
+    c.line(width - margin, top_y, width - margin, bottom_y)
+    c.line(margin, bottom_y, width - margin, bottom_y)
+    c.line(margin, top_y, width - margin, top_y)
 
     # Truck/Crane names map
     id_to_name_map = {str(t.truck_id): t.truck_name for t in ecm.ECM_TRUCKS.values()}
 
-    def _mins_between(t1, t2):
-        return (t2.hour*60 + t2.minute) - (t1.hour*60 + t1.minute)
+    # ---------- Per-ramp tide windows (Fix B) ----------
+    # Cache tide windows per (ramp_id, date)
+    _window_cache: dict[tuple[str, datetime.date], list[tuple[datetime.time, datetime.time]]] = {}
 
+    def tide_windows_for_day(ramp_id: str, day: datetime.date) -> list[tuple[datetime.time, datetime.time]]:
+        key = (str(ramp_id), day)
+        if key in _window_cache:
+            return _window_cache[key]
+
+        ramp = ecm.get_ramp_details(str(ramp_id)) if ramp_id else None
+        if not ramp:
+            _window_cache[key] = []  # unknown ramp → treat as AnyTide (no shading limits)
+            return _window_cache[key]
+
+        station = getattr(ramp, "noaa_station_id", None)
+        method = (getattr(ramp, "tide_method", None) or getattr(ramp, "tide_rule", None) or "AnyTide")
+
+        # AnyTide ramps: whole day is ok → single full-day window
+        if not station or str(method) == "AnyTide":
+            _window_cache[key] = [(datetime.time(0, 0), datetime.time(23, 59))]
+            return _window_cache[key]
+
+        # Fetch tides and construct windows around the correct tide type
+        tide_map = ecm.fetch_noaa_tides_for_range(str(station), day, day) or {}
+        readings = tide_map.get(day, [])
+
+        pad = getattr(ramp, "window_minutes_each_side", 60)  # default 60 each side if not stored
+        # Heuristic: if ramp says it uses high tide (default True) else low
+        use_high = getattr(ramp, "uses_high_tide", True)
+
+        windows: list[tuple[datetime.time, datetime.time]] = []
+        for t in readings:
+            if use_high and t.get("type") != "H":
+                continue
+            if not use_high and t.get("type") != "L":
+                continue
+            tt = t.get("time")
+            if not isinstance(tt, datetime.time):
+                continue
+            center = _dt.combine(day, tt)
+            start = (center - _td(minutes=pad)).time()
+            end = (center + _td(minutes=pad)).time()
+            windows.append((start, end))
+
+        _window_cache[key] = windows
+        return windows
+
+    def time_within_any_window(check_time: datetime.time, windows: list[tuple[datetime.time, datetime.time]]) -> bool:
+        if not windows:
+            return True  # treat empty as unrestricted (AnyTide, unknown ramp)
+        for a, b in windows:
+            if a <= check_time <= b:
+                return True
+        return False
+
+    # Shade tide windows per ramp column once (not per job) to avoid overdraw
+    shaded_ramp_cols_done: set[str] = set()
+
+    # Group jobs by hauling truck name so we know which column to shade
+    jobs_by_truck_name: dict[str, list] = {}
     for job in jobs_for_day:
+        truck_name = id_to_name_map.get(str(job.assigned_hauling_truck_id))
+        if truck_name:
+            jobs_by_truck_name.setdefault(truck_name, []).append(job)
+
+    for truck_name, jobs in jobs_by_truck_name.items():
+        if truck_name not in column_map:
+            continue
+        col_index = column_map[truck_name]
+        # Choose the **ramp actually used by each job** and OR/union their windows for this column/day.
+        # Simpler approach: draw bands for EACH job's ramp separately in this column (safe and clear).
+        for job in jobs:
+            ramp_id = job.dropoff_ramp_id or job.pickup_ramp_id
+            windows = tide_windows_for_day(ramp_id, report_date)
+            if not windows:
+                continue
+            # Draw the shaded windows in this column
+            x_left = margin + time_col_width + col_index * col_width + 1
+            col_w = col_width - 2
+            for (ws, we) in windows:
+                y1 = get_y_for_time(ws if ws >= start_time_obj else start_time_obj)
+                y2 = get_y_for_time(we if we <= end_time_obj else end_time_obj)
+                if y1 < bottom_y and y2 < bottom_y:
+                    continue
+                if y1 > top_y and y2 > top_y:
+                    continue
+                c.saveState()
+                # light blue, semi-transparent
+                c.setFillColor(colors.Color(0.85, 0.93, 1.0, alpha=0.55))
+                c.rect(x_left, min(y1, y2), col_w, abs(y2 - y1), fill=1, stroke=0)
+                c.restoreState()
+
+    # Helper for job duration minutes
+    def _mins_between(t1, t2):
+        return (t2.hour * 60 + t2.minute) - (t1.hour * 60 + t1.minute)
+
+    # ---- Draw jobs + outside-window warning (Fix C) ----
+    for job in jobs_for_day:
+        # Basic fields
         start_time = max(job.scheduled_start_datetime.time(), start_time_obj)
         end_time   = job.scheduled_end_datetime.time()
         duration_m = max(0, _mins_between(start_time, end_time))
-
-        # linewidth rule: thin for 90m or 180m
         lw = JOB_DURATION_W_THIN if duration_m in (90, 180) else JOB_DURATION_W_STD
 
         y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
         line1_y, line2_y, line3_y = y0 - 15, y0 - 25, y0 - 35
-        customer, boat = ecm.get_customer_details(job.customer_id), ecm.get_boat_details(job.boat_id)
+        customer = ecm.get_customer_details(job.customer_id)
+        boat = ecm.get_boat_details(job.boat_id)
 
         hauling_truck_name = id_to_name_map.get(str(job.assigned_hauling_truck_id))
         if hauling_truck_name and hauling_truck_name in column_map:
             col_index = column_map[hauling_truck_name]
             text_x = margin + time_col_width + (col_index + 0.5) * col_width
-            c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_x, line1_y, customer.customer_name)
-            c.setFont("Helvetica", 7);c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
-            c.drawCentredString(text_x, line3_y, f"{ecm._abbreviate_town(job.pickup_street_address)}-{ecm._abbreviate_town(job.dropoff_street_address)}")
-            c.setLineWidth(lw);c.line(text_x, y0, text_x, y_end)      # vertical duration stroke (thin for 1.5/3h)
-            c.setLineWidth(JOB_OUTLINE_W);c.line(text_x - 10, y_end, text_x + 10, y_end)  # cap
 
-        # Crane stroke — use crane busy end time if present; thin rule applies as well
+            # Draw job text
+            c.setFillColorRGB(0, 0, 0)
+            c.setFont("Helvetica-Bold", 8)
+            c.drawCentredString(text_x, line1_y, customer.customer_name if customer else "—")
+            c.setFont("Helvetica", 7)
+            if boat:
+                c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
+            else:
+                c.drawCentredString(text_x, line2_y, "—")
+            c.drawCentredString(
+                text_x, line3_y,
+                f"{ecm._abbreviate_town(job.pickup_street_address)}-{ecm._abbreviate_town(job.dropoff_street_address)}"
+            )
+
+            # Duration stroke
+            c.setLineWidth(lw)
+            c.line(text_x, y0, text_x, y_end)
+            c.setLineWidth(JOB_OUTLINE_W)
+            c.line(text_x - 10, y_end, text_x + 10, y_end)
+
+            # ---- Outside tide window check (Fix C) ----
+            ramp_id = job.dropoff_ramp_id or job.pickup_ramp_id
+            job_windows = tide_windows_for_day(ramp_id, report_date)
+            if job_windows and not time_within_any_window(start_time, job_windows):
+                # Light red ribbon behind text
+                c.saveState()
+                c.setFillColor(colors.Color(1.0, 0.85, 0.85, alpha=0.9))
+                c.rect(text_x - 48, y0 - 52, 96, 12, fill=1, stroke=0)
+                c.setFillColorRGB(0.8, 0, 0)
+                c.setFont("Helvetica-Bold", 7)
+                c.drawCentredString(text_x, y0 - 45, "OUTSIDE TIDE WINDOW")
+                c.restoreState()
+
+        # Optional crane stroke for S17
         crane_truck_name = id_to_name_map.get(str(job.assigned_crane_truck_id))
         if crane_truck_name and crane_truck_name in column_map and getattr(job, "S17_busy_end_datetime", None):
             crane_col_index = column_map[crane_truck_name]
@@ -359,14 +467,21 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             y_crane_end = get_y_for_time(job.S17_busy_end_datetime.time())
             dur_crane_m = max(0, _mins_between(start_time, job.S17_busy_end_datetime.time()))
             crane_lw = JOB_DURATION_W_THIN if dur_crane_m in (90, 180) else JOB_DURATION_W_STD
-            c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
-            c.setFont("Helvetica", 7);c.drawCentredString(crane_text_x, line2_y, ecm._abbreviate_town(job.dropoff_street_address))
-            c.setLineWidth(crane_lw); c.line(crane_text_x, y0-45, crane_text_x, y_crane_end)  # thin for 1.5/3h
-            c.setLineWidth(JOB_OUTLINE_W); c.line(crane_text_x-3, y_crane_end, crane_text_x+3, y_crane_end)
+            c.setFillColorRGB(0, 0, 0)
+            c.setFont("Helvetica-Bold", 8)
+            if customer:
+                c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
+            c.setFont("Helvetica", 7)
+            c.drawCentredString(crane_text_x, line2_y, ecm._abbreviate_town(job.dropoff_street_address))
+            c.setLineWidth(crane_lw)
+            c.line(crane_text_x, y0 - 45, crane_text_x, y_crane_end)
+            c.setLineWidth(JOB_OUTLINE_W)
+            c.line(crane_text_x - 3, y_crane_end, crane_text_x + 3, y_crane_end)
 
     c.save()
     buffer.seek(0)
     return buffer
+
 
 def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     from PyPDF2 import PdfMerger
