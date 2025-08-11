@@ -1524,7 +1524,7 @@ def simulate_job_requests(total_jobs_to_gen=50, truck_hours=None):
     for request in job_requests:
         slots, _, _, _ = find_available_job_slots(**request)
         if slots:
-            confirm_and_schedule_job(request, slots[0])
+            confirm_and_schedule_job(slots[0])
             successful_bookings += 1
             
     # 3. Provide a Better Summary
