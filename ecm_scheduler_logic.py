@@ -32,6 +32,11 @@ supabase = create_client(SUPA_URL, SUPA_KEY)
 _geolocator = Nominatim(user_agent="ecm_boat_scheduler_app")
 _location_coords_cache = {} # Ensure this line is present here
 
+# --- PROTECTED WINDOWS & PREFERENCES (precomputed) ---
+CRANE_WINDOWS = {}  # {(ramp_id:str, date:date): [(start_time, end_time), ...]}
+ANYTIDE_LOW_TIDE_WINDOWS = {}  # {(ramp_id:str, date:date): [(start_time, end_time), ...]}
+
+
 DEBUG_MESSAGES = []
 
 def _log_debug(msg):
@@ -462,6 +467,41 @@ def load_all_data_from_sheets():
     except Exception as e:
         st.error(f"Error loading data: {e}")
         raise
+
+def _build_protected_windows(start_date: datetime.date, end_date: datetime.date):
+    """Populate CRANE_WINDOWS and ANYTIDE_LOW_TIDE_WINDOWS for the given date range."""
+    CRANE_WINDOWS.clear()
+    ANYTIDE_LOW_TIDE_WINDOWS.clear()
+
+    for ramp_id, ramp in ECM_RAMPS.items():
+        tides = fetch_noaa_tides_for_range(ramp.noaa_station_id, start_date, end_date)
+        for d, events in tides.items():
+            # Crane windows: HT ± offset for tide-dependent ramps (used to RESERVE for sailboats)
+            if ramp.tide_calculation_method not in ("AnyTide", "AnyTideWithDraftRule"):
+                offset_hours = float(ramp.tide_offset_hours1) if ramp.tide_offset_hours1 is not None else 0.0
+                if offset_hours >= 0:
+                    w = []
+                    delta = datetime.timedelta(hours=offset_hours)
+                    for ev in events:
+                        if ev['type'] == 'H':
+                            lt = (datetime.datetime.combine(d, ev['time'], tzinfo=timezone.utc) - delta).time()
+                            rt = (datetime.datetime.combine(d, ev['time'], tzinfo=timezone.utc) + delta).time()
+                            w.append((lt, rt))
+                    if w:
+                        CRANE_WINDOWS[(str(ramp_id), d)] = w
+
+            # AnyTide low‑tide preference windows: low tide falling between 10–14 local
+            if ramp.tide_calculation_method in ("AnyTide", "AnyTideWithDraftRule"):
+                w = []
+                for ev in events:
+                    if ev['type'] == 'L' and 10 <= ev['time'].hour < 14:
+                        # a small 60‑min window centered on LT; adjust as you like
+                        lt = (datetime.datetime.combine(d, ev['time'], tzinfo=timezone.utc) - datetime.timedelta(minutes=30)).time()
+                        rt = (datetime.datetime.combine(d, ev['time'], tzinfo=timezone.utc) + datetime.timedelta(minutes=30)).time()
+                        w.append((lt, rt))
+                if w:
+                    ANYTIDE_LOW_TIDE_WINDOWS[(str(ramp_id), d)] = w
+
 
 def delete_all_jobs():
     """
@@ -907,6 +947,7 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
     return grouped_tides
 
 @st.cache_data(show_spinner=False, ttl=3600)
+
 def fetch_noaa_tides_for_range(station_id, start_date, end_date):
     # Construct local file path
     local_filepath = f"tide_data/{station_id}_annual.txt" # Adjust folder name if different
@@ -1013,6 +1054,35 @@ def get_concise_tide_rule(ramp, boat):
     if ramp.tide_calculation_method == "AnyTide": return "Any Tide"
     if ramp.tide_calculation_method == "AnyTideWithDraftRule": return "Any Tide (<5' Draft)" if boat.draft_ft and boat.draft_ft < 5.0 else "3 hrs +/- High Tide (≥5' Draft)"
     return f"{float(ramp.tide_offset_hours1):g} hrs +/- HT" if ramp.tide_offset_hours1 else "Tide Rule N/A"
+
+def _is_anytide(ramp_id: str) -> bool:
+    r = ECM_RAMPS.get(str(ramp_id))
+    if not r: return False
+    return r.tide_calculation_method in ("AnyTide", "AnyTideWithDraftRule")
+
+def _in_any_window(start_dt: datetime.datetime, windows: list[tuple[datetime.time, datetime.time]], date: datetime.date) -> bool:
+    for s, e in windows:
+        sdt = datetime.datetime.combine(date, s, tzinfo=timezone.utc)
+        edt = datetime.datetime.combine(date, e, tzinfo=timezone.utc)
+        if sdt <= start_dt <= edt:
+            return True
+    return False
+
+def _is_crane_window(slot) -> bool:
+    """True if slot datetime sits inside a precomputed crane window for this ramp/day."""
+    key = (str(slot['ramp_id']), slot['date'])
+    wins = CRANE_WINDOWS.get(key, [])
+    if not wins: return False
+    start_dt = datetime.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
+    return _in_any_window(start_dt, wins, slot['date'])
+
+def _is_low_tide_window(slot) -> bool:
+    """True if slot datetime sits inside (10–14) low‑tide window on AnyTide ramps."""
+    key = (str(slot['ramp_id']), slot['date'])
+    wins = ANYTIDE_LOW_TIDE_WINDOWS.get(key, [])
+    if not wins: return False
+    start_dt = datetime.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
+    return _in_any_window(start_dt, wins, slot['date'])
 
 def calculate_ramp_windows(ramp, boat, tide_data, date):
     if ramp.tide_calculation_method == "AnyTide":
@@ -1278,6 +1348,88 @@ def _compile_truck_schedules(jobs):
     # Return both the time schedule and the daily last known locations
     return schedule, daily_truck_last_location
 
+def _count_jobs_on_truck_day(truck_id, date_obj, compiled_schedule):
+    """Counts jobs already on a truck's given day using compiled_schedule."""
+    cnt = 0
+    for busy_start, _ in compiled_schedule.get(str(truck_id), []):
+        if busy_start.date() == date_obj:
+            cnt += 1
+    return cnt
+
+def _geo_cluster_bonus(slot, daily_last_locations):
+    """+2 if pickup near last job location, +1 if near yard for first job, else 0."""
+    try:
+        truck_id = slot['truck_id']
+        date_obj = slot['date']
+        last = daily_last_locations.get(truck_id, {}).get(date_obj)  # (end_dt, (lat,lon))
+        if last and last[1]:
+            # Compare to pickup location (storage or ramp)
+            pick_coords = None
+            if slot.get('pickup_street_address'):
+                pick_coords = get_location_coords(address=slot['pickup_street_address'])
+            elif slot.get('pickup_ramp_id'):
+                pick_coords = get_location_coords(ramp_id=slot['pickup_ramp_id'])
+            elif slot.get('boat_id'):
+                pick_coords = get_location_coords(boat_id=slot['boat_id'])
+            if pick_coords:
+                dist = _calculate_distance_miles(last[1], pick_coords)
+                return 2 if dist is not None and dist <= 5 else 0
+        else:
+            yard = get_location_coords(address=YARD_ADDRESS)
+            if yard:
+                # first job of day: closer to yard is better
+                if slot.get('pickup_ramp_id'):
+                    pick_coords = get_location_coords(ramp_id=slot['pickup_ramp_id'])
+                elif slot.get('boat_id'):
+                    pick_coords = get_location_coords(boat_id=slot['boat_id'])
+                else:
+                    pick_coords = None
+                if pick_coords:
+                    dist = _calculate_distance_miles(yard, pick_coords)
+                    return 1 if dist is not None and dist <= 10 else 0
+    except Exception:
+        pass
+    return 0
+
+def _score_candidate(slot, compiled_schedule, daily_last_locations, after_threshold=False):
+    """Higher is better. Returns -inf to reject hard rules."""
+    start_time = slot['time']
+    date_obj = slot['date']
+    score = 0
+
+    # Morning bias
+    if start_time <= datetime.time(8,0): score += 3
+    elif start_time <= datetime.time(9,0): score += 2
+    elif start_time <= datetime.time(10,0): score += 1
+
+    # Truck‑day fill: target 3
+    current = _count_jobs_on_truck_day(slot['truck_id'], date_obj, compiled_schedule)
+    projected = current + 1
+    if projected >= 4: score += 4
+    elif projected == 3: score += 3
+    elif projected == 2: score += 1
+
+    # Geography clustering
+    score += _geo_cluster_bonus(slot, daily_last_locations)
+
+    # Crane protection (HARD BLOCK): powerboat during crane window is not allowed
+    service = slot.get('service_type') or ""
+    is_sail = "Sailboat" in service
+    if _is_crane_window(slot) and not is_sail:
+        return float("-inf")
+
+    # AnyTide low‑tide sweet spot for powerboats (SOFT)
+    if not is_sail and _is_anytide(slot['ramp_id']) and _is_low_tide_window(slot):
+        score += 1
+
+    # After we have volume, discourage creating new 1‑job days, encourage making 2→3
+    if after_threshold:
+        if projected == 1: score -= 2
+        if projected == 3: score += 2
+
+    return score
+
+
 def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_schedule):
     for busy_start, busy_end in compiled_schedule.get(str(truck_id), []):
         # ADD THIS PRINT STATEMENT
@@ -1321,6 +1473,11 @@ def precalculate_ideal_crane_days(year=2025):
                         # Found a good tide for this day, no need to check other tides on the same day
                         break
     _log_debug(f"Pre-calculated {len(IDEAL_CRANE_DAYS)} ideal crane days for the season.")
+
+# Precompute protected windows for ~90 days (tweak as needed)
+today = datetime.date.today()
+_build_protected_windows(today, today + datetime.timedelta(days=90))
+
 
 # --- NEW HELPER: Finds a slot on a specific day using the new efficiency rules ---
 # Replace your old function with this CORRECTED version
