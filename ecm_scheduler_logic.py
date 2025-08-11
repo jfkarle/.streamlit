@@ -179,6 +179,51 @@ crane_daily_status = {}
 ECM_TRUCKS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS, TRUCK_OPERATING_HOURS = {}, {}, {}, {}, {}
 SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
+### Helpers
+
+from datetime import datetime as _dt, time as _time
+
+def tide_window_for_day(ramp_id: str, day: datetime.date):
+    """
+    Returns a list of (start_time, end_time) tuples in local time when this ramp is usable.
+    Uses the ramp's NOAA station (no fallback unless ramp has no station).
+    """
+    ramp = get_ramp_details(ramp_id)
+    if not ramp:
+        return []  # unknown ramp -> no tide gating
+    station = getattr(ramp, "noaa_station_id", None)
+    if not station:
+        return []  # ramps without station are treated AnyTide
+
+    tides = fetch_noaa_tides_for_range(str(station), day, day).get(day, [])
+    method = (getattr(ramp, "tide_method", None) or getattr(ramp, "tide_rule", None) or "AnyTide")
+
+    # Example rules: adjust to match your ramp rules
+    # AnyTide: unrestricted; DT/MT: allow ±X around High (or Low), per ramp config
+    if str(method) == "AnyTide":
+        return [(_time(0,0), _time(23,59))]
+
+    windows = []
+    # If your ramps store window mins like ramp.window_minutes_each_side, use that here.
+    pad = getattr(ramp, "window_minutes_each_side", 60)  # default 60m each side
+    use_high = getattr(ramp, "uses_high_tide", True)     # some ramps might use low
+    for t in tides:
+        if (use_high and t.get("type") == "H") or ((not use_high) and t.get("type") == "L"):
+            tt = t["time"]
+            if not isinstance(tt, _time): 
+                continue
+            center = _dt.combine(day, tt)
+            start = (center - datetime.timedelta(minutes=pad)).time()
+            end   = (center + datetime.timedelta(minutes=pad)).time()
+            windows.append((start, end))
+    return windows
+
+def time_within_any_window(check_time: _time, windows: list[tuple[_time,_time]]) -> bool:
+    for a,b in windows:
+        if a <= check_time <= b:
+            return True
+    return False
+
 ### This helper function will create a new crane day near the requested date if a grouped slot is not found.
 
 # --- Low-tide prime day helpers (11:00–13:00 local), with Scituate fallback ---
