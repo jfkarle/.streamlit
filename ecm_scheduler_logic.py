@@ -1356,7 +1356,8 @@ def _is_anytide(ramp_id: str) -> bool:
     if not r: return False
     return r.tide_calculation_method in ("AnyTide", "AnyTideWithDraftRule")
 
-def _in_any_window(start_dt: datetime.datetime, windows: list[tuple[datetime.time, datetime.time]], date: datetime.date) -> bool:
+def _in_any_window(start_dt: datetime, windows: list[tuple[time, time]], date: date) -> bool:
+
     for s, e in windows:
         sdt = datetime.datetime.combine(date, s, tzinfo=timezone.utc)
         edt = datetime.datetime.combine(date, e, tzinfo=timezone.utc)
