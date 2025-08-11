@@ -1505,18 +1505,54 @@ def _select_best_slots(all_found_slots, compiled_schedule, daily_last_locations,
     """
     Rank slots using the 4-arg _score_candidate(...) and return top-k.
     Activates the packing nudge after total scheduled jobs >= 25.
+
+    Extra nudges:
+      - +20 bonus if ramp is AnyTide AND slot date is a prime low-tide day (11:00–13:00 low tide).
+      - -15 penalty if ramp is NOT AnyTide on a prime low-tide day (soft discourage, not a block).
     """
+    # Tunable weights for the AnyTide prime-day preference
+    ANYTIDE_PRIME_BONUS = 20.0
+    NON_ANYTIDE_PRIME_PENALTY = 15.0
+
     total_now = _total_jobs_from_compiled_schedule(compiled_schedule)
     after_threshold = total_now >= 25
 
     scored = []
-    for s in all_found_slots or []:
+    for s in (all_found_slots or []):
         try:
             sc = _score_candidate(s, compiled_schedule, daily_last_locations, after_threshold=after_threshold)
         except Exception:
             sc = float("-inf")
-        if sc != float("-inf"):
-            scored.append((sc, s))
+
+        if sc == float("-inf"):
+            continue
+
+        # -------- AnyTide prime-day nudge (soft) --------
+        try:
+            # Expecting slot fields:
+            #   s['date'] -> datetime.date (or datetime -> we coerce to .date())
+            #   s['ramp_id'] -> ramp identifier
+            slot_date = s.get("date")
+            if hasattr(slot_date, "date"):  # datetime -> date
+                slot_date = slot_date.date()
+
+            ramp_id = s.get("ramp_id")
+            if slot_date and ramp_id:
+                station_id = _station_for_ramp_or_scituate(ramp_id)
+                prime_days = get_low_tide_prime_days(station_id, slot_date, slot_date)  # set of 0/1 day
+                if slot_date in prime_days:
+                    ramp_obj = get_ramp_details(ramp_id)
+                    tide_method = getattr(ramp_obj, "tide_method", None) or getattr(ramp_obj, "tide_rule", None)
+                    if str(tide_method) == "AnyTide":
+                        sc += ANYTIDE_PRIME_BONUS
+                    else:
+                        sc -= NON_ANYTIDE_PRIME_PENALTY
+        except Exception:
+            # Fail-safe: if anything goes weird in nudge logic, ignore the nudge
+            pass
+        # -------- end AnyTide nudge --------
+
+        scored.append((sc, s))
 
     if not scored:
         return []
