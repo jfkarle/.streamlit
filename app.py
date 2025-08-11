@@ -85,6 +85,63 @@ class SlotDetail:
 
 # ... (the rest of your helper functions)
 
+from collections import Counter, defaultdict
+
+def _compute_truck_utilization_metrics(scheduled_jobs):
+    """
+    scheduled_jobs: list of Job objects (or dicts) with:
+      - assigned_hauling_truck_id
+      - assigned_crane_truck_id
+      - scheduled_start_datetime (datetime)
+    """
+    jobs_by_truck = Counter()
+    jobs_per_truck_day = defaultdict(lambda: Counter())  # {truck -> {date: count}}
+    crane_days = set()
+
+    for j in scheduled_jobs:
+        truck = getattr(j, "assigned_hauling_truck_id", None) if hasattr(j, "assigned_hauling_truck_id") else j.get("assigned_hauling_truck_id")
+        crane = getattr(j, "assigned_crane_truck_id", None) if hasattr(j, "assigned_crane_truck_id") else j.get("assigned_crane_truck_id")
+        dt    = getattr(j, "scheduled_start_datetime", None) if hasattr(j, "scheduled_start_datetime") else j.get("scheduled_start_datetime")
+        day = dt.date() if dt else None
+
+        if truck:
+            truck = str(truck)
+            jobs_by_truck[truck] += 1
+            if day:
+                jobs_per_truck_day[truck][day] += 1
+
+        if crane and str(crane).upper() in ("J17", "17"):
+            if day:
+                crane_days.add(day)
+
+    total_jobs = sum(jobs_by_truck.values()) or 1
+    percent_by_truck = {t: (jobs_by_truck[t] / total_jobs) * 100.0 for t in jobs_by_truck}
+
+    # Bucketize day workloads per truck
+    per_truck_day_buckets = {}
+    for t, per_day in jobs_per_truck_day.items():
+        buckets = Counter()
+        for _, cnt in per_day.items():
+            if cnt >= 4: buckets["4+"] += 1
+            elif cnt == 3: buckets["3"] += 1
+            elif cnt == 2: buckets["2"] += 1
+            else: buckets["1"] += 1
+        per_truck_day_buckets[t] = {
+            "1": buckets.get("1", 0),
+            "2": buckets.get("2", 0),
+            "3": buckets.get("3", 0),
+            "4+": buckets.get("4+", 0),
+            "total_days": sum(buckets.values())
+        }
+
+    return {
+        "jobs_by_truck": dict(jobs_by_truck),
+        "percent_by_truck": percent_by_truck,
+        "unique_crane_days": len(crane_days),
+        "per_truck_day_buckets": per_truck_day_buckets
+    }
+
+
 def create_gauge(value, max_value, label):
     """Generates an SVG string for a semi-circle gauge chart that displays an absolute value."""
     if max_value == 0: 
@@ -180,6 +237,11 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     from reportlab.pdfgen import canvas
     from reportlab.lib.units import inch
 
+    # ---- stroke width constants ----
+    JOB_OUTLINE_W       = 2.0   # outer job strokes (your existing look)
+    JOB_DURATION_W_THIN = 0.8   # thinner for 1.5h / 3h
+    JOB_DURATION_W_STD  = 2.0   # standard for everything else
+
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
@@ -201,7 +263,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         minutes_into_day = (t.hour * 60 + t.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
         return top_y - ((minutes_into_day / total_minutes) * content_height)
 
-    # --- This section is unchanged, for context ---
+    # --- tides (unchanged from your version) ---
     high_tide_highlights, low_tide_highlights = [], []
     primary_high_tide = None
     if jobs_for_day:
@@ -226,7 +288,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                     return datetime.time(min(23, rounded // 60), rounded % 60)
                 high_tide_highlights = [round_time(t['time']) for t in high_tides_full_data]
                 low_tide_highlights = [round_time(t['time']) for t in low_tides_full_data]
-    # --- End of unchanged section ---
 
     c.setFont("Helvetica-Bold", 12);c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
     if primary_high_tide:
@@ -237,7 +298,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     for i, name in enumerate(planner_columns):
         c.setFont("Helvetica-Bold", 14);c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
 
-    # Drawing the grid (unchanged)
+    # Grid
     c.setFont("Helvetica-Bold", 9)
     c.drawString(margin + 3, top_y - 9, "7:30")
     for hour in range(start_time_obj.hour + 1, end_time_obj.hour + 1):
@@ -262,37 +323,46 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     c.line(margin, top_y, margin, bottom_y);c.line(width - margin, top_y, width - margin, bottom_y)
     c.line(margin, bottom_y, width - margin, bottom_y);c.line(margin, top_y, width - margin, top_y)
 
-    # --- THIS SECTION IS CORRECTED ---
-    # Create a map to look up truck names, ensuring the keys are STRINGS
+    # Truck/Crane names map
     id_to_name_map = {str(t.truck_id): t.truck_name for t in ecm.ECM_TRUCKS.values()}
 
+    def _mins_between(t1, t2):
+        return (t2.hour*60 + t2.minute) - (t1.hour*60 + t1.minute)
+
     for job in jobs_for_day:
-        start_time, end_time = job.scheduled_start_datetime.time(), job.scheduled_end_datetime.time()
-        if start_time < start_time_obj: start_time = start_time_obj
+        start_time = max(job.scheduled_start_datetime.time(), start_time_obj)
+        end_time   = job.scheduled_end_datetime.time()
+        duration_m = max(0, _mins_between(start_time, end_time))
+
+        # linewidth rule: thin for 90m or 180m
+        lw = JOB_DURATION_W_THIN if duration_m in (90, 180) else JOB_DURATION_W_STD
+
         y0, y_end = get_y_for_time(start_time), get_y_for_time(end_time)
         line1_y, line2_y, line3_y = y0 - 15, y0 - 25, y0 - 35
         customer, boat = ecm.get_customer_details(job.customer_id), ecm.get_boat_details(job.boat_id)
-        
-        # Look up the truck name, ensuring the job's truck ID is also treated as a STRING
+
         hauling_truck_name = id_to_name_map.get(str(job.assigned_hauling_truck_id))
-        
         if hauling_truck_name and hauling_truck_name in column_map:
             col_index = column_map[hauling_truck_name]
             text_x = margin + time_col_width + (col_index + 0.5) * col_width
             c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(text_x, line1_y, customer.customer_name)
             c.setFont("Helvetica", 7);c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
             c.drawCentredString(text_x, line3_y, f"{ecm._abbreviate_town(job.pickup_street_address)}-{ecm._abbreviate_town(job.dropoff_street_address)}")
-            c.setLineWidth(2);c.line(text_x, y0, text_x, y_end); c.line(text_x - 10, y_end, text_x + 10, y_end)
+            c.setLineWidth(lw);c.line(text_x, y0, text_x, y_end)      # vertical duration stroke (thin for 1.5/3h)
+            c.setLineWidth(JOB_OUTLINE_W);c.line(text_x - 10, y_end, text_x + 10, y_end)  # cap
 
-        # Do the same for the crane, ensuring the ID is a STRING
+        # Crane stroke — use crane busy end time if present; thin rule applies as well
         crane_truck_name = id_to_name_map.get(str(job.assigned_crane_truck_id))
-        if crane_truck_name and crane_truck_name in column_map:
+        if crane_truck_name and crane_truck_name in column_map and getattr(job, "S17_busy_end_datetime", None):
             crane_col_index = column_map[crane_truck_name]
             crane_text_x = margin + time_col_width + (crane_col_index + 0.5) * col_width
             y_crane_end = get_y_for_time(job.S17_busy_end_datetime.time())
+            dur_crane_m = max(0, _mins_between(start_time, job.S17_busy_end_datetime.time()))
+            crane_lw = JOB_DURATION_W_THIN if dur_crane_m in (90, 180) else JOB_DURATION_W_STD
             c.setFillColorRGB(0,0,0);c.setFont("Helvetica-Bold", 8); c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
             c.setFont("Helvetica", 7);c.drawCentredString(crane_text_x, line2_y, ecm._abbreviate_town(job.dropoff_street_address))
-            c.setLineWidth(2); c.line(crane_text_x, y0-45, crane_text_x, y_crane_end);c.line(crane_text_x-3, y_crane_end, crane_text_x+3, y_crane_end)
+            c.setLineWidth(crane_lw); c.line(crane_text_x, y0-45, crane_text_x, y_crane_end)  # thin for 1.5/3h
+            c.setLineWidth(JOB_OUTLINE_W); c.line(crane_text_x-3, y_crane_end, crane_text_x+3, y_crane_end)
 
     c.save()
     buffer.seek(0)
@@ -320,7 +390,7 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
 def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     """
     Generates a multi-page PDF progress report with stats, charts, and tables.
-    -- MODIFIED to group boats by scheduled vs. unscheduled status. --
+    Enhanced with truck utilization: S20 vs S23 %, J17 active days, and job-day buckets per truck.
     """
     buffer = BytesIO()
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -330,7 +400,7 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name='Justify', alignment=1))
 
-    # --- Page 1 & 2 & 3 (Executive Summary, Analytics, Efficiency) remain unchanged ---
+    # --- Page 1: Executive Summary ---
     story.append(Paragraph("ECM Season Progress Report", styles['h1']))
     story.append(Paragraph(f"Generated on: {datetime.date.today().strftime('%B %d, %Y')}", styles['Normal']))
     story.append(Spacer(1, 24))
@@ -349,83 +419,140 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
         ['Boats Remaining to Schedule:', f'{total_boats - scheduled_boats}'],
     ]
     summary_table = Table(summary_data, colWidths=[200, 100])
-    summary_table.setStyle(TableStyle([('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('ALIGN', (1,1), (-1,-1), 'RIGHT'), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+    summary_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
+    ]))
     story.append(summary_table)
     story.append(Spacer(1, 24))
+
+    # --- Page 2: Scheduling Analytics ---
     story.append(PageBreak())
     story.append(Paragraph("Scheduling Analytics", styles['h2']))
     story.append(Spacer(1, 12))
     if dist_analysis.get('by_day'):
         story.append(Paragraph("Jobs by Day of Week", styles['h3']))
         drawing = Drawing(400, 200)
-        day_data = [tuple(v for k,v in sorted(dist_analysis['by_day'].items()))]
-        day_names = [k for k,v in sorted(dist_analysis['by_day'].items())]
+        day_data = [tuple(v for k, v in sorted(dist_analysis['by_day'].items()))]
+        day_names = [k for k, v in sorted(dist_analysis['by_day'].items())]
         bc = VerticalBarChart()
         bc.x = 50; bc.y = 50; bc.height = 125; bc.width = 300
         bc.data = day_data
         bc.categoryAxis.categoryNames = day_names
         drawing.add(bc)
         story.append(drawing)
+
+    # --- Page 3: Fleet Efficiency ---
     story.append(PageBreak())
     story.append(Paragraph("Fleet Efficiency Report", styles['h2']))
     story.append(Spacer(1, 12))
     if eff_analysis and eff_analysis.get("total_truck_days", 0) > 0:
         story.append(Paragraph("<b><u>Truck Day Utilization</u></b>", styles['h3']))
         low_util_pct = (eff_analysis['low_utilization_days'] / eff_analysis['total_truck_days'] * 100)
-        story.append(Paragraph(f"<b>Days with Low Utilization (≤ 2 jobs):</b> {eff_analysis['low_utilization_days']} of {eff_analysis['total_truck_days']} total truck-days ({low_util_pct:.0f}%)", styles['Normal']))
+        story.append(Paragraph(
+            f"<b>Days with Low Utilization (≤ 2 jobs):</b> {eff_analysis['low_utilization_days']} "
+            f"of {eff_analysis['total_truck_days']} total truck-days ({low_util_pct:.0f}%)", styles['Normal']
+        ))
         story.append(Spacer(1, 6))
-        story.append(Paragraph("<i><b>Insight:</b> This is the most critical metric to watch. A high percentage indicates that trucks are frequently dispatched for only one or two jobs, leading to inefficiency. The goal is to reduce this number by scheduling more clustered, multi-job days.</i>", styles['Italic']))
+        story.append(Paragraph(
+            "<i><b>Insight:</b> High % means trucks often run 1–2 jobs/day. "
+            "Aim for clustered, multi-job days to reduce waste.</i>", styles['Italic']
+        ))
         story.append(Spacer(1, 24))
         story.append(Paragraph("<b><u>Travel Efficiency</u></b>", styles['h3']))
         story.append(Paragraph(f"<b>Average Travel Time Between Jobs (Deadhead):</b> {eff_analysis['avg_deadhead_per_day']:.0f} minutes per day", styles['Normal']))
         story.append(Spacer(1, 6))
-        story.append(Paragraph("<i><b>Insight:</b> This measures the average time drivers spend traveling empty between the yard and the first job, and between subsequent jobs. Lowering this number by creating geographically logical routes (e.g., Scituate -> Marshfield) directly reduces fuel costs and wasted driver time.</i>", styles['Italic']))
+        story.append(Paragraph("<i>Lower by routing geographically (e.g., Scituate → Marshfield).</i>", styles['Italic']))
         story.append(Spacer(1, 24))
         story.append(Paragraph("<b><u>Productivity and Timing</u></b>", styles['h3']))
         story.append(Paragraph(f"<b>Overall Driver Efficiency:</b> {eff_analysis['efficiency_percent']:.1f}%", styles['Normal']))
-        story.append(Paragraph("<i>↳ This is the percentage of a driver's 'on-the-clock' time (from first job start to last job end) that is spent actively working on a job. A higher number is better.</i>", styles['Italic']))
-        story.append(Spacer(1, 12))
+        story.append(Spacer(1, 6))
         story.append(Paragraph(f"<b>Days with Excellent Timing:</b> {eff_analysis['excellent_timing_days']}", styles['Normal']))
-        story.append(Paragraph("<i>↳ These are ideal days: starting before 9 AM, completing 3+ jobs, and finishing by 3 PM. This is the target for a highly productive day.</i>", styles['Italic']))
     else:
         story.append(Paragraph("Not enough job data exists to generate an efficiency report.", styles['Normal']))
-    
-    # --- Page 4+: Detailed Boat Status (MODIFIED) ---
+
+    # --- Page 4: Truck Utilization (NEW) ---
+    story.append(PageBreak())
+    story.append(Paragraph("Truck Utilization", styles['h2']))
+    story.append(Spacer(1, 8))
+
+    metrics = _compute_truck_utilization_metrics(ecm.SCHEDULED_JOBS)
+
+    # Job share table (S20 vs S23, plus others if present)
+    story.append(Paragraph("Job Share by Hauling Truck", styles['h3']))
+    rows = [["Truck", "Jobs", "% of All Jobs"]]
+    # prioritize S20/S23 visually
+    for t in sorted(metrics["jobs_by_truck"], key=lambda x: (x not in ("S20", "S23"), x)):
+        rows.append([t, metrics["jobs_by_truck"][t], f"{metrics['percent_by_truck'][t]:.1f}%"])
+    tbl = Table(rows, hAlign="LEFT", colWidths=[80, 60, 80])
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+        ("ALIGN", (1,1), (-1,-1), "RIGHT"),
+    ]))
+    story.append(tbl)
+    story.append(Spacer(1, 8))
+
+    # Simple bar chart for job share
+    if metrics["percent_by_truck"]:
+        d = Drawing(420, 200)
+        bar = VerticalBarChart()
+        bar.x = 40; bar.y = 40
+        bar.height = 120; bar.width = 340
+        labels = list(metrics["percent_by_truck"].keys())
+        bar.data = [[metrics["percent_by_truck"][k] for k in labels]]
+        bar.categoryAxis.categoryNames = labels
+        bar.valueAxis.valueMin = 0
+        bar.valueAxis.valueMax = max(100, int(max(bar.data[0]) + 9) // 10 * 10)
+        d.add(bar)
+        story.append(d)
+        story.append(Spacer(1, 12))
+
+    # J17 crane days
+    story.append(Paragraph("Crane Activity", styles['h3']))
+    story.append(Paragraph(f"J17 crane active on <b>{metrics['unique_crane_days']}</b> unique day(s).", styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Per-truck job-day distribution
+    story.append(Paragraph("Job-Day Distribution per Truck", styles['h3']))
+    bucket_rows = [["Truck", "Days w/1 job", "Days w/2 jobs", "Days w/3 jobs", "Days w/4+ jobs", "Total Days"]]
+    for t, b in metrics["per_truck_day_buckets"].items():
+        bucket_rows.append([t, b["1"], b["2"], b["3"], b["4+"], b["total_days"]])
+    bucket_tbl = Table(bucket_rows, hAlign="LEFT", colWidths=[70, 70, 80, 80, 80, 80])
+    bucket_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+        ("ALIGN", (1,1), (-1,-1), "RIGHT"),
+    ]))
+    story.append(bucket_tbl)
+
+    # --- Page 5+: Detailed Boat Status (your original section) ---
     story.append(PageBreak())
     story.append(Paragraph("Detailed Boat Status", styles['h2']))
     story.append(Spacer(1, 12))
 
-    # Create two lists to hold boats based on their status
     scheduled_rows = []
     unscheduled_rows = []
-    
-    # Pre-calculate scheduled services for all customers for efficiency
+
     scheduled_services_by_cust = {}
     for job in ecm.SCHEDULED_JOBS:
         if job.job_status == "Scheduled":
             scheduled_services_by_cust.setdefault(job.customer_id, []).append(job.service_type)
 
-    # Loop through all boats once and sort them into the two lists
     for boat in sorted(ecm.LOADED_BOATS.values(), key=lambda b: (ecm.get_customer_details(b.customer_id).customer_name if ecm.get_customer_details(b.customer_id) else "")):
         cust = ecm.get_customer_details(boat.customer_id)
         if not cust: continue
-
         services = scheduled_services_by_cust.get(cust.customer_id, [])
         status = "Launched" if "Launch" in services else (f"Scheduled ({', '.join(services)})" if services else "Not Scheduled")
-        
         row_data = [
             Paragraph(cust.customer_name, styles['Normal']),
             Paragraph(f"{boat.boat_length}' {boat.boat_type}", styles['Normal']),
             "Yes" if boat.is_ecm_boat else "No",
             status
         ]
+        (scheduled_rows if status != "Not Scheduled" else unscheduled_rows).append(row_data)
 
-        if status == "Not Scheduled":
-            unscheduled_rows.append(row_data)
-        else:
-            scheduled_rows.append(row_data)
-    
-    # Define a single table style to be reused
     table_style = TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.grey),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
@@ -435,28 +562,27 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
         ('BACKGROUND', (0,1), (-1,-1), colors.beige),
         ('GRID', (0,0), (-1,-1), 1, colors.black)
     ])
-    table_headers = [["Customer Name", "Boat Details", "ECM?", "Scheduling Status"]]
+    headers = [["Customer Name", "Boat Details", "ECM?", "Scheduling Status"]]
 
-    # Add the "Scheduled Boats" table to the report
     if scheduled_rows:
         story.append(Paragraph("Scheduled Boats", styles['h3']))
         story.append(Spacer(1, 6))
-        scheduled_table = Table(table_headers + scheduled_rows, colWidths=[150, 150, 50, 150])
+        scheduled_table = Table(headers + scheduled_rows, colWidths=[150, 150, 50, 150])
         scheduled_table.setStyle(table_style)
         story.append(scheduled_table)
         story.append(Spacer(1, 24))
 
-    # Add the "Unscheduled Boats" table to the report
     if unscheduled_rows:
         story.append(Paragraph("Unscheduled Boats", styles['h3']))
         story.append(Spacer(1, 6))
-        unscheduled_table = Table(table_headers + unscheduled_rows, colWidths=[150, 150, 50, 150])
+        unscheduled_table = Table(headers + unscheduled_rows, colWidths=[150, 150, 50, 150])
         unscheduled_table.setStyle(table_style)
         story.append(unscheduled_table)
 
     doc.build(story)
     buffer.seek(0)
     return buffer
+
 
 def show_scheduler_page():
     """
