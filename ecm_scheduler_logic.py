@@ -1686,7 +1686,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         # Phase 2: Fallback Search (normal search horizon)
         if crane_needed:
             potential = [d for r, d in IDEAL_CRANE_DAYS if str(r) == str(selected_ramp_id) and d >= requested_date]
-            search_days = sorted(potential)[:30]
+            early = [d for d in potential if d <= requested_date + timedelta(days=21)]
+            search_days = sorted(early)[:30]
+            # If nothing close-by, gently expand:
+            if not search_days:
+                wider = [d for d in potential if d <= requested_date + timedelta(days=45)]
+                search_days = sorted(wider)[:30]
+                
         else:
             search_days = [requested_date + timedelta(days=i) for i in range(14)]
 
@@ -1705,7 +1711,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
         # If we found anything, score & pick the top-K
         if found:
-            best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
+            best = _select_best_slots(found, compiled_schedule, daily_last_locations, requested_date, k=num_suggestions_to_find)
             msg = f"Found slots with {search_message_type} truck."
             return (best, msg)
         return ([], None)
