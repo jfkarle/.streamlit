@@ -28,7 +28,6 @@ def _load_data():
         if hasattr(ecm, name):
             return getattr(ecm, name)()
     # Friendly error if nothing found
-    import streamlit as st
     st.error(
         "Couldn’t find a data-loading function in ecm_scheduler_logic.py. "
         "Expected one of: load_all_data_from_sheets | load_data_from_sheets | load_all_data | load_data"
@@ -41,20 +40,16 @@ if "data_loaded" not in st.session_state:
 
 st.sidebar.write(f"🔍 Loaded {len(getattr(ecm, 'LOADED_BOATS', []))} boats from Supabase")
 
-# --- Helper Functions for UI ---
-
 class SlotDetail:
     """A wrapper class to make slot dictionaries easier to use in the UI."""
     def __init__(self, slot_dict):
         self.raw_data = slot_dict
         
-        # --- Basic Attributes ---
         self.date = slot_dict.get('date')
         self.time = slot_dict.get('time')
         self.truck_id = slot_dict.get('truck_id')
         self.ramp_id = slot_dict.get('ramp_id')
 
-        # --- Derived Attributes for Display ---
         if self.date and self.time:
             self.start_datetime = datetime.datetime.combine(self.date, self.time)
         else:
@@ -63,7 +58,7 @@ class SlotDetail:
         truck_obj = ecm.ECM_TRUCKS.get(self.truck_id)
         self.truck_name = truck_obj.truck_name if truck_obj else "N/A"
         
-        ramp_obj = ecm.get_ramp_details(self.ramp_id)
+        ramp_obj = ecm.get_ramp_details(str(self.ramp_id))
         self.ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
         
         self.slot_id = str(uuid.uuid4())
@@ -82,8 +77,6 @@ class SlotDetail:
             f"at **{self.start_datetime.strftime('%I:%M %p')}** using **{self.truck_name}** at **{self.ramp_name}**."
         )
 
-    # This allows the object to still be used like a dictionary,
-    # which is needed by the `confirm_and_schedule_job` function.
     def __getitem__(self, key):
         return self.raw_data[key]
     
