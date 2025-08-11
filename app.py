@@ -929,7 +929,7 @@ def show_settings_page():
     tab_list = ["Scheduling Rules", "Truck Schedules", "Developer Tools", "QA & Data Generation Tools", "Tide Charts"]
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_list)
 
-    # --- TAB 1: Scheduling Defaults ---
+    # --- TAB 1: Scheduling Rules (your existing code, unchanged) ---
     with tab1:
         st.subheader("Scheduling Defaults")
         st.session_state.num_suggestions = st.number_input(
@@ -973,18 +973,8 @@ def show_settings_page():
                     with st.expander(summary):
                         col1, col2, col3 = st.columns([1, 2, 2])
                         working = col1.checkbox("Working", value=is_working, key=f"{selected_truck_name}_{i}_working")
-                        new_start = col2.time_input(
-                            "Start",
-                            value=start_time,
-                            key=f"{selected_truck_name}_{i}_start",
-                            disabled=not working
-                        )
-                        new_end = col3.time_input(
-                            "End",
-                            value=end_time,
-                            key=f"{selected_truck_name}_{i}_end",
-                            disabled=not working
-                        )
+                        new_start = col2.time_input("Start", value=start_time, key=f"{selected_truck_name}_{i}_start", disabled=not working)
+                        new_end = col3.time_input("End", value=end_time, key=f"{selected_truck_name}_{i}_end", disabled=not working)
                         new_hours[i] = (new_start, new_end) if working else None
                 if st.form_submit_button("Save Hours"):
                     success, message = ecm.update_truck_schedule(selected_truck_name, new_hours)
@@ -995,37 +985,51 @@ def show_settings_page():
                     else:
                         st.error(message)
 
-    # --- TAB 2: Developer Tools & Overrides ---
+    # --- TAB 2: Truck Schedules (your heading said "Truck Schedules") ---
     with tab2:
         st.subheader("Developer Tools & Overrides")
-        # Add whatever developer utilities or override toggles you had before here
         st.info("Developer tools for testing and overriding system behavior.")
 
     # --- TAB 3: QA & Data Generation Tools ---
     with tab3:
         st.subheader("QA & Data Generation Tools")
+
+        # Existing random simulator (kept)
         num_jobs_to_gen = st.number_input("Total number of jobs to simulate:", min_value=1, max_value=200, value=50, step=1)
         if st.button("Simulate Job Requests"):
             with st.spinner(f"Simulating {num_jobs_to_gen} job requests..."):
                 summary = ecm.simulate_job_requests(
                     total_jobs_to_gen=num_jobs_to_gen,
-                    truck_hours=st.session_state.truck_operating_hours
+                    truck_hours=st.session_state.truck_operating_hours  # tolerated by **kwargs in new function
                 )
             st.success(summary)
             st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
 
-        # ---- Seasonal batch generator ----
+        # Seasonal batch generator (Spring/Fall)
         st.markdown("---")
         st.subheader("Seasonal Batch Generator")
-        st.markdown("Generates exactly 50 jobs: May–June for Launches, Sept–Oct for Hauls.")
-        year = st.number_input("Year for Seasonal Batch", min_value=2024, max_value=2030, value=2025, step=1)
+        season = st.radio(
+            "Season",
+            options=["Spring (May–June, Launches)", "Fall (Sep–Oct, Hauls)"],
+            index=0, horizontal=True
+        )
+        season_key = "spring" if season.startswith("Spring") else "fall"
+        jobs_to_make = st.number_input("How many jobs to generate", min_value=1, max_value=100, value=50, step=1)
+        year = st.number_input("Year", min_value=2024, max_value=2030, value=2025, step=1)
         seed = st.number_input("Random Seed (optional)", min_value=0, max_value=10_000, value=42, step=1)
-        if st.button("Generate Seasonal Batch (50)"):
-            with st.spinner("Generating seasonal batch..."):
-                msg = ecm.simulate_job_requests(total_jobs_to_gen=50, year=int(year), seed=int(seed))
-            st.success(msg)
 
-        # ---- Danger Zone ----
+        if st.button(f"Generate {jobs_to_make} {season_key.title()} Jobs"):
+            with st.spinner(f"Generating {jobs_to_make} {season_key} jobs..."):
+                msg = ecm.simulate_job_requests(
+                    total_jobs_to_gen=int(jobs_to_make),
+                    season=season_key,
+                    year=int(year),
+                    seed=int(seed),
+                )
+            st.success(msg)
+            st.info("Re-run as needed; if fewer boats remain than requested, it will schedule only what's available.")
+
+        # Danger Zone (moved inside QA tab)
         st.markdown("---")
         st.subheader("⚠️ Danger Zone")
         with st.expander("Permanently Delete All Jobs"):
@@ -1040,10 +1044,73 @@ def show_settings_page():
                 else:
                     st.error(message)
 
-    # --- TAB 4: Tide Charts ---
-    with tab4:
+    # --- TAB 4: Tide Charts (Scituate) ---
+    with tab5:
         st.subheader("Monthly Tide Chart for Scituate Harbor")
-        # ... (keep your tide chart code unchanged)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            current_year = datetime.date.today().year
+            year_options = list(range(current_year - 1, current_year + 4))
+            default_year_index = year_options.index(2025) if 2025 in year_options else 2
+            selected_year = st.selectbox("Select Year:", options=year_options, index=default_year_index)
+        with col2:
+            month_names = list(calendar.month_name)[1:]
+            selected_month_name = st.selectbox("Select Month:", options=month_names, index=8)
+
+        def select_day(date_obj):
+            st.session_state.selected_tide_day = date_obj
+
+        month_index = month_names.index(selected_month_name) + 1
+        tide_data = ecm.get_monthly_tides_for_scituate(selected_year, month_index)
+        if not tide_data:
+            st.warning("Could not retrieve tide data.")
+        else:
+            cal = calendar.Calendar()
+            cal_data = cal.monthdatescalendar(selected_year, month_index)
+
+            header_cols = st.columns(7)
+            for i, day_name in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]):
+                header_cols[i].markdown(f"<p style='text-align: center; font-weight: bold;'>{day_name}</p>", unsafe_allow_html=True)
+            st.divider()
+
+            for week in cal_data:
+                cols = st.columns(7)
+                for i, day in enumerate(week):
+                    with cols[i]:
+                        if day.month != month_index:
+                            st.container(height=55, border=False)
+                        else:
+                            st.button(
+                                str(day.day),
+                                key=f"day_{day}",
+                                on_click=select_day,
+                                args=(day,),
+                                use_container_width=True,
+                                type="primary" if st.session_state.get('selected_tide_day') == day else "secondary"
+                            )
+            st.divider()
+
+            if selected_day := st.session_state.get('selected_tide_day'):
+                if selected_day.year == selected_year and selected_day.month == month_index:
+                    day_str = selected_day.strftime("%A, %B %d, %Y")
+                    st.subheader(f"Tides for: {day_str}")
+                    tides_for_day = tide_data.get(selected_day, [])
+                    if not tides_for_day:
+                        st.write("No tide data available for this day.")
+                    else:
+                        high_tides = [
+                            f"{ecm.format_time_for_display(t['time'])} ({float(t['height']):.1f}')"
+                            for t in tides_for_day if t['type'] == 'H'
+                        ]
+                        low_tides = [
+                            f"{ecm.format_time_for_display(t['time'])} ({float(t['height']):.1f}')"
+                            for t in tides_for_day if t['type'] == 'L'
+                        ]
+                        tide_col1, tide_col2 = st.columns(2)
+                        tide_col1.metric("🌊 High Tides", " / ".join(high_tides) if high_tides else "N/A")
+                        tide_col2.metric("💧 Low Tides", " / ".join(low_tides) if low_tides else "N/A")
+
 
 def initialize_session_state():
     defaults = {
