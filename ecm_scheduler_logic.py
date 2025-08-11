@@ -180,6 +180,191 @@ ECM_TRUCKS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS, TRUCK_OPERATING_HOURS = {
 SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
 ### Helpers
+# --- HARD CONSTRAINTS + SCORING UPGRADE PACK ---
+
+from datetime import datetime, timedelta, time, timezone
+import math
+
+def _norm_id(x):
+    return None if x is None else str(x)
+
+def _get_ramp_rule(ramp_id):
+    """Return (method, base_offset_hours) for a ramp_id, or ('AnyTide', 0) fallback."""
+    ramp = ECM_RAMPS.get(_norm_id(ramp_id))
+    if not ramp:
+        return ("AnyTide", 0.0)
+    # Expect .tide_calculation_method and .tide_offset_hours on ramp object
+    method = getattr(ramp, "tide_calculation_method", "AnyTide") or "AnyTide"
+    offset = float(getattr(ramp, "tide_offset_hours", 0.0) or 0.0)
+    return (method, offset)
+
+def _is_anytide_for_boat(method, boat_draft_ft):
+    """
+    AnyTide => always True.
+    AnyTideWithDraftRule => True only if shallow (<5.0 ft).
+    Otherwise => False.
+    """
+    if method == "AnyTide": 
+        return True
+    if method == "AnyTideWithDraftRule":
+        try:
+            return float(boat_draft_ft or 0.0) < 5.0
+        except:
+            return False
+    return False
+
+def _window_offset_for_boat(method, base_offset, boat_draft_ft):
+    """
+    HoursAroundHighTide => base_offset
+    HoursAroundHighTide_WithDraftRule => base_offset (+0.5h if shallow draft)
+    AnyTide / AnyTideWithDraftRule(deep boats) => base_offset
+    """
+    try:
+        draft = float(boat_draft_ft or 0.0)
+    except:
+        draft = 0.0
+
+    if method == "HoursAroundHighTide_WithDraftRule":
+        return (base_offset + 0.5) if draft < 5.0 else base_offset
+    return base_offset
+
+def _day_high_low_tides(ramp, day_date):
+    """
+    Returns (highs, lows) where each is a list of datetime.time objects for the given date.
+    Uses the ramp's NOAA station via your existing tide fetcher.
+    """
+    if not ramp or not getattr(ramp, "noaa_station_id", None):
+        return ([], [])
+    data = fetch_noaa_tides_for_range(ramp.noaa_station_id, day_date, day_date) or {}
+    events = data.get(day_date, [])
+    highs = [e["time"] for e in events if e.get("type") == "H"]
+    lows  = [e["time"] for e in events if e.get("type") == "L"]
+    return (highs, lows)
+
+def _within_any_high_tide_window(dt_local, ramp, method, base_offset, boat_draft_ft):
+    """
+    True if dt_local falls within ±offset around any day's high tide for this ramp.
+    """
+    if not isinstance(dt_local, datetime):
+        return False
+    offset = _window_offset_for_boat(method, base_offset, boat_draft_ft)
+
+    highs, _ = _day_high_low_tides(ramp, dt_local.date())
+    for ht in highs:
+        ht_dt = datetime.combine(dt_local.date(), ht, tzinfo=timezone.utc)  # keep everything UTC in your app
+        if abs((dt_local - ht_dt).total_seconds()) <= offset * 3600:
+            return True
+    return False
+
+def passes_tide_rules(slot_dict, when_pickup_dt, when_dropoff_dt, boat_obj):
+    """
+    HARD gate: both ends must be legal at their actual ramp-times.
+    - Launch: pickup ramp at start, dropoff ramp at end
+    - Haul:   pickup ramp at start, dropoff ramp at end   (same pattern)
+    - Other:  if only one ramp defined, validate that one at start time
+    """
+    # Normalize & pull data
+    pickup_ramp_id  = _norm_id(slot_dict.get("pickup_ramp_id")) or _norm_id(slot_dict.get("ramp_id"))
+    dropoff_ramp_id = _norm_id(slot_dict.get("dropoff_ramp_id"))
+    service_type    = slot_dict.get("service_type", "Launch")
+    draft_ft        = getattr(boat_obj, "draft_ft", None)
+
+    # Helper to check one ramp/time
+    def _check_one(ramp_id, at_dt):
+        if ramp_id is None or at_dt is None:
+            return True  # if missing, do not fail here
+        ramp = ECM_RAMPS.get(ramp_id)
+        method, base = _get_ramp_rule(ramp_id)
+        # Any-tide cases
+        if _is_anytide_for_boat(method, draft_ft):
+            return True
+        # Otherwise must be within a high-tide window:
+        return _within_any_high_tide_window(at_dt, ramp, method, base, draft_ft)
+
+    # Compute which timestamps matter (simple, effective model)
+    ok_pickup  = _check_one(pickup_ramp_id, when_pickup_dt)
+    ok_dropoff = True
+    if dropoff_ramp_id:
+        ok_dropoff = _check_one(dropoff_ramp_id, when_dropoff_dt)
+
+    return (ok_pickup and ok_dropoff)
+
+# --------------- SCORING ----------------
+
+def _route_distance_minutes(a_latlon, b_latlon):
+    # ~straight-line minutes proxy; replace with your travel matrix if available
+    if not a_latlon or not b_latlon:
+        return 25.0
+    (ax, ay), (bx, by) = a_latlon, b_latlon
+    km = math.hypot(ax - bx, ay - by) * 111.0  # deg->km rough
+    return (km / 50.0) * 60.0  # 50 km/h -> minutes
+
+def _score_candidate(slot, compiled_schedule, daily_last_locations, after_threshold=False):
+    """
+    Larger is better. Aggressive packing + travel minimization + tide-friendly nudges.
+    Expects 'slot' as your slot_dict.
+    """
+    score = 0.0
+
+    truck_id  = _norm_id(slot.get("truck_id"))
+    date      = slot.get("date")
+    start_t   = slot.get("time")
+    ramp_id   = _norm_id(slot.get("ramp_id"))
+    pickup_id = _norm_id(slot.get("pickup_ramp_id")) or ramp_id
+    drop_id   = _norm_id(slot.get("dropoff_ramp_id"))
+    boat_id   = slot.get("boat_id")
+    boat      = get_boat_details(boat_id) if boat_id else None
+
+    # 1) Pack days: prefer adding to already-busy same-truck same-day
+    todays = compiled_schedule.get(truck_id, {}).get(date, [])
+    jobs_today = len(todays)
+    if jobs_today == 0: score += 2.0  # it's okay to start a day
+    if jobs_today == 1: score += 6.0
+    if jobs_today == 2: score += 10.0
+    if jobs_today >= 3: score += 8.0  # diminishing return
+
+    # 2) Ramp clustering: piggybacks get a bonus
+    if slot.get("is_piggyback"): score += 8.0
+    # If last job same ramp_id => bonus
+    if todays:
+        last = todays[-1]
+        last_ramp = _norm_id(last.dropoff_ramp_id or last.pickup_ramp_id)
+        if last_ramp and (last_ramp == (drop_id or pickup_id)):
+            score += 4.0
+
+    # 3) Geography / deadhead minimization
+    last_loc = daily_last_locations.get(truck_id, {}).get(date)
+    # Your slot may carry lat/lon or can be derived from ramp info:
+    def _ramp_latlon(_rid):
+        r = ECM_RAMPS.get(_rid) if _rid else None
+        return (getattr(r, "lat", None), getattr(r, "lon", None)) if r else None
+
+    next_loc = _ramp_latlon(pickup_id) or _ramp_latlon(ramp_id)
+    if last_loc and next_loc:
+        mins = _route_distance_minutes(last_loc, next_loc)
+        score -= min(8.0, mins / 6.0)  # ~1 point per ~6 min, capped
+
+    # 4) Any-Tide low-tide mid-day nudge (11:00–13:00) for powerboats
+    if boat and "Powerboat" in (boat.boat_type or ""):
+        r = ECM_RAMPS.get(pickup_id)
+        if r:
+            method, _ = _get_ramp_rule(pickup_id)
+            if _is_anytide_for_boat(method, getattr(boat, "draft_ft", None)):
+                highs, lows = _day_high_low_tides(r, date)
+                # if a low tide exists between 11:00–13:00 give a small bonus
+                if any(time(11,0) <= lt <= time(13,0) for lt in lows):
+                    score += 2.5
+
+    # 5) Small preference for earlier start (keeps days tight)
+    if isinstance(start_t, time):
+        score += max(0.0, 2.0 - (start_t.hour - 7) * 0.25)
+
+    # 6) Gentle bonus after threshold to bias even tighter packing
+    if after_threshold:
+        score += 1.5 * max(0, min(jobs_today, 3))
+
+    return score
+
 
 from datetime import datetime as _dt, time as _time
 
@@ -1500,44 +1685,6 @@ def _geo_cluster_bonus(slot, daily_last_locations):
     except Exception:
         pass
     return 0
-
-def _score_candidate(slot, compiled_schedule, daily_last_locations, after_threshold=False):
-    """Higher is better. Returns -inf to reject hard rules."""
-    start_time = slot['time']
-    date_obj = slot['date']
-    score = 0
-
-    # Morning bias
-    if start_time <= datetime.time(8,0): score += 3
-    elif start_time <= datetime.time(9,0): score += 2
-    elif start_time <= datetime.time(10,0): score += 1
-
-    # Truck‑day fill: target 3
-    current = _count_jobs_on_truck_day(slot['truck_id'], date_obj, compiled_schedule)
-    projected = current + 1
-    if projected >= 4: score += 4
-    elif projected == 3: score += 3
-    elif projected == 2: score += 1
-
-    # Geography clustering
-    score += _geo_cluster_bonus(slot, daily_last_locations)
-
-    # Crane protection (HARD BLOCK): powerboat during crane window is not allowed
-    service = slot.get('service_type') or ""
-    is_sail = "Sailboat" in service
-    if _is_crane_window(slot) and not is_sail:
-        return float("-inf")
-
-    # AnyTide low‑tide sweet spot for powerboats (SOFT)
-    if not is_sail and _is_anytide(slot['ramp_id']) and _is_low_tide_window(slot):
-        score += 1
-
-    # After we have volume, discourage creating new 1‑job days, encourage making 2→3
-    if after_threshold:
-        if projected == 1: score -= 2
-        if projected == 3: score += 2
-
-    return score
 
 def _total_jobs_from_compiled_schedule(compiled_schedule):
     """compiled_schedule is {truck_id: [(start_dt, end_dt), ...]}"""
