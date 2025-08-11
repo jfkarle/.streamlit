@@ -1117,11 +1117,32 @@ def show_settings_page():
                     else:
                         st.error(message)
 
-    # --- TAB 3: QA & Data Generation Tools ---
+    # --- TAB 3: Developer Tools ---
     with tab3:
-        st.subheader("QA & Data Generation Tools")
+        st.subheader("Developer Tools")
 
-        # Existing random simulator (kept)
+        
+
+        # Danger Zone (moved inside QA tab)
+        st.markdown("---")
+        st.subheader("⚠️ Danger Zone")
+        with st.expander("Permanently Delete All Jobs"):
+            st.warning("This action is irreversible. All scheduled, parked, and completed jobs will be permanently erased from the database.")
+            confirmation_text = st.text_input("To proceed, please type DELETE ALL JOBS in the box below.")
+            is_delete_disabled = (confirmation_text != "DELETE ALL JOBS")
+            if st.button("Permanently Delete All Jobs", disabled=is_delete_disabled, type="primary"):
+                success, message = ecm.delete_all_jobs()
+                if success:
+                    st.success(message)
+                    st.balloons()
+                else:
+                    st.error(message)
+
+    # --- TAB 4: QA Tools  ---
+    with tab5:
+        st.subheader("QA & Data Generation Tool")
+
+    # Existing random simulator (kept)
         num_jobs_to_gen = st.number_input("Total number of jobs to simulate:", min_value=1, max_value=200, value=50, step=1)
         if st.button("Simulate Job Requests"):
             with st.spinner(f"Simulating {num_jobs_to_gen} job requests..."):
@@ -1155,23 +1176,9 @@ def show_settings_page():
                 )
             st.success(msg)
             st.info("Re-run as needed; if fewer boats remain than requested, it will schedule only what's available.")
-
-        # Danger Zone (moved inside QA tab)
-        st.markdown("---")
-        st.subheader("⚠️ Danger Zone")
-        with st.expander("Permanently Delete All Jobs"):
-            st.warning("This action is irreversible. All scheduled, parked, and completed jobs will be permanently erased from the database.")
-            confirmation_text = st.text_input("To proceed, please type DELETE ALL JOBS in the box below.")
-            is_delete_disabled = (confirmation_text != "DELETE ALL JOBS")
-            if st.button("Permanently Delete All Jobs", disabled=is_delete_disabled, type="primary"):
-                success, message = ecm.delete_all_jobs()
-                if success:
-                    st.success(message)
-                    st.balloons()
-                else:
-                    st.error(message)
-
-    # --- TAB 4: Tide Charts (Scituate) ---
+    
+    
+    # --- TAB 5: Tide Charts (Scituate) ---
     with tab5:
         st.subheader("Monthly Tide Chart for Scituate Harbor")
 
