@@ -1017,7 +1017,13 @@ with st.expander("Permanently Delete All Jobs"):
 
     with tab3:
     st.subheader("QA & Data Generation Tools")
-    num_jobs_to_gen = st.number_input("Total number of jobs to simulate:", min_value=1, max_value=200, value=50, step=1)
+    num_jobs_to_gen = st.number_input(
+        "Total number of jobs to simulate:",
+        min_value=1,
+        max_value=200,
+        value=50,
+        step=1
+    )
     if st.button("Simulate Job Requests"):
         with st.spinner(f"Simulating {num_jobs_to_gen} job requests..."):
             summary = ecm.simulate_job_requests(
@@ -1026,6 +1032,17 @@ with st.expander("Permanently Delete All Jobs"):
             )
         st.success(summary)
         st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
+
+    # ---- NEW: Seasonal batch generator ----
+    st.markdown("---")
+    st.subheader("Seasonal Batch Generator")
+    st.markdown("Generates exactly 50 jobs: May–June for Launches, Sept–Oct for Hauls.")
+    year = st.number_input("Year for Seasonal Batch", min_value=2024, max_value=2030, value=2025, step=1)
+    seed = st.number_input("Random Seed (optional)", min_value=0, max_value=10_000, value=42, step=1)
+    if st.button("Generate Seasonal Batch (50)"):
+        with st.spinner("Generating seasonal batch..."):
+            msg = ecm.simulate_job_requests(total_jobs_to_gen=50, year=int(year), seed=int(seed))
+        st.success(msg)
 
     # ---- NEW: Seasonal batch generator ----
     st.markdown("---")
