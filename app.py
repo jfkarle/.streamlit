@@ -713,7 +713,7 @@ def show_scheduler_page():
             parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
             new_id, message = ecm.confirm_and_schedule_job(
                 slot,
-                parked_to_remove=parked_to_remove
+                parked_job_to_remove=parked_to_remove
             )
             if new_id:
                 st.session_state.confirmation_message = message
