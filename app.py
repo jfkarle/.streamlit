@@ -1120,9 +1120,7 @@ def show_settings_page():
     # --- TAB 3: Developer Tools ---
     with tab3:
         st.subheader("Developer Tools")
-
         
-
         # Danger Zone (moved inside QA tab)
         st.markdown("---")
         st.subheader("⚠️ Danger Zone")
@@ -1139,7 +1137,7 @@ def show_settings_page():
                     st.error(message)
 
     # --- TAB 4: QA Tools  ---
-    with tab5:
+    with tab4:
         st.subheader("QA & Data Generation Tool")
 
     # Existing random simulator (kept)
