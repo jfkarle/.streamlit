@@ -14,17 +14,8 @@ from st_supabase_connection import SupabaseConnection, execute_query
 from datetime import timedelta, time, timezone
 from collections import Counter, defaultdict   # pull in defaultdict here
 from geopy.geocoders import Nominatim
-
-import os
 from supabase import create_client
-from st_supabase_connection import SupabaseConnection, execute_query
 from requests.adapters import HTTPAdapter, Retry
-
-def _log_debug(msg):
-    """Adds a timestamped message to the global debug log."""
-    # Ensure DEBUG_MESSAGES is treated as a global variable
-    global DEBUG_MESSAGES
-    DEBUG_MESSAGES.insert(0, f"{datetime.datetime.now().strftime('%H:%M:%S')}: {msg}")
 
 # 1) Read whatever the UI handed you
 raw_url = st.secrets["SUPA_URL"]
@@ -45,6 +36,8 @@ DEBUG_MESSAGES = []
 
 def _log_debug(msg):
     """Adds a timestamped message to the global debug log."""
+    # Ensure DEBUG_MESSAGES is treated as a global variable
+    global DEBUG_MESSAGES
     DEBUG_MESSAGES.insert(0, f"{datetime.datetime.now().strftime('%H:%M:%S')}: {msg}")
 
 def fetch_scheduled_jobs():
@@ -153,7 +146,7 @@ class Job:
         self.notes = kwargs.get("notes", "")
         self.pickup_latitude = float(kwargs.get("pickup_latitude")) if kwargs.get("pickup_latitude") is not None else None
         self.pickup_longitude = float(kwargs.get("pickup_longitude")) if kwargs.get("pickup_longitude") is not None else None
-        self.dropoff_latitude = float(kwargs.get("dropoff_latitude")) if kwargs.get("dropoff_longitude") is not None else None
+        self.dropoff_latitude = float(kwargs.get("dropoff_latitude")) if kwargs.get("dropoff_latitude") is not None else None
         self.dropoff_longitude = float(kwargs.get("dropoff_longitude")) if kwargs.get("dropoff_longitude") is not None else None
 
 # --- CONFIGURATION AND GLOBAL CONSTANTS ---
@@ -280,12 +273,7 @@ def _generate_day_search_order(start_date, look_back, look_forward):
 # --- DATABASE PERSISTENCE FUNCTIONS ---
 @st.cache_resource
 def get_db_connection():
-    return st.connection(
-        "supabase",
-        type=SupabaseConnection,
-        url="https://knexrzljvagiwqstapnk.supabase.co",
-        key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZXhyemxqdmFnaXdxc3RhcG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIwODY0ODIsImV4cCI6MjA2NzY2MjQ4Mn0.hgWhtefyiEmGj5CERladOe3hMBM-rVnwMGNwrt8FT6Y"
-    )
+    return st.connection("supabase", type=SupabaseConnection)
 
 from datetime import date
 # --- Added robust HTTP session + cached geocoder helpers ---
@@ -297,17 +285,17 @@ def _get_retry_session(_total=3, _backoff=0.5):
     return s
 
 @st.cache_data(show_spinner=False, ttl=86400)
-def _geocode_with_backoff(_geolocator, address: str):
+def _geocode_with_backoff(geolocator, address: str):
     import time, random
     delay = 0.5
     for _ in range(4):
         try:
-            loc = _geocode_with_backoff(_geolocator,address, timeout=10)
-            return loc
+            return geolocator.geocode(address, timeout=10)
         except Exception:
             time.sleep(delay)
             delay *= 2 * (1 + random.random()/4)
     return None
+    
 # --- End helpers ---
 
 def generate_crane_day_candidates(
@@ -670,7 +658,7 @@ def get_location_coords(address=None, ramp_id=None, job_id=None, job_type=None, 
 
     if address_to_geocode: # Only attempt if there's an address string and API key
         try:
-            location = _geocode_with_backoff(_geolocator,address_to_geocode, timeout=10) # Set timeout for external call
+            location = _geocode_with_backoff(_geolocator, address_to_geocode)
             if location:
                 coords = (location.latitude, location.longitude)
                 DEBUG_MESSAGES.append(f"DEBUG: Geocoded '{address_to_geocode}' (Google) successfully: {coords}")
