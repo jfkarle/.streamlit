@@ -1732,81 +1732,91 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     return ([], "Could not find any available slots with the specified truck preference.", [], True)
 
-# --- REPLACEMENT: The enhanced testing utility ---
-
-def simulate_job_requests(total_jobs_to_gen=50, truck_hours=None):
+# --- STRICT SEASONAL BATCH GENERATOR (drop-in replacement) ---
+def simulate_job_requests(
+    total_jobs_to_gen: int = 50,
+    year: int = 2025,
+    launch_months = (5, 6),   # May, June
+    haul_months   = (9, 10),  # September, October
+    seed: int | None = None
+):
     """
-    Simulates real-world, seasonal job requests to test scheduler density.
+    Generates a batch of 'total_jobs_to_gen' seasonal requests ONLY in:
+      - Launch: May–June
+      - Haul:   September–October
+    Then runs them through the normal scheduler.
     """
+    import random as _rnd
     global SCHEDULED_JOBS, TRUCK_OPERATING_HOURS
-    SCHEDULED_JOBS = [] # Reset schedule for simulation
-    
-    original_truck_hours = TRUCK_OPERATING_HOURS.copy()
-    if truck_hours:
-        _log_debug("Running simulation with a temporary truck schedule.")
-        TRUCK_OPERATING_HOURS = truck_hours
 
-    # 1. Generate a Realistic, Seasonal Job Pool
-    job_requests = []
+    if seed is not None:
+        _rnd.seed(seed)
+
+    # Reset schedule for a fresh simulation run, consistent with your current function
+    SCHEDULED_JOBS = []  # (same semantics as your original)
     all_boats = list(LOADED_BOATS.values())
-    if not all_boats: return "Cannot simulate, no boats loaded."
+    if not all_boats:
+        return "Cannot simulate, no boats loaded."
 
-    for _ in range(total_jobs_to_gen):
-        rand_val = random.random()
-        boat = random.choice(all_boats) # Pick a random boat for each request
+    # Build a strict seasonal pool: 50 jobs total
+    job_requests = []
+    # Split ~half/half if possible; round remainder into Launch bucket
+    launches_target = total_jobs_to_gen // 2 + (total_jobs_to_gen % 2)
+    hauls_target    = total_jobs_to_gen // 2
 
-        # 45% chance of a peak season Launch request
-        if rand_val < 0.45:
-            service_type = "Launch"
-            month = random.choice([5, 6, 7]) # May, June, July
-            day = random.randint(1, 28)
-            req_date = datetime.date(2025, month, day)
-        
-        # 45% chance of a peak season Haul request
-        elif rand_val < 0.90:
-            service_type = "Haul"
-            month = random.choice([9, 10]) # September, October
-            day = random.randint(1, 28)
-            req_date = datetime.date(2025, month, day)
+    # Helper to pick a valid day (1–28 keeps it simple)
+    def _pick_date(_months):
+        m = _rnd.choice(list(_months))
+        d = _rnd.randint(1, 28)
+        return datetime.date(year, m, d)
 
-        # 10% chance of an off-season job
-        else:
-            service_type = random.choice(["Launch", "Haul"])
-            month = random.choice([4, 11]) # April, November
-            day = random.randint(1, 28)
-            req_date = datetime.date(2025, month, day)
-            
+    # LAUNCHES (May–June)
+    for _ in range(launches_target):
+        boat = _rnd.choice(all_boats)
+        req_date = _pick_date(launch_months)
         job_requests.append({
-            "customer_id": boat.customer_id, "boat_id": boat.boat_id,
-            "service_type": service_type, "requested_date_str": req_date.strftime("%Y-%m-%d"),
+            "customer_id": boat.customer_id,
+            "boat_id": boat.boat_id,
+            "service_type": "Launch",
+            "requested_date_str": req_date.strftime("%Y-%m-%d"),
             "selected_ramp_id": boat.preferred_ramp_id,
-            "relax_truck_preference": True # Assume simulation should be flexible
+            "relax_truck_preference": True
         })
-        
-    # 2. Run the Simulation (processing requests in random order to simulate calls)
-    random.shuffle(job_requests)
+
+    # HAULS (September–October)
+    for _ in range(hauls_target):
+        boat = _rnd.choice(all_boats)
+        req_date = _pick_date(haul_months)
+        job_requests.append({
+            "customer_id": boat.customer_id,
+            "boat_id": boat.boat_id,
+            "service_type": "Haul",
+            "requested_date_str": req_date.strftime("%Y-%m-%d"),
+            "selected_ramp_id": boat.preferred_ramp_id,
+            "relax_truck_preference": True
+        })
+
+    # Shuffle and run exactly like your current flow
+    _rnd.shuffle(job_requests)
     successful_bookings = 0
-    
     for request in job_requests:
         slots, _, _, _ = find_available_job_slots(**request)
         if slots:
             confirm_and_schedule_job(slots[0])
             successful_bookings += 1
-            
-    # 3. Provide a Better Summary
+
+    # Keep your summary format (you already compute these metrics elsewhere too)
     total_truck_days = len({(j.scheduled_start_datetime.date(), j.assigned_hauling_truck_id) for j in SCHEDULED_JOBS})
     total_crane_days = len({(j.scheduled_start_datetime.date(), j.assigned_crane_truck_id) for j in SCHEDULED_JOBS if j.assigned_crane_truck_id})
     avg_jobs_per_truck_day = len(SCHEDULED_JOBS) / total_truck_days if total_truck_days > 0 else 0
-    
+
     summary = (
-        f"SIMULATION COMPLETE:\n"
-        f"- Successfully scheduled {successful_bookings} of {total_jobs_to_gen} jobs.\n"
-        f"- Utilized {total_truck_days} unique truck-days.\n"
-        f"- Created {total_crane_days} unique crane-days.\n"
+        f"SIMULATION COMPLETE:\\n"
+        f"- Successfully scheduled {successful_bookings} of {total_jobs_to_gen} jobs.\\n"
+        f"- Utilized {total_truck_days} unique truck-days.\\n"
+        f"- Created {total_crane_days} unique crane-days.\\n"
         f"- Achieved an average of {avg_jobs_per_truck_day:.2f} jobs per truck-day."
     )
-    
-    TRUCK_OPERATING_HOURS = original_truck_hours # Restore original schedule
     _log_debug(summary)
     return summary
 
