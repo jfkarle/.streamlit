@@ -994,21 +994,49 @@ def show_settings_page():
                     else:
                         st.error(message)
 
-    with tab2:
-        st.subheader("Developer Tools & Overrides")
-        # ... (other developer tools here)
+    # This code goes inside your show_settings_page() function in app.py
+
+st.subheader("⚠️ Danger Zone")
+
+with st.expander("Permanently Delete All Jobs"):
+    st.warning("This action is irreversible. All scheduled, parked, and completed jobs will be permanently erased from the database.")
+    
+    # Safeguard 1: User must type a confirmation phrase.
+    confirmation_text = st.text_input("To proceed, please type DELETE ALL JOBS in the box below.")
+    
+    # Safeguard 2: The button is disabled until the phrase is typed correctly.
+    is_delete_disabled = (confirmation_text != "DELETE ALL JOBS")
+    
+    if st.button("Permanently Delete All Jobs", disabled=is_delete_disabled, type="primary"):
+        success, message = ecm.delete_all_jobs()
+        if success:
+            st.success(message)
+            st.balloons()
+        else:
+            st.error(message)
 
     with tab3:
-        st.subheader("QA & Data Generation Tools")
-        num_jobs_to_gen = st.number_input("Total number of jobs to simulate:", min_value=1, max_value=200, value=50, step=1)
-        if st.button("Simulate Job Requests"):
-            with st.spinner(f"Simulating {num_jobs_to_gen} job requests..."):
-                summary = ecm.simulate_job_requests(
-                    total_jobs_to_gen=num_jobs_to_gen,
-                    truck_hours=st.session_state.truck_operating_hours
-                )
-            st.success(summary)
-            st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
+    st.subheader("QA & Data Generation Tools")
+    num_jobs_to_gen = st.number_input("Total number of jobs to simulate:", min_value=1, max_value=200, value=50, step=1)
+    if st.button("Simulate Job Requests"):
+        with st.spinner(f"Simulating {num_jobs_to_gen} job requests..."):
+            summary = ecm.simulate_job_requests(
+                total_jobs_to_gen=num_jobs_to_gen,
+                truck_hours=st.session_state.truck_operating_hours
+            )
+        st.success(summary)
+        st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
+
+    # ---- NEW: Seasonal batch generator ----
+    st.markdown("---")
+    st.subheader("Seasonal Batch Generator")
+    st.markdown("Generates exactly 50 jobs: May–June for Launches, Sept–Oct for Hauls.")
+    year = st.number_input("Year for Seasonal Batch", min_value=2024, max_value=2030, value=2025, step=1)
+    seed = st.number_input("Random Seed (optional)", min_value=0, max_value=10_000, value=42, step=1)
+    if st.button("Generate Seasonal Batch (50)"):
+        with st.spinner("Generating seasonal batch..."):
+            msg = ecm.simulate_job_requests(total_jobs_to_gen=50, year=int(year), seed=int(seed))
+        st.success(msg)
 
     with tab4:
         st.subheader("Monthly Tide Chart for Scituate Harbor")
@@ -1083,26 +1111,7 @@ def show_settings_page():
                             " / ".join(low_tides) if low_tides else "N/A"
                         )
 
-# This code goes inside your show_settings_page() function in app.py
 
-st.subheader("⚠️ Danger Zone")
-
-with st.expander("Permanently Delete All Jobs"):
-    st.warning("This action is irreversible. All scheduled, parked, and completed jobs will be permanently erased from the database.")
-    
-    # Safeguard 1: User must type a confirmation phrase.
-    confirmation_text = st.text_input("To proceed, please type DELETE ALL JOBS in the box below.")
-    
-    # Safeguard 2: The button is disabled until the phrase is typed correctly.
-    is_delete_disabled = (confirmation_text != "DELETE ALL JOBS")
-    
-    if st.button("Permanently Delete All Jobs", disabled=is_delete_disabled, type="primary"):
-        success, message = ecm.delete_all_jobs()
-        if success:
-            st.success(message)
-            st.balloons()
-        else:
-            st.error(message)
 
 
 
