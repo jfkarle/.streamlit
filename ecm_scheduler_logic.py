@@ -17,6 +17,9 @@ from geopy.geocoders import Nominatim
 from supabase import create_client
 from requests.adapters import HTTPAdapter, Retry
 
+from datetime import datetime as _dt, time as _time, timezone as _tz, timedelta as _td
+
+
 # 1) Read whatever the UI handed you
 raw_url = st.secrets["SUPA_URL"]
 raw_key = st.secrets["SUPA_KEY"]
@@ -71,6 +74,259 @@ def fetch_scheduled_jobs():
         _log_debug(f"Refreshed schedule: Found {len(SCHEDULED_JOBS)} jobs.")
     except Exception as e:
         st.error(f"Error refreshing jobs from database: {e}")
+### NEW SCORING HELPERS BEGIN
+
+# Caches (keyed by (ramp_id, date))
+CRANE_WINDOWS = {}           # (ramp_id, date) -> list[(start_dt_utc, end_dt_utc)]
+ANYTIDE_LOW_WINDOWS = {}     # (ramp_id, date) -> list[(start_dt_utc, end_dt_utc)]
+
+SCORING_SETTINGS = {
+    "morning_bias": True,                   # on/off
+    "packing_nudge_after_total": 25,        # activate packing nudges after N total scheduled boats
+    "enable_local_repack": False,           # reserved for future +/- 1 day heuristic
+    "target_jobs_per_truck_day": 3,         # target density
+    "protect_crane_windows": True,          # powerboats blocked in crane windows
+    "geo_cluster_miles": 15,                # distance threshold for +1
+}
+
+def _safe_dt(date_obj, time_obj):
+    # Normalize to UTC datetime; change if your app uses local tz everywhere
+    return _dt.combine(date_obj, time_obj, tzinfo=_tz.utc)
+
+def _get_jobs_for_truck_day(truck_id, date_obj, compiled_schedule):
+    """Return list of jobs already on this truck+date from your compiled schedule."""
+    # Works if compiled_schedule is dict-like:
+    # compiled_schedule[date][truck_id] -> list[job]
+    try:
+        return list(compiled_schedule.get(date_obj, {}).get(truck_id, []))
+    except Exception:
+        return []
+
+def _count_jobs_on_truck_day(truck_id, date_obj, compiled_schedule):
+    return len(_get_jobs_for_truck_day(truck_id, date_obj, compiled_schedule))
+
+def _get_last_job_for_truck(truck_id, date_obj, compiled_schedule):
+    jobs = _get_jobs_for_truck_day(truck_id, date_obj, compiled_schedule)
+    if not jobs:
+        return None
+    # assume jobs already sorted by start; if not, sort by start time keys you use
+    try:
+        return sorted(jobs, key=lambda j: (j.get("start_time") or j.get("time") or _time(0,0)))[-1]
+    except Exception:
+        return jobs[-1]
+
+def _distance_miles(a, b):
+    """Return float miles between two locations. Tries multiple shapes:
+       a/b may be (lat,lon), or dicts with 'lat'/'lon', or have 'town' names (then 0 bonus).
+       Hook into your existing mileage function if available."""
+    # If you already have a mileage helper, call it here and delete this stub.
+    return None  # no reliable generic distance here; scoring will fall back to town match
+
+def _same_town(a, b):
+    a_t = (a or {}).get("town") if isinstance(a, dict) else None
+    b_t = (b or {}).get("town") if isinstance(b, dict) else None
+    return (a_t and b_t and a_t.strip().lower() == b_t.strip().lower())
+
+def _geo_cluster_bonus(slot, compiled_schedule):
+    """+2 if previous job’s dropoff town ~ this pickup town; +1 if within X miles of last job or yard (first job)."""
+    try:
+        truck_id = slot["truck_id"]
+        date_obj = slot["date"]
+    except KeyError:
+        return 0
+
+    last_job = _get_last_job_for_truck(truck_id, date_obj, compiled_schedule)
+    pickup_loc = slot.get("pickup_location") or {"town": slot.get("pickup_town")}
+    yard_loc   = slot.get("yard_location")   # if you pass in ECM yard coords/town
+
+    # No last job? compare with yard
+    if not last_job:
+        if yard_loc and _same_town(yard_loc, pickup_loc):
+            return 2
+        dist = _distance_miles(yard_loc, pickup_loc) if yard_loc else None
+        return 1 if (dist is not None and dist <= SCORING_SETTINGS["geo_cluster_miles"]) else 0
+
+    drop_loc = last_job.get("dropoff_location") or {"town": last_job.get("dropoff_town")}
+    if _same_town(drop_loc, pickup_loc):
+        return 2
+
+    dist = _distance_miles(drop_loc, pickup_loc)
+    if dist is not None and dist <= SCORING_SETTINGS["geo_cluster_miles"]:
+        return 1
+    return 0
+
+def _is_anytide(ramp_id):
+    """Return True if ramp uses AnyTide or AnyTideWithDraftRule(<=5'). Tie to your Ramp model if available."""
+    try:
+        r = get_ramp_by_id(ramp_id)  # your existing helper
+        tm = (getattr(r, "tide_method", None) or "").lower()
+        if "anytide" in tm:
+            return True
+        # If you encode draft rule separately, check that too
+    except Exception:
+        pass
+    return False
+
+def _ensure_daily_windows_cached(ramp_id, date_obj):
+    """Populate CRANE_WINDOWS and ANYTIDE_LOW_WINDOWS for (ramp_id, date) if empty.
+       Wire this up to your NOAA tide helpers if you have them."""
+    key = (ramp_id, date_obj)
+    if key in CRANE_WINDOWS and key in ANYTIDE_LOW_WINDOWS:
+        return
+
+    # Defaults: empty lists if we can't compute (safe no-ops)
+    crane_intervals = []
+    low_intervals = []
+
+    try:
+        # --- get day tides (replace with your real function) ---
+        # should return {'high_tides': [datetime...], 'low_tides':[datetime...]} in UTC or convert to UTC here
+        # Example expected helper: tides = get_validated_tides_for_ramp_day(ramp_id, date_obj)
+        tides = None  # <--- hook your real tide fetch here
+
+        # --- CRANE WINDOWS (HT +/- offset) ---
+        # If you have per-ramp crane offsets, pull them from your Ramp model:
+        crane_offset_hours = 3  # typical ±3h; replace with per-ramp if you store it
+        if tides and tides.get("high_tides"):
+            for ht in tides["high_tides"]:
+                start = (ht - _td(hours=crane_offset_hours)).astimezone(_tz.utc)
+                end   = (ht + _td(hours=crane_offset_hours)).astimezone(_tz.utc)
+                crane_intervals.append((start, end))
+
+        # --- ANYTIDE LOW WINDOWS (prefer 10:00–14:00) ---
+        if tides and tides.get("low_tides"):
+            for lt in tides["low_tides"]:
+                # Only give a soft window if the low tide touches the 10–14 band
+                band_start = _safe_dt(date_obj, _time(10,0))
+                band_end   = _safe_dt(date_obj, _time(14,0))
+                if band_start <= lt <= band_end:
+                    # A small 1.5h window around low, clipped to band (tweak as desired)
+                    low_start = max(band_start, lt - _td(minutes=45))
+                    low_end   = min(band_end,   lt + _td(minutes=45))
+                    low_intervals.append((low_start, low_end))
+    except Exception:
+        pass
+
+    CRANE_WINDOWS.setdefault(key, crane_intervals)
+    ANYTIDE_LOW_WINDOWS.setdefault(key, low_intervals)
+
+def _is_within_any_interval(dt_obj, intervals):
+    for s, e in intervals:
+        if s <= dt_obj <= e:
+            return True
+    return False
+
+def _is_crane_window(slot):
+    """True if slot start is inside a crane window for that ramp/date."""
+    ramp_id = slot.get("ramp_id")
+    date_obj = slot.get("date")
+    time_obj = slot.get("time")
+    if not (ramp_id and date_obj and time_obj):
+        return False
+    _ensure_daily_windows_cached(ramp_id, date_obj)
+    intervals = CRANE_WINDOWS.get((ramp_id, date_obj), [])
+    if not intervals:
+        # If your Ramp object exposes is_crane_day(date), you can hard-block whole day here
+        try:
+            r = get_ramp_by_id(ramp_id)
+            if hasattr(r, "is_crane_day") and r.is_crane_day(date_obj):
+                # if we don't know exact window but it is a crane day, be conservative and consider inside window
+                return True
+        except Exception:
+            pass
+    start_dt = _safe_dt(date_obj, time_obj)
+    return _is_within_any_interval(start_dt, intervals)
+
+def _is_low_tide_window(slot):
+    ramp_id = slot.get("ramp_id")
+    date_obj = slot.get("date")
+    time_obj = slot.get("time")
+    if not (ramp_id and date_obj and time_obj):
+        return False
+    _ensure_daily_windows_cached(ramp_id, date_obj)
+    intervals = ANYTIDE_LOW_WINDOWS.get((ramp_id, date_obj), [])
+    if not intervals:
+        return False
+    start_dt = _safe_dt(date_obj, time_obj)
+    return _is_within_any_interval(start_dt, intervals)
+
+def _total_scheduled_boats(compiled_schedule):
+    try:
+        return sum(len(truck_jobs) for day in compiled_schedule.values() for truck_jobs in day.values())
+    except Exception:
+        return 0
+
+def _score_candidate(slot, compiled_schedule):
+    """Return a numeric score; -inf means exclude."""
+    score = 0
+    try:
+        t = slot["time"]
+        d = slot["date"]
+        truck_id = slot["truck_id"]
+    except KeyError:
+        return float("-inf")
+
+    # --- Morning bias ---
+    if SCORING_SETTINGS["morning_bias"]:
+        if t <= _time(8,0): score += 3
+        elif t <= _time(9,0): score += 2
+        elif t <= _time(10,0): score += 1
+
+    # --- Truck-day fill ---
+    jobs_for_truck_day = _count_jobs_on_truck_day(truck_id, d, compiled_schedule)
+    projected = jobs_for_truck_day + 1
+    if projected >= 4: score += 4
+    elif projected == 3: score += 3
+    elif projected == 2: score += 1
+
+    # --- Geography clustering ---
+    score += _geo_cluster_bonus(slot, compiled_schedule)
+
+    # --- Crane protection (hard) ---
+    if SCORING_SETTINGS["protect_crane_windows"]:
+        svc = (slot.get("service_type") or "").lower()
+        is_sail = ("sailboat" in svc)
+        if _is_crane_window(slot) and not is_sail:
+            return float("-inf")
+
+    # --- AnyTide low-tide soft preference (powerboats) ---
+    if _is_anytide(slot.get("ramp_id")):
+        svc = (slot.get("service_type") or "").lower()
+        is_power = ("sailboat" not in svc)
+        if is_power and _is_low_tide_window(slot):
+            score += 1
+
+    # --- Packing nudge after N boats ---
+    try:
+        total_now = _total_scheduled_boats(compiled_schedule)
+        if total_now >= SCORING_SETTINGS["packing_nudge_after_total"]:
+            # Penalize creating a 1-job day
+            if projected == 1:
+                score -= 2
+            # Boost converting a 2->3 day
+            elif projected == 3:
+                score += 2
+    except Exception:
+        pass
+
+    return score
+
+def _select_best_slots(all_found_slots, compiled_schedule, k=3):
+    """Score, filter, and return top-k slots by descending score."""
+    scored = []
+    for s in all_found_slots:
+        sc = _score_candidate(s, compiled_schedule)
+        if sc == float("-inf"):
+            continue
+        scored.append((sc, s))
+    if not scored:
+        return []
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [s for _, s in scored[:k]]
+
+### NEW SCORING HELPERS END
+
+
 
 # --- DATA MODELS (CLASSES) ---
 class Truck:
@@ -1582,6 +1838,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     """
     Finds available slots by first searching ONLY for the preferred truck, then
     falling back to other trucks ONLY if relax_truck_preference is True.
+    Uses scoring to rank all found candidates and returns the top-K.
     """
     global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
     
@@ -1589,13 +1846,19 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     fetch_scheduled_jobs()
 
     # --- Validation & Initial Setup ---
-    if not requested_date_str: return [], "Please select a target date before searching.", [], False
-    try: requested_date = datetime.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
-    except ValueError: return [], f"Date '{requested_date_str}' is not valid.", [], True
+    if not requested_date_str:
+        return [], "Please select a target date before searching.", [], False
+    try:
+        requested_date = datetime.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return [], f"Date '{requested_date_str}' is not valid.", [], True
     
     compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
+
     boat = get_boat_details(boat_id)
-    if not boat: return [], f"Could not find boat ID: {boat_id}", [], True
+    if not boat:
+        return [], f"Could not find boat ID: {boat_id}", [], True
+
     crane_needed = "Sailboat" in boat.boat_type
 
     # --- Separate Trucks into Preferred and Others ---
@@ -1603,37 +1866,69 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     preferred_trucks, other_trucks = [], []
     if boat.preferred_truck_id:
         for t in all_suitable_trucks:
-            if t.truck_name == boat.preferred_truck_id: preferred_trucks.append(t)
-            else: other_trucks.append(t)
+            if t.truck_name == boat.preferred_truck_id:
+                preferred_trucks.append(t)
+            else:
+                other_trucks.append(t)
     else:
         other_trucks = all_suitable_trucks
 
     # --- Internal Search Function to Avoid Code Duplication ---
     def _run_search(trucks_to_search, search_message_type):
         found = []
-        # Phase 1: Opportunistic Search
+        # We will NOT stop at the first N anymore; we collect a reasonable pool to score.
+        # Cap the pool size to avoid runaway: e.g., 60 candidates.
+        POOL_CAP = max(20, num_suggestions_to_find * 20)
+
+        # Phase 1: Opportunistic Search (closest active crane days near request)
         search_window = [requested_date + timedelta(days=i) for i in range(-7, 8)]
         s17_id = get_s17_truck_id()
-        active_crane_days = { j.scheduled_start_datetime.date() for j in SCHEDULED_JOBS if j.scheduled_start_datetime and j.scheduled_start_datetime.date() in search_window and j.assigned_crane_truck_id == str(s17_id) and (str(j.pickup_ramp_id) == str(selected_ramp_id) or str(j.dropoff_ramp_id) == str(selected_ramp_id)) }
+        active_crane_days = {
+            j.scheduled_start_datetime.date()
+            for j in SCHEDULED_JOBS
+            if j.scheduled_start_datetime
+            and j.scheduled_start_datetime.date() in search_window
+            and j.assigned_crane_truck_id == str(s17_id)
+            and (str(j.pickup_ramp_id) == str(selected_ramp_id) or str(j.dropoff_ramp_id) == str(selected_ramp_id))
+        }
         sorted_active_days = sorted(list(active_crane_days), key=lambda d: abs(d - requested_date))
         for day in sorted_active_days:
-            slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_search, is_opportunistic_search=True)
-            if slot: found.append(slot)
-            if len(found) >= num_suggestions_to_find: return found, "Found highly efficient slots."
+            slot = _find_slot_on_day(
+                day, boat, service_type, selected_ramp_id, crane_needed,
+                compiled_schedule, customer_id, trucks_to_search,
+                is_opportunistic_search=True
+            )
+            if slot:
+                found.append(slot)
+                if len(found) >= POOL_CAP:
+                    break
 
-        # Phase 2: Fallback Search
+        # Phase 2: Fallback Search (normal search horizon)
         if crane_needed:
             potential = [d for r, d in IDEAL_CRANE_DAYS if str(r) == str(selected_ramp_id) and d >= requested_date]
             search_days = sorted(potential)[:30]
         else:
             search_days = [requested_date + timedelta(days=i) for i in range(14)]
-        for day in search_days:
-            is_also_opportunistic = day in active_crane_days
-            slot = _find_slot_on_day(day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_search, is_opportunistic_search=is_also_opportunistic)
-            if slot: found.append(slot)
-            if len(found) >= num_suggestions_to_find: break
+
+        if len(found) < POOL_CAP:
+            for day in search_days:
+                is_also_opportunistic = day in active_crane_days
+                slot = _find_slot_on_day(
+                    day, boat, service_type, selected_ramp_id, crane_needed,
+                    compiled_schedule, customer_id, trucks_to_search,
+                    is_opportunistic_search=is_also_opportunistic
+                )
+                if slot:
+                    found.append(slot)
+                    if len(found) >= POOL_CAP:
+                        break
         
-        return (found, f"Found slots with {search_message_type} truck.") if found else ([], None)
+        # If we found anything, score & pick the top-K
+        if found:
+            best = _select_best_slots(found, compiled_schedule, k=num_suggestions_to_find)
+            msg = f"Found slots with {search_message_type} truck."
+            return (best, msg)
+        return ([], None)
 
     # --- Execute the Search ---
     found_slots, message = [], None
@@ -1643,10 +1938,13 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         search_type = "preferred" if boat.preferred_truck_id else "any suitable"
         found_slots, message = _run_search(trucks_to_try, search_type)
 
-    if not found_slots and relax_truck_preference and other_trucks:
+    if (not found_slots) and relax_truck_preference and other_trucks:
         found_slots, message = _run_search(other_trucks, "other")
 
-    return (found_slots, message, [], False) if found_slots else ([], "Could not find any available slots with the specified truck preference.", [], True)
+    if found_slots:
+        return (found_slots, message, [], False)
+
+    return ([], "Could not find any available slots with the specified truck preference.", [], True)
 
 # --- REPLACEMENT: The enhanced testing utility ---
 
