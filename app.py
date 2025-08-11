@@ -22,15 +22,26 @@ from reportlab.graphics.charts.piecharts import Pie
 st.set_page_config(layout="wide")
 
 # --- Helper Functions for UI ---
+def _load_data():
+    # Try a few common names in case it was renamed
+    for name in ("load_all_data_from_sheets", "load_data_from_sheets", "load_all_data", "load_data"):
+        if hasattr(ecm, name):
+            return getattr(ecm, name)()
+    # Friendly error if nothing found
+    import streamlit as st
+    st.error(
+        "Couldn’t find a data-loading function in ecm_scheduler_logic.py. "
+        "Expected one of: load_all_data_from_sheets | load_data_from_sheets | load_all_data | load_data"
+    )
+    st.stop()
 
-from ecm_scheduler_logic import load_all_data_from_sheets
-load_all_data_from_sheets()   # this populates LOADED_BOATS, etc.
+if "data_loaded" not in st.session_state:
+    _load_data()
+    st.session_state["data_loaded"] = True
 
-st.sidebar.write(f"🔍 Loaded {len(ecm.LOADED_BOATS)} boats from Supabase")
+st.sidebar.write(f"🔍 Loaded {len(getattr(ecm, 'LOADED_BOATS', []))} boats from Supabase")
 
 # --- Helper Functions for UI ---
-
-import uuid # Make sure to import uuid at the top of app.py
 
 class SlotDetail:
     """A wrapper class to make slot dictionaries easier to use in the UI."""
