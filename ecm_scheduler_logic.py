@@ -308,15 +308,15 @@ def _get_retry_session(_total=3, _backoff=0.5):
     return s
 
 @st.cache_data(show_spinner=False, ttl=86400)
-def _geocode_with_backoff(geolocator, address: str):
+def _geocode_with_backoff(geolocator, address: str, timeout=10):
     import time, random
     delay = 0.5
     for _ in range(4):
         try:
-            return geolocator.geocode(address, timeout=10)
+            return geolocator.geocode(address, timeout=timeout)
         except Exception:
             time.sleep(delay)
-            delay *= 2 * (1 + random.random()/4)
+            delay *= 2 * (1 + random.random() / 4)
     return None
     
 # --- End helpers ---
@@ -626,7 +626,7 @@ def delete_job_from_db(job_id):
 def get_location_coords(address=None, ramp_id=None, job_id=None, job_type=None, boat_id=None, initial_latitude=None, initial_longitude=None):
     """
     Returns (latitude, longitude) for a given address/ramp/job location.
-    Prioritizes database lookup, then caches in-memory, then geocodes using GoogleV3 and saves to DB.
+    Prioritizes database lookup, then caches in-memory, then geocodes using xxxxx and saves to DB.
     job_type can be 'pickup' or 'dropoff' for job-specific coordinates.
     boat_id is used for context when geocoding boat.storage_address.
     initial_latitude/initial_longitude: Pass existing lat/lon from loaded objects to prioritize.
