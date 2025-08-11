@@ -1732,93 +1732,104 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     return ([], "Could not find any available slots with the specified truck preference.", [], True)
 
-# --- STRICT SEASONAL BATCH GENERATOR (drop-in replacement) ---
+# --- Seasonal batch generator (Spring/Fall), sequential dates, safe if fewer boats remain ---
 def simulate_job_requests(
     total_jobs_to_gen: int = 50,
+    season: str = "spring",      # "spring" -> May/June (Launch) ; "fall" -> Sep/Oct (Haul)
     year: int = 2025,
-    launch_months = (5, 6),   # May, June
-    haul_months   = (9, 10),  # September, October
-    seed: int | None = None
+    seed: int | None = None,
+    **kwargs,                    # tolerate extra args (e.g., truck_hours) from older UI calls
 ):
     """
-    Generates a batch of 'total_jobs_to_gen' seasonal requests ONLY in:
-      - Launch: May–June
-      - Haul:   September–October
-    Then runs them through the normal scheduler.
+    Generates up to 'total_jobs_to_gen' jobs for the chosen season and immediately tries to schedule them.
+    - Spring  => Launches in May–June
+    - Fall    => Hauls   in Sep–Oct
+    - Dates are assigned SEQUENTIALLY across the 2-month window (not random).
+    - No Sundays; Saturdays allowed only in May & September (per your rules).
+    - If fewer unscheduled boats remain than requested, schedules only what's available.
+    Returns a short summary string.
     """
-    import random as _rnd
-    global SCHEDULED_JOBS, TRUCK_OPERATING_HOURS
+    import datetime, random as _rnd
 
     if seed is not None:
         _rnd.seed(seed)
 
-    # Reset schedule for a fresh simulation run, consistent with your current function
-    SCHEDULED_JOBS = []  # (same semantics as your original)
-    all_boats = list(LOADED_BOATS.values())
-    if not all_boats:
-        return "Cannot simulate, no boats loaded."
+    season_norm = season.strip().lower()
+    if season_norm not in ("spring", "fall"):
+        raise ValueError("season must be 'spring' or 'fall'")
 
-    # Build a strict seasonal pool: 50 jobs total
-    job_requests = []
-    # Split ~half/half if possible; round remainder into Launch bucket
-    launches_target = total_jobs_to_gen // 2 + (total_jobs_to_gen % 2)
-    hauls_target    = total_jobs_to_gen // 2
+    # Month windows + job type
+    if season_norm == "spring":
+        months = (5, 6)   # May, June
+        req_type = "Launch"
+    else:
+        months = (9, 10)  # September, October
+        req_type = "Haul"
 
-    # Helper to pick a valid day (1–28 keeps it simple)
-    def _pick_date(_months):
-        m = _rnd.choice(list(_months))
-        d = _rnd.randint(1, 28)
-        return datetime.date(year, m, d)
+    # Build sequential valid dates across the 2-month window
+    def _month_last_day(y, m):
+        if m == 12:
+            return datetime.date(y, 12, 31)
+        return datetime.date(y, m + 1, 1) - datetime.timedelta(days=1)
 
-    # LAUNCHES (May–June)
-    for _ in range(launches_target):
-        boat = _rnd.choice(all_boats)
-        req_date = _pick_date(launch_months)
-        job_requests.append({
-            "customer_id": boat.customer_id,
+    valid_dates = []
+    for m in months:
+        d = datetime.date(year, m, 1)
+        last = _month_last_day(year, m)
+        while d <= last:
+            wd = d.weekday()  # Mon=0 ... Sun=6
+            is_sun = (wd == 6)
+            is_sat = (wd == 5)
+            # No Sundays ever; Saturdays allowed only in May & September
+            if not is_sun and (not is_sat or m in (5, 9)):
+                valid_dates.append(d)
+            d += datetime.timedelta(days=1)
+
+    if not valid_dates:
+        return "No valid dates generated for the selected season."
+
+    # Determine which boats are still unscheduled
+    scheduled_boat_ids = {j.boat_id for j in SCHEDULED_JOBS} if 'SCHEDULED_JOBS' in globals() else set()
+    all_boats_list = list(LOADED_BOATS.values())
+    remaining_boats = [b for b in all_boats_list if getattr(b, "boat_id", None) not in scheduled_boat_ids]
+
+    if not remaining_boats:
+        return f"No remaining boats to schedule for {season.title()}."
+
+    # Cap requested jobs to what's actually available
+    take = min(total_jobs_to_gen, len(remaining_boats))
+
+    # Assign dates sequentially across the window; if we run out of days, wrap around
+    # (Slot finder will enforce capacity; this just seeds requests.)
+    requests = []
+    for i in range(take):
+        boat = remaining_boats[i]
+        d = valid_dates[i % len(valid_dates)]
+        requests.append({
+            "customer_id": getattr(boat, "customer_id", None),
             "boat_id": boat.boat_id,
-            "service_type": "Launch",
-            "requested_date_str": req_date.strftime("%Y-%m-%d"),
-            "selected_ramp_id": boat.preferred_ramp_id,
-            "relax_truck_preference": True
+            "service_type": req_type,
+            "requested_date_str": d.strftime("%Y-%m-%d"),
+            "selected_ramp_id": getattr(boat, "preferred_ramp_id", None),
+            "relax_truck_preference": True,
         })
 
-    # HAULS (September–October)
-    for _ in range(hauls_target):
-        boat = _rnd.choice(all_boats)
-        req_date = _pick_date(haul_months)
-        job_requests.append({
-            "customer_id": boat.customer_id,
-            "boat_id": boat.boat_id,
-            "service_type": "Haul",
-            "requested_date_str": req_date.strftime("%Y-%m-%d"),
-            "selected_ramp_id": boat.preferred_ramp_id,
-            "relax_truck_preference": True
-        })
-
-    # Shuffle and run exactly like your current flow
-    _rnd.shuffle(job_requests)
-    successful_bookings = 0
-    for request in job_requests:
-        slots, _, _, _ = find_available_job_slots(**request)
+    # Try to schedule each request in order
+    successful = 0
+    for req in requests:
+        slots, _, _, _ = find_available_job_slots(**req)
         if slots:
             confirm_and_schedule_job(slots[0])
-            successful_bookings += 1
-
-    # Keep your summary format (you already compute these metrics elsewhere too)
-    total_truck_days = len({(j.scheduled_start_datetime.date(), j.assigned_hauling_truck_id) for j in SCHEDULED_JOBS})
-    total_crane_days = len({(j.scheduled_start_datetime.date(), j.assigned_crane_truck_id) for j in SCHEDULED_JOBS if j.assigned_crane_truck_id})
-    avg_jobs_per_truck_day = len(SCHEDULED_JOBS) / total_truck_days if total_truck_days > 0 else 0
+            successful += 1
 
     summary = (
-        f"SIMULATION COMPLETE:\\n"
-        f"- Successfully scheduled {successful_bookings} of {total_jobs_to_gen} jobs.\\n"
-        f"- Utilized {total_truck_days} unique truck-days.\\n"
-        f"- Created {total_crane_days} unique crane-days.\\n"
-        f"- Achieved an average of {avg_jobs_per_truck_day:.2f} jobs per truck-day."
+        f"{season.title()} batch requested: {total_jobs_to_gen}. "
+        f"Remaining boats available: {len(remaining_boats)}. "
+        f"Scheduled now: {successful}."
     )
-    _log_debug(summary)
+    _log_debug(summary) if 'DEBUG_MESSAGES' in globals() else None
     return summary
+
 
 def analyze_job_distribution(scheduled_jobs, all_boats, all_ramps):
     """
