@@ -4,8 +4,7 @@ from typing import Optional, List, Union
 import csv
 import os
 
-import datetime                 # your existing “import datetime”
-from datetime import datetime, time, date, timedelta, timezone
+import datetime as dt
 import pandas as pd
 import calendar
 import requests
@@ -13,12 +12,10 @@ import random
 import json
 import streamlit as st
 from st_supabase_connection import SupabaseConnection, execute_query
-from datetime import timedelta, time, timezone
 from collections import Counter, defaultdict   # pull in defaultdict here
 from geopy.geocoders import Nominatim
 from supabase import create_client
 from requests.adapters import HTTPAdapter, Retry
-from datetime import datetime as _dt, time as _time, timezone as _tz, timedelta as _td
 
 
 # 1) Read whatever the UI handed you
@@ -47,7 +44,7 @@ def _log_debug(msg):
     """Adds a timestamped message to the global debug log."""
     # Ensure DEBUG_MESSAGES is treated as a global variable
     global DEBUG_MESSAGES
-    DEBUG_MESSAGES.insert(0, f"{datetime.datetime.now().strftime('%H:%M:%S')}: {msg}")
+    DEBUG_MESSAGES.insert(0, f"{dt.datetime.now().strftime('%H:%M:%S')}: {msg}")
 
 def fetch_scheduled_jobs():
     """
@@ -114,12 +111,12 @@ class Job:
         # This internal helper now ensures all datetimes are timezone-aware (UTC).
         def _parse_or_get_datetime(dt_value):
             dt = None # Start with a null datetime
-            if isinstance(dt_value, datetime.datetime):
+            if isinstance(dt_value, dt.datetime):
                 dt = dt_value
             elif isinstance(dt_value, str):
                 try:
                     # Parse the string, replacing space with T for ISO compatibility
-                    dt = datetime.datetime.fromisoformat(dt_value.replace(" ", "T"))
+                    dt = dt.datetime.fromisoformat(dt_value.replace(" ", "T"))
                 except (ValueError, TypeError):
                     return None # Return None if parsing fails
 
@@ -183,7 +180,6 @@ SCHEDULED_JOBS, PARKED_JOBS = [], {}
 ### Helpers
 # --- HARD CONSTRAINTS + SCORING UPGRADE PACK ---
 
-from datetime import datetime, timedelta, time, timezone
 import math
 
 def _norm_id(x):
@@ -231,7 +227,7 @@ def _window_offset_for_boat(method, base_offset, boat_draft_ft):
 
 def _day_high_low_tides(ramp, day_date):
     """
-    Returns (highs, lows) where each is a list of datetime.time objects for the given date.
+    Returns (highs, lows) where each is a list of dt.time objects for the given date.
     Uses the ramp's NOAA station via your existing tide fetcher.
     """
     if not ramp or not getattr(ramp, "noaa_station_id", None):
@@ -367,9 +363,7 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
     return score
 
 
-from datetime import datetime as _dt, time as _time
-
-def tide_window_for_day(ramp_id: str, day: datetime.date):
+def tide_window_for_day(ramp_id: str, day: dt.date):
     """
     Returns a list of (start_time, end_time) tuples in local time when this ramp is usable.
     Uses the ramp's NOAA station (no fallback unless ramp has no station).
@@ -399,12 +393,12 @@ def tide_window_for_day(ramp_id: str, day: datetime.date):
             if not isinstance(tt, _time): 
                 continue
             center = _dt.combine(day, tt)
-            start = (center - datetime.timedelta(minutes=pad)).time()
-            end   = (center + datetime.timedelta(minutes=pad)).time()
+            start = (center - dt.timedelta(minutes=pad)).time()
+            end   = (center + dt.timedelta(minutes=pad)).time()
             windows.append((start, end))
     return windows
 
-def time_within_any_window(check_time: _time, windows: list[tuple[_time,_time]]) -> bool:
+def time_within_any_window(check_time: dt.time, windows: List[Tuple[dt.time, dt.time]]) -> bool:
     for a,b in windows:
         if a <= check_time <= b:
             return True
@@ -413,8 +407,6 @@ def time_within_any_window(check_time: _time, windows: list[tuple[_time,_time]])
 ### This helper function will create a new crane day near the requested date if a grouped slot is not found.
 
 # --- Low-tide prime day helpers (11:00–13:00 local), with Scituate fallback ---
-from datetime import date as _date, datetime as _dt, time as _time, timedelta as _td
-
 _SCITUATE_STATION = "8445138"  # permanent fallback per your rules
 
 def _station_for_ramp_or_scituate(ramp_id: str | None) -> str:
@@ -500,12 +492,12 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
         if not truck_operating_hours:
             continue 
 
-        truck_start_dt = datetime.datetime.combine(search_date, truck_operating_hours[0], tzinfo=timezone.utc)
-        truck_end_dt = datetime.datetime.combine(search_date, truck_operating_hours[1], tzinfo=timezone.utc)
+        truck_start_dt = dt.datetime.combine(search_date, truck_operating_hours[0], tzinfo=timezone.utc)
+        truck_end_dt = dt.datetime.combine(search_date, truck_operating_hours[1], tzinfo=timezone.utc)
 
         for hour in time_iterator:
             for minute in [0, 15, 30, 45]:
-                slot_start_dt = datetime.datetime.combine(search_date, time(hour, minute), tzinfo=timezone.utc)
+                slot_start_dt = dt.datetime.combine(search_date, time(hour, minute), tzinfo=timezone.utc)
                 slot_end_dt = slot_start_dt + hauler_duration
 
                 if not (slot_start_dt >= truck_start_dt and slot_end_dt <= truck_end_dt): continue
@@ -516,15 +508,15 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                 elif service_type == "Launch":
                     tide_critical_moment = slot_start_dt + timedelta(hours=2)
                     for tide_win in tide_windows_for_day:
-                        tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
-                        tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
+                        tide_win_start = dt.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
+                        tide_win_end = dt.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
                         if tide_win_start <= tide_critical_moment <= tide_win_end: tide_check_passed = True; break
                 elif service_type == "Haul":
                     tide_critical_start = slot_start_dt
                     tide_critical_end = slot_start_dt + timedelta(minutes=30)
                     for tide_win in tide_windows_for_day:
-                        tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
-                        tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
+                        tide_win_start = dt.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
+                        tide_win_end = dt.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
                         if tide_critical_start < tide_win_end and tide_critical_end > tide_win_start: tide_check_passed = True; break
                 
                 if not tide_check_passed: continue
@@ -576,7 +568,7 @@ def get_db_connection():
         return st.connection("supabase", type=SupabaseConnection, url=url.strip(), key=key.strip())
     return st.connection("supabase", type=SupabaseConnection)
 
-from datetime import date
+
 # --- Added robust HTTP session + cached geocoder helpers ---
 def _get_retry_session(_total=3, _backoff=0.5):
     s = requests.Session()
@@ -639,7 +631,7 @@ def job_is_within_date_range(job_row, current_date, days_to_consider=21):
     
     try:
         # Parse the ISO format string from the database
-        job_date = datetime.datetime.fromisoformat(job_date_str.replace(" ", "T"))
+        job_date = dt.datetime.fromisoformat(job_date_str.replace(" ", "T"))
     except (ValueError, TypeError):
         return False
 
@@ -752,8 +744,8 @@ def load_all_data_from_sheets():
             if truck_id is None:
                 continue
             day        = row["day_of_week"]
-            start_time = datetime.datetime.strptime(row["start_time"], '%H:%M:%S').time()
-            end_time   = datetime.datetime.strptime(row["end_time"],   '%H:%M:%S').time()
+            start_time = dt.datetime.strptime(row["start_time"], '%H:%M:%S').time()
+            end_time   = dt.datetime.strptime(row["end_time"],   '%H:%M:%S').time()
             processed_schedules.setdefault(truck_id, {})[day] = (start_time, end_time)
 
         TRUCK_OPERATING_HOURS.clear()
@@ -764,7 +756,7 @@ def load_all_data_from_sheets():
         st.error(f"Error loading data: {e}")
         raise
 
-def _build_protected_windows(start_date: datetime.date, end_date: datetime.date):
+def _build_protected_windows(start_date: dt.date, end_date: dt.date):
     """Populate CRANE_WINDOWS and ANYTIDE_LOW_TIDE_WINDOWS for the given date range."""
     CRANE_WINDOWS.clear()
     ANYTIDE_LOW_TIDE_WINDOWS.clear()
@@ -777,11 +769,11 @@ def _build_protected_windows(start_date: datetime.date, end_date: datetime.date)
                 offset_hours = float(ramp.tide_offset_hours1) if ramp.tide_offset_hours1 is not None else 0.0
                 if offset_hours >= 0:
                     w = []
-                    delta = datetime.timedelta(hours=offset_hours)
+                    delta = dt.timedelta(hours=offset_hours)
                     for ev in events:
                         if ev['type'] == 'H':
-                            lt = (datetime.datetime.combine(d, ev['time'], tzinfo=timezone.utc) - delta).time()
-                            rt = (datetime.datetime.combine(d, ev['time'], tzinfo=timezone.utc) + delta).time()
+                            lt = (dt.datetime.combine(d, ev['time'], tzinfo=timezone.utc) - delta).time()
+                            rt = (dt.datetime.combine(d, ev['time'], tzinfo=timezone.utc) + delta).time()
                             w.append((lt, rt))
                     if w:
                         CRANE_WINDOWS[(str(ramp_id), d)] = w
@@ -792,8 +784,8 @@ def _build_protected_windows(start_date: datetime.date, end_date: datetime.date)
                 for ev in events:
                     if ev['type'] == 'L' and 10 <= ev['time'].hour < 14:
                         # a small 60‑min window centered on LT; adjust as you like
-                        lt = (datetime.datetime.combine(d, ev['time'], tzinfo=timezone.utc) - datetime.timedelta(minutes=30)).time()
-                        rt = (datetime.datetime.combine(d, ev['time'], tzinfo=timezone.utc) + datetime.timedelta(minutes=30)).time()
+                        lt = (dt.datetime.combine(d, ev['time'], tzinfo=timezone.utc) - dt.timedelta(minutes=30)).time()
+                        rt = (dt.datetime.combine(d, ev['time'], tzinfo=timezone.utc) + dt.timedelta(minutes=30)).time()
                         w.append((lt, rt))
                 if w:
                     ANYTIDE_LOW_TIDE_WINDOWS[(str(ramp_id), d)] = w
@@ -832,7 +824,7 @@ def save_job(job_to_save):
     # Build the payload, serializing datetimes to ISO strings
     payload = {}
     for key, value in job_dict.items():
-        if isinstance(value, datetime.datetime):
+        if isinstance(value, dt.datetime):
             payload[key] = value.isoformat()
         else:
             payload[key] = value
@@ -1096,7 +1088,7 @@ def _calculate_distance_miles(coords1, coords2):
 
 def _round_time_to_nearest_quarter_hour(dt):
     """Rounds a datetime object UP to the nearest 15-minute interval."""
-    if not isinstance(dt, datetime.datetime):
+    if not isinstance(dt, dt.datetime):
         return dt # Return as is if not a datetime object
 
     # If the time is already on a perfect 15-minute mark, do nothing
@@ -1105,7 +1097,7 @@ def _round_time_to_nearest_quarter_hour(dt):
 
     # Calculate the number of minutes to add to round up
     minutes_to_add = (15 - dt.minute % 15)
-    rounded_dt = dt + datetime.timedelta(minutes=minutes_to_add)
+    rounded_dt = dt + dt.timedelta(minutes=minutes_to_add)
     
     # Set seconds and microseconds to zero for a clean time
     return rounded_dt.replace(second=0, microsecond=0)
@@ -1128,7 +1120,7 @@ def _calculate_target_date_score(slot_date, target_date):
     
 
 def format_time_for_display(time_obj):
-    return time_obj.strftime('%I:%M %p').lstrip('0') if isinstance(time_obj, datetime.time) else "InvalidTime"
+    return time_obj.strftime('%I:%M %p').lstrip('0') if isinstance(time_obj, dt.time) else "InvalidTime"
 
 def get_job_details(job_id):
     for job in SCHEDULED_JOBS:
@@ -1141,17 +1133,17 @@ def find_same_service_conflict(boat_id, new_service_type, requested_date, all_sc
     Args:
         boat_id (int): The ID of the boat to check.
         new_service_type (str): The service being requested (e.g., "Launch", "Haul").
-        requested_date (datetime.date): The new date being requested.
+        requested_date (dt.date): The new date being requested.
         all_scheduled_jobs (list): A list of all currently scheduled Job objects.
     Returns:
         Job: The conflicting Job object if found, otherwise None.
     """
-    thirty_days = datetime.timedelta(days=30)
+    thirty_days = dt.timedelta(days=30)
     for job in all_scheduled_jobs:
         if job.boat_id == boat_id and job.service_type == new_service_type:
             if job.scheduled_start_datetime:
                 # Check if the existing job date is within 30 days of the new requested date
-                if abs(job.scheduled_start_datetime.date() - requested_date) <= thirty_days:
+                if abs(job.scheduled_start_dt.date() - requested_date) <= thirty_days:
                     return job # Return the specific job that is causing the conflict
     return None
 
@@ -1179,9 +1171,9 @@ def park_job(job_id):
 def get_monthly_tides_for_scituate(year, month):
     scituate_station_id = "8445138"
     try:
-        start_date = datetime.date(year, month, 1)
+        start_date = dt.date(year, month, 1)
         _, num_days = calendar.monthrange(year, month)
-        end_date = datetime.date(year, month, num_days)
+        end_date = dt.date(year, month, num_days)
         return fetch_noaa_tides_for_range(scituate_station_id, start_date, end_date)
     except Exception as e:
         print(f"Error fetching monthly tides: {e}")
@@ -1218,7 +1210,7 @@ def _parse_annual_tide_file(filepath, begin_date, end_date):
                     datetime_to_parse = f"{date_str} {day_of_week_str} {time_str} {am_pm_str}"
                     
                     # --- FIX 2 of 2: Add '%a' to the format to handle "Mon", "Tue", etc. ---
-                    tide_dt_obj = datetime.datetime.strptime(datetime_to_parse, "%Y/%m/%d %a %I:%M %p")
+                    tide_dt_obj = dt.datetime.strptime(datetime_to_parse, "%Y/%m/%d %a %I:%M %p")
                     
                     # This part remains the same
                     current_date = tide_dt_obj.date()
@@ -1325,7 +1317,7 @@ def fetch_noaa_tides_for_range(station_id, start_date, end_date):
         grouped_tides = {}
         for tide in predictions:
             if 't' in tide:
-                tide_dt = datetime.datetime.strptime(tide["t"], "%Y-%m-%d %H:%M"); date_key = tide_dt.date()
+                tide_dt = dt.datetime.strptime(tide["t"], "%Y-%m-%d %H:%M"); date_key = tide_dt.date()
                 grouped_tides.setdefault(date_key, []).append({'type': tide["type"].upper(), 'time': tide_dt.time(), 'height': float(tide["v"])})
             else:
                 DEBUG_MESSAGES.append(f"WARNING: Skipping tide entry due to missing 't' key: {tide}")
@@ -1356,11 +1348,12 @@ def _is_anytide(ramp_id: str) -> bool:
     if not r: return False
     return r.tide_calculation_method in ("AnyTide", "AnyTideWithDraftRule")
 
-def _in_any_window(start_dt: datetime, windows: list[tuple[time, time]], date: date) -> bool:
+def _in_any_window(start_dt: dt.datetime, windows: List[Tuple[dt.time, dt.time]], date: dt.date) -> bool:
+
 
     for s, e in windows:
-        sdt = datetime.datetime.combine(date, s, tzinfo=timezone.utc)
-        edt = datetime.datetime.combine(date, e, tzinfo=timezone.utc)
+        sdt = dt.datetime.combine(date, s, tzinfo=timezone.utc)
+        edt = dt.datetime.combine(date, e, tzinfo=timezone.utc)
         if sdt <= start_dt <= edt:
             return True
     return False
@@ -1370,7 +1363,7 @@ def _is_crane_window(slot) -> bool:
     key = (str(slot['ramp_id']), slot['date'])
     wins = CRANE_WINDOWS.get(key, [])
     if not wins: return False
-    start_dt = datetime.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
+    start_dt = dt.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
     return _in_any_window(start_dt, wins, slot['date'])
 
 def _is_low_tide_window(slot) -> bool:
@@ -1378,14 +1371,14 @@ def _is_low_tide_window(slot) -> bool:
     key = (str(slot['ramp_id']), slot['date'])
     wins = ANYTIDE_LOW_TIDE_WINDOWS.get(key, [])
     if not wins: return False
-    start_dt = datetime.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
+    start_dt = dt.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
     return _in_any_window(start_dt, wins, slot['date'])
 
 def calculate_ramp_windows(ramp, boat, tide_data, date):
     if ramp.tide_calculation_method == "AnyTide":
-        return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
+        return [{'start_time': dt.time.min, 'end_time': dt.time.max}]
     if ramp.tide_calculation_method == "AnyTideWithDraftRule" and boat.draft_ft and boat.draft_ft < 5.0:
-        return [{'start_time': datetime.time.min, 'end_time': datetime.time.max}]
+        return [{'start_time': dt.time.min, 'end_time': dt.time.max}]
 
     # Determine offset_hours based on method and draft
     if ramp.tide_calculation_method == "HoursAroundHighTide_WithDraftRule":
@@ -1401,14 +1394,14 @@ def calculate_ramp_windows(ramp, boat, tide_data, date):
         return []
 
     # Calculate windows if there's tide data
-    offset = datetime.timedelta(hours=offset_hours)
+    offset = dt.timedelta(hours=offset_hours)
     
     # Filter for High Tides ('H' type) and create windows
     high_tide_windows = []
     for t in tide_data:
         if t['type'] == 'H':
             # Changed this line to make the combined datetime timezone-aware (UTC)
-            tide_dt_combined = datetime.datetime.combine(date, t['time'], tzinfo=timezone.utc)
+            tide_dt_combined = dt.datetime.combine(date, t['time'], tzinfo=timezone.utc)
             window_start_time = (tide_dt_combined - offset).time()
             window_end_time = (tide_dt_combined + offset).time()
             high_tide_windows.append({'start_time': window_start_time, 'end_time': window_end_time})
@@ -1435,8 +1428,8 @@ def get_final_schedulable_ramp_times(
     day_of_week = date_to_check.weekday()
     
     # --- Check 1: Collective Truck Hours ---
-    earliest_truck_start = datetime.time(23, 59)
-    latest_truck_end = datetime.time(0, 0)
+    earliest_truck_start = dt.time(23, 59)
+    latest_truck_end = dt.time(0, 0)
     any_truck_working_today = False
 
     for t_id, t_hours_daily in truck_hours_schedule.items():
@@ -1454,8 +1447,8 @@ def get_final_schedulable_ramp_times(
         return []
 
     # FIX: Make collective truck hours timezone-aware (UTC)
-    collective_truck_open_dt = datetime.datetime.combine(date_to_check, earliest_truck_start, tzinfo=timezone.utc)
-    collective_truck_close_dt = datetime.datetime.combine(date_to_check, latest_truck_end, tzinfo=timezone.utc)
+    collective_truck_open_dt = dt.datetime.combine(date_to_check, earliest_truck_start, tzinfo=timezone.utc)
+    collective_truck_close_dt = dt.datetime.combine(date_to_check, latest_truck_end, tzinfo=timezone.utc)
 
     if not ramp_obj:
         return [{'start_time': specific_truck_hours[0], 'end_time': specific_truck_hours[1], 'high_tide_times': [], 'tide_rule_concise': 'N/A'}]
@@ -1475,11 +1468,11 @@ def get_final_schedulable_ramp_times(
         # For tide-dependent ramps, filter windows by collective truck hours
         for t_win in tidal_windows:
             # FIX: Make tidal windows timezone-aware (UTC)
-            tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
-            tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
+            tidal_start_dt = dt.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
+            tidal_end_dt = dt.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
 
             if tidal_start_dt > tidal_end_dt:
-                tidal_end_dt += datetime.timedelta(days=1)
+                tidal_end_dt += dt.timedelta(days=1)
             
             # Compare two aware datetimes
             overlap_start = max(tidal_start_dt, collective_truck_open_dt)
@@ -1497,17 +1490,17 @@ def get_final_schedulable_ramp_times(
 
     # --- Final Slot Generation (for the specific truck) ---
     # FIX: Make specific truck hours timezone-aware (UTC)
-    specific_truck_open_dt = datetime.datetime.combine(date_to_check, specific_truck_hours[0], tzinfo=timezone.utc)
-    specific_truck_close_dt = datetime.datetime.combine(date_to_check, specific_truck_hours[1], tzinfo=timezone.utc)
+    specific_truck_open_dt = dt.datetime.combine(date_to_check, specific_truck_hours[0], tzinfo=timezone.utc)
+    specific_truck_close_dt = dt.datetime.combine(date_to_check, specific_truck_hours[1], tzinfo=timezone.utc)
 
     all_schedulable_slots = []
     for t_win in filtered_tidal_windows:
         # FIX: Make tidal window timezone-aware (UTC) again for specific truck comparison
-        tidal_start_dt = datetime.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
-        tidal_end_dt = datetime.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
+        tidal_start_dt = dt.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
+        tidal_end_dt = dt.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
 
         if tidal_start_dt > tidal_end_dt:
-            tidal_end_dt += datetime.timedelta(days=1)
+            tidal_end_dt += dt.timedelta(days=1)
 
         # Compare two aware datetimes
         overlap_start = max(tidal_start_dt, specific_truck_open_dt)
@@ -1567,8 +1560,8 @@ def _diagnose_failure_reasons(req_date, boat, ramp_obj, truck_hours, force_prefe
         reasons.append(f" - Overlap for {truck.truck_name}: {len(windows)} valid window(s) found.")
         if windows:
             for window in windows:
-                start_dt = datetime.datetime.combine(req_date, window['start_time'])
-                end_dt = datetime.datetime.combine(req_date, window['end_time'])
+                start_dt = dt.datetime.combine(req_date, window['start_time'])
+                end_dt = dt.datetime.combine(req_date, window['end_time'])
                 if end_dt > start_dt:
                     longest_window_found = max(longest_window_found, end_dt - start_dt)
 
@@ -1600,7 +1593,7 @@ def _compile_truck_schedules(jobs):
         if job.job_status != "Scheduled":
             continue
 
-        job_date = job.scheduled_start_datetime.date()
+        job_date = job.scheduled_start_dt.date()
 
         # Determine dropoff coordinates for the current job
         job_dropoff_coords = None
@@ -1724,7 +1717,7 @@ def _select_best_slots(all_found_slots, compiled_schedule, daily_last_locations,
         # -------- AnyTide prime-day nudge (soft) --------
         try:
             # Expecting slot fields:
-            #   s['date'] -> datetime.date (or datetime -> we coerce to .date())
+            #   s['date'] -> dt.date (or datetime -> we coerce to .date())
             #   s['ramp_id'] -> ramp identifier
             slot_date = s.get("date")
             if hasattr(slot_date, "date"):  # datetime -> date
@@ -1788,8 +1781,8 @@ def precalculate_ideal_crane_days(year=2025):
             # In a real app, this would use your fetch_noaa_tides_for_range.
             # For this example, we simulate finding ideal tides.
             # NOTE: You may need to adapt this to use your actual fetch_noaa_tides_for_range
-            start_date = datetime.date(year, month, 1)
-            end_date = datetime.date(year, month, calendar.monthrange(year, month)[1])
+            start_date = dt.date(year, month, 1)
+            end_date = dt.date(year, month, calendar.monthrange(year, month)[1])
             tides_for_month = fetch_noaa_tides_for_range(ramp.noaa_station_id, start_date, end_date)
             
             for day, events in tides_for_month.items():
@@ -1801,8 +1794,8 @@ def precalculate_ideal_crane_days(year=2025):
     _log_debug(f"Pre-calculated {len(IDEAL_CRANE_DAYS)} ideal crane days for the season.")
 
 # Precompute protected windows for ~90 days (tweak as needed)
-today = datetime.date.today()
-_build_protected_windows(today, today + datetime.timedelta(days=90))
+today = dt.date.today()
+_build_protected_windows(today, today + dt.timedelta(days=90))
 
 
 # --- NEW HELPER: Finds a slot on a specific day using the new efficiency rules ---
@@ -1842,12 +1835,12 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
         if not truck_operating_hours:
             continue 
 
-        truck_start_dt = datetime.datetime.combine(search_date, truck_operating_hours[0], tzinfo=timezone.utc)
-        truck_end_dt = datetime.datetime.combine(search_date, truck_operating_hours[1], tzinfo=timezone.utc)
+        truck_start_dt = dt.datetime.combine(search_date, truck_operating_hours[0], tzinfo=timezone.utc)
+        truck_end_dt = dt.datetime.combine(search_date, truck_operating_hours[1], tzinfo=timezone.utc)
 
         for hour in time_iterator:
             for minute in [0, 15, 30, 45]:
-                slot_start_dt = datetime.datetime.combine(search_date, time(hour, minute), tzinfo=timezone.utc)
+                slot_start_dt = dt.datetime.combine(search_date, time(hour, minute), tzinfo=timezone.utc)
                 slot_end_dt = slot_start_dt + hauler_duration
 
                 if not (slot_start_dt >= truck_start_dt and slot_end_dt <= truck_end_dt): continue
@@ -1858,15 +1851,15 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                 elif service_type == "Launch":
                     tide_critical_moment = slot_start_dt + timedelta(hours=2)
                     for tide_win in tide_windows_for_day:
-                        tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
-                        tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
+                        tide_win_start = dt.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
+                        tide_win_end = dt.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
                         if tide_win_start <= tide_critical_moment <= tide_win_end: tide_check_passed = True; break
                 elif service_type == "Haul":
                     tide_critical_start = slot_start_dt
                     tide_critical_end = slot_start_dt + timedelta(minutes=30)
                     for tide_win in tide_windows_for_day:
-                        tide_win_start = datetime.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
-                        tide_win_end = datetime.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
+                        tide_win_start = dt.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
+                        tide_win_end = dt.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
                         if tide_critical_start < tide_win_end and tide_critical_end > tide_win_start: tide_check_passed = True; break
 
                 if not tide_check_passed: continue
@@ -1910,7 +1903,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if not requested_date_str:
         return [], "Please select a target date before searching.", [], False
     try:
-        requested_date = datetime.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
+        requested_date = dt.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
     except ValueError:
         return [], f"Date '{requested_date_str}' is not valid.", [], True
 
@@ -1943,17 +1936,17 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     # --- Build candidate day windows (for tide-bias & reservation) ---
     # Opportunistic window (for crane clustering):
-    opp_window = [requested_date + datetime.timedelta(days=i) for i in range(-7, 8)]
+    opp_window = [requested_date + dt.timedelta(days=i) for i in range(-7, 8)]
     # Fallback window (existing logic):
     if crane_needed:
         potential = [d for r_id, d in IDEAL_CRANE_DAYS if str(r_id) == str(selected_ramp_id) and d >= requested_date]
-        early = [d for d in potential if d <= requested_date + datetime.timedelta(days=21)]
+        early = [d for d in potential if d <= requested_date + dt.timedelta(days=21)]
         fb_days = sorted(early)[:30]
         if not fb_days:
-            wider = [d for d in potential if d <= requested_date + datetime.timedelta(days=45)]
+            wider = [d for d in potential if d <= requested_date + dt.timedelta(days=45)]
             fb_days = sorted(wider)[:30]
     else:
-        fb_days = [requested_date + datetime.timedelta(days=i) for i in range(14)]
+        fb_days = [requested_date + dt.timedelta(days=i) for i in range(14)]
 
     # Compute low-tide "prime" days across the total span we might search
     if opp_window or fb_days:
@@ -1968,10 +1961,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     # Opportunistic: only days where crane is already active at this ramp; order with low-tide bias
     s17_id = get_s17_truck_id()
     active_crane_days = {
-        j.scheduled_start_datetime.date()
+        j.scheduled_start_dt.date()
         for j in SCHEDULED_JOBS
         if j.scheduled_start_datetime
-        and j.scheduled_start_datetime.date() in opp_window
+        and j.scheduled_start_dt.date() in opp_window
         and j.assigned_crane_truck_id == str(s17_id)
         and (str(j.pickup_ramp_id) == str(selected_ramp_id) or str(j.dropoff_ramp_id) == str(selected_ramp_id))
     }
@@ -2083,12 +2076,12 @@ def simulate_job_requests(
     # Build sequential valid dates across the 2-month window
     def _month_last_day(y, m):
         if m == 12:
-            return datetime.date(y, 12, 31)
-        return datetime.date(y, m + 1, 1) - datetime.timedelta(days=1)
+            return dt.date(y, 12, 31)
+        return dt.date(y, m + 1, 1) - dt.timedelta(days=1)
 
     valid_dates = []
     for m in months:
-        d = datetime.date(year, m, 1)
+        d = dt.date(year, m, 1)
         last = _month_last_day(year, m)
         while d <= last:
             wd = d.weekday()  # Mon=0 ... Sun=6
@@ -2097,7 +2090,7 @@ def simulate_job_requests(
             # No Sundays ever; Saturdays allowed only in May & September
             if not is_sun and (not is_sat or m in (5, 9)):
                 valid_dates.append(d)
-            d += datetime.timedelta(days=1)
+            d += dt.timedelta(days=1)
 
     if not valid_dates:
         return "No valid dates generated for the selected season."
@@ -2190,7 +2183,7 @@ def perform_efficiency_analysis(scheduled_jobs):
     for job in scheduled_jobs:
         if not job.scheduled_start_datetime or not job.assigned_hauling_truck_id:
             continue
-        job_date = job.scheduled_start_datetime.date()
+        job_date = job.scheduled_start_dt.date()
         truck_id = job.assigned_hauling_truck_id
         
         daily_truck_schedules.setdefault(job_date, {}).setdefault(truck_id, []).append(job)
@@ -2221,9 +2214,9 @@ def perform_efficiency_analysis(scheduled_jobs):
             last_job_end = jobs[-1].scheduled_end_datetime
             
             # Metric 2: Job Timing Efficiency
-            if first_job_start.time() < datetime.time(9, 0) and num_jobs >= 3 and last_job_end.time() <= datetime.time(15, 0):
+            if first_job_start.time() < dt.time(9, 0) and num_jobs >= 3 and last_job_end.time() <= dt.time(15, 0):
                 excellent_timing_days += 1
-            if first_job_start.time() >= datetime.time(13, 0):
+            if first_job_start.time() >= dt.time(13, 0):
                 poor_timing_days += 1
 
             # Metric 3 & 4: Proximity and Other Efficiency Metrics
@@ -2258,12 +2251,12 @@ def perform_efficiency_analysis(scheduled_jobs):
     return analysis
 
 def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
-    today = datetime.date.today()
+    today = dt.date.today()
     total_all_boats = len(all_boats)
     scheduled_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled"}
     
     # This line is corrected to handle cases where the start time might be None
-    launched_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled" and j.service_type == "Launch" and j.scheduled_start_datetime and j.scheduled_start_datetime.date() < today}
+    launched_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled" and j.service_type == "Launch" and j.scheduled_start_datetime and j.scheduled_start_dt.date() < today}
     
     ecm_customer_ids = {boat.customer_id for boat in all_boats.values() if boat.is_ecm_boat}
     return {
@@ -2295,7 +2288,7 @@ def confirm_and_schedule_job(selected_slot, parked_job_to_remove=None):
             pickup_ramp_obj = get_ramp_details(str(pickup_rid))
             pickup_addr = pickup_ramp_obj.ramp_name if pickup_ramp_obj else ""
         
-        start_dt = datetime.datetime.combine(selected_slot.get('date'), selected_slot.get('time'), tzinfo=timezone.utc)
+        start_dt = dt.datetime.combine(selected_slot.get('date'), selected_slot.get('time'), tzinfo=timezone.utc)
         
         s17_truck_id = get_s17_truck_id()
 
@@ -2352,7 +2345,7 @@ def get_S17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks
     from .ecm_scheduler_shared import _check_and_create_slot_detail
     from .ecm_scheduler_data import SCHEDULED_JOBS
 
-    date_range = [requested_date + datetime.timedelta(days=delta) for delta in range(-7, 8)]
+    date_range = [requested_date + dt.timedelta(days=delta) for delta in range(-7, 8)]
 
     for scheduled_job in SCHEDULED_JOBS:
         if scheduled_job.job_status != "Scheduled" or scheduled_job.crane_truck_id != "S17":
