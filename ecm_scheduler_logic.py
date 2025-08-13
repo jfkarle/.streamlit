@@ -117,7 +117,7 @@ class Job:
         def _parse_or_get_datetime(dt_value):
             """Parse a value into a timezone-aware datetime (UTC) or return None."""
             parsed = None  # <-- do NOT name this 'dt'; it shadows the datetime module
-        
+
             if isinstance(dt_value, dt.datetime):
                 parsed = dt_value
             elif isinstance(dt_value, str):
@@ -125,14 +125,15 @@ class Job:
                     parsed = dt.datetime.fromisoformat(dt_value.replace(" ", "T"))
                 except (ValueError, TypeError):
                     return None  # parsing failed
-        
+
             if parsed is None:
                 return None
 
-    # Ensure timezone-aware (assume UTC if naive)
-    if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
-        return parsed.replace(tzinfo=dt.timezone.utc)
-    return parsed
+            # Ensure timezone-aware (assume UTC if naive)
+            if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
+                return parsed.replace(tzinfo=dt.timezone.utc)
+            return parsed
+
 
         def _parse_int(int_string):
             if not int_string: return None
