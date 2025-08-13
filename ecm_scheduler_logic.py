@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Tuple, Set
 
 import csv
 import os
@@ -115,27 +115,24 @@ class Job:
     def __init__(self, **kwargs):
         # This internal helper now ensures all datetimes are timezone-aware (UTC).
         def _parse_or_get_datetime(dt_value):
-            dt = None # Start with a null datetime
+            """Parse a value into a timezone-aware datetime (UTC) or return None."""
+            parsed = None  # <-- do NOT name this 'dt'; it shadows the datetime module
+        
             if isinstance(dt_value, dt.datetime):
-                dt = dt_value
+                parsed = dt_value
             elif isinstance(dt_value, str):
                 try:
-                    # Parse the string, replacing space with T for ISO compatibility
-                    dt = dt.datetime.fromisoformat(dt_value.replace(" ", "T"))
+                    parsed = dt.datetime.fromisoformat(dt_value.replace(" ", "T"))
                 except (ValueError, TypeError):
-                    return None # Return None if parsing fails
+                    return None  # parsing failed
+        
+            if parsed is None:
+                return None
 
-            # If we successfully parsed or received a datetime object...
-            if dt:
-                # Check if it's naive (no timezone info)
-                if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
-                    # If naive, assume it's UTC and make it aware.
-                    return dt.replace(tzinfo=timezone.utc)
-                # If it's already aware, return it as is.
-                return dt
-            
-            # Return None if input was invalid
-            return None
+    # Ensure timezone-aware (assume UTC if naive)
+    if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
+        return parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed
 
         def _parse_int(int_string):
             if not int_string: return None
@@ -1093,21 +1090,18 @@ def _calculate_distance_miles(coords1, coords2):
     distance = R * c
     return distance
 
-def _round_time_to_nearest_quarter_hour(dt):
+def _round_time_to_nearest_quarter_hour(ts):
     """Rounds a datetime object UP to the nearest 15-minute interval."""
-    if not isinstance(dt, dt.datetime):
-        return dt # Return as is if not a datetime object
+    if not isinstance(ts, dt.datetime):
+        return ts  # Return as-is if not a datetime
 
-    # If the time is already on a perfect 15-minute mark, do nothing
-    if dt.minute % 15 == 0 and dt.second == 0 and dt.microsecond == 0:
-        return dt
+    # already on a 15-minute mark?
+    if ts.minute % 15 == 0 and ts.second == 0 and ts.microsecond == 0:
+        return ts
 
-    # Calculate the number of minutes to add to round up
-    minutes_to_add = (15 - dt.minute % 15)
-    rounded_dt = dt + dt.timedelta(minutes=minutes_to_add)
-    
-    # Set seconds and microseconds to zero for a clean time
-    return rounded_dt.replace(second=0, microsecond=0)
+    minutes_to_add = (15 - ts.minute % 15)
+    rounded = ts + dt.timedelta(minutes=minutes_to_add)
+    return rounded.replace(second=0, microsecond=0)
 
 def _calculate_target_date_score(slot_date, target_date):
     """
