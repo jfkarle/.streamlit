@@ -5,6 +5,8 @@ import csv
 import os
 
 import datetime as dt
+from datetime import time, date, timedelta, timezone
+from datetime import datetime as _dt, time as _time, date as _date, timedelta as _td
 import pandas as pd
 import calendar
 import requests
@@ -298,71 +300,57 @@ def _route_distance_minutes(a_latlon, b_latlon):
 
 def _score_candidate(slot, compiled_schedule, daily_last_locations, after_threshold=False):
     """
-    Larger is better. Aggressive packing + travel minimization + tide-friendly nudges.
-    Expects 'slot' as your slot_dict.
+    Larger is better. Packs days, rewards piggybacks & proximity, gentle Any‑tide low‑tide nudge.
     """
     score = 0.0
+    truck_id = str(slot.get("truck_id"))
+    date     = slot.get("date")
+    start_t  = slot.get("time")
+    ramp_id  = str(slot.get("ramp_id"))
+    pickup_id= str(slot.get("pickup_ramp_id") or ramp_id)
+    drop_id  = str(slot.get("dropoff_ramp_id") or "")
 
-    truck_id  = _norm_id(slot.get("truck_id"))
-    date      = slot.get("date")
-    start_t   = slot.get("time")
-    ramp_id   = _norm_id(slot.get("ramp_id"))
-    pickup_id = _norm_id(slot.get("pickup_ramp_id")) or ramp_id
-    drop_id   = _norm_id(slot.get("dropoff_ramp_id"))
-    boat_id   = slot.get("boat_id")
-    boat      = get_boat_details(boat_id) if boat_id else None
+    todays = (compiled_schedule.get(truck_id, {}) or {}).get(date, [])
+    n = len(todays)
+    if n == 0: score += 2.0
+    if n == 1: score += 6.0
+    if n == 2: score += 10.0
+    if n >= 3: score += 8.0
 
-    # 1) Pack days: prefer adding to already-busy same-truck same-day
-    todays = compiled_schedule.get(truck_id, {}).get(date, [])
-    jobs_today = len(todays)
-    if jobs_today == 0: score += 2.0  # it's okay to start a day
-    if jobs_today == 1: score += 6.0
-    if jobs_today == 2: score += 10.0
-    if jobs_today >= 3: score += 8.0  # diminishing return
-
-    # 2) Ramp clustering: piggybacks get a bonus
-    if slot.get("is_piggyback"): score += 8.0
-    # If last job same ramp_id => bonus
+    if slot.get("is_piggyback"):
+        score += 8.0
     if todays:
         last = todays[-1]
-        last_ramp = _norm_id(last.dropoff_ramp_id or last.pickup_ramp_id)
-        if last_ramp and (last_ramp == (drop_id or pickup_id)):
+        last_ramp = str(getattr(last, "dropoff_ramp_id", None) or getattr(last, "pickup_ramp_id", None) or "")
+        if last_ramp and last_ramp == (drop_id or pickup_id):
             score += 4.0
 
-    # 3) Geography / deadhead minimization
-    last_loc = daily_last_locations.get(truck_id, {}).get(date)
-    # Your slot may carry lat/lon or can be derived from ramp info:
+    # proximity to last location
+    last_loc = (daily_last_locations.get(truck_id, {}) or {}).get(date)
     def _ramp_latlon(_rid):
         r = ECM_RAMPS.get(_rid) if _rid else None
-        return (getattr(r, "lat", None), getattr(r, "lon", None)) if r else None
-
+        lat = getattr(r, "latitude", None)
+        lon = getattr(r, "longitude", None)
+        return (lat, lon) if (lat is not None and lon is not None) else None
     next_loc = _ramp_latlon(pickup_id) or _ramp_latlon(ramp_id)
-    if last_loc and next_loc:
-        mins = _route_distance_minutes(last_loc, next_loc)
-        score -= min(8.0, mins / 6.0)  # ~1 point per ~6 min, capped
+    if last_loc and last_loc[1] and next_loc and None not in next_loc:
+        import math
+        (ax, ay), (bx, by) = last_loc[1], next_loc
+        km = math.hypot(ax - bx, ay - by) * 111.0
+        mins = (km / 50.0) * 60.0
+        score -= min(8.0, mins / 6.0)
 
-    # 4) Any-Tide low-tide mid-day nudge (11:00–13:00) for powerboats
-    if boat and "Powerboat" in (boat.boat_type or ""):
-        r = ECM_RAMPS.get(pickup_id)
-        if r:
-            method, _ = _get_ramp_rule(pickup_id)
-            if _is_anytide_for_boat(method, getattr(boat, "draft_ft", None)):
-                highs, lows = _day_high_low_tides(r, date)
-                # if a low tide exists between 11:00–13:00 give a small bonus
-                if any(time(11,0) <= lt <= time(13,0) for lt in lows):
-                    score += 2.5
+    # early start preference
+    try:
+        if isinstance(start_t, dt.time):
+            score += max(0.0, 2.0 - (start_t.hour - 7) * 0.25)
+    except Exception:
+        pass
 
-    # 5) Small preference for earlier start (keeps days tight)
-    if isinstance(start_t, time):
-        score += max(0.0, 2.0 - (start_t.hour - 7) * 0.25)
-
-    # 6) Gentle bonus after threshold to bias even tighter packing
+    # gentle bonus after volume threshold
     if after_threshold:
-        score += 1.5 * max(0, min(jobs_today, 3))
-
+        score += 1.5 * max(0, min(n, 3))
     return score
-
-
 def tide_window_for_day(ramp_id: str, day: dt.date):
     """
     Returns a list of (start_time, end_time) tuples in local time when this ramp is usable.
@@ -460,85 +448,101 @@ def get_s17_truck_id():
 
 def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_check, is_opportunistic_search=False):
     """
-    Finds the first available slot on a specific day, but only for the trucks provided in trucks_to_check.
+    Finds the first available slot on a specific day, honoring tide rules for the ramp and job type.
     """
     ramp = get_ramp_details(str(ramp_id))
-    if not ramp: return None
-
-    # --- Initial Setup ---
-    is_ecm_boat = boat.is_ecm_boat
-    is_launch_season = 4 <= search_date.month <= 7
-    if is_launch_season:
-        start_hour = 9 if not is_ecm_boat else 7
-        time_iterator = range(start_hour, 16)
-    else: # Haul season
-        start_hour = 14 if not is_ecm_boat else 15
-        time_iterator = range(start_hour, 7, -1)
-
-    rules = BOOKING_RULES.get(boat.boat_type, {})
-    hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
-    crane_duration = timedelta(minutes=rules.get('crane_mins', 0))
-
-    all_tides = fetch_noaa_tides_for_range(ramp.noaa_station_id, search_date, search_date)
-    tide_windows_for_day = calculate_ramp_windows(ramp, boat, all_tides.get(search_date, []), search_date)
-    
-    is_tide_dependent = ramp.tide_calculation_method not in ["AnyTide", "AnyTideWithDraftRule"]
-    if is_tide_dependent and not tide_windows_for_day:
+    if not ramp:
         return None
 
-    # --- Main Loop ---
-    for truck in trucks_to_check:
-        truck_operating_hours = TRUCK_OPERATING_HOURS.get(truck.truck_id, {}).get(search_date.weekday())
-        if not truck_operating_hours:
-            continue 
+    # Season heuristics
+    is_ecm = bool(getattr(boat, "is_ecm_boat", False))
+    is_launch = 4 <= search_date.month <= 7
+    if is_launch:
+        start_hour = 7 if is_ecm else 9
+        hours_iter = range(start_hour, 16)
+    else:
+        start_hour = 15 if is_ecm else 14
+        hours_iter = range(start_hour, 7, -1)
 
-        truck_start_dt = dt.datetime.combine(search_date, truck_operating_hours[0], tzinfo=timezone.utc)
-        truck_end_dt = dt.datetime.combine(search_date, truck_operating_hours[1], tzinfo=timezone.utc)
+    rules = BOOKING_RULES.get(boat.boat_type, {})
+    haul_minutes = int(rules.get("truck_mins", 90))
+    crane_minutes = int(rules.get("crane_mins", 0))
 
-        for hour in time_iterator:
-            for minute in [0, 15, 30, 45]:
-                slot_start_dt = dt.datetime.combine(search_date, time(hour, minute), tzinfo=timezone.utc)
-                slot_end_dt = slot_start_dt + hauler_duration
+    tides = fetch_noaa_tides_for_range(ramp.noaa_station_id, search_date, search_date)
+    day_tides = tides.get(search_date, [])
+    tide_windows = calculate_ramp_windows(ramp, boat, day_tides, search_date)
 
-                if not (slot_start_dt >= truck_start_dt and slot_end_dt <= truck_end_dt): continue
-                if not check_truck_availability_optimized(truck.truck_id, slot_start_dt, slot_end_dt, compiled_schedule): continue
-                
-                tide_check_passed = False
-                if not is_tide_dependent: tide_check_passed = True
+    tide_dependent = ramp.tide_calculation_method not in ("AnyTide", "AnyTideWithDraftRule")
+    if tide_dependent and not tide_windows:
+        return None
+
+    for truck in trucks_to_check or []:
+        hours = (TRUCK_OPERATING_HOURS.get(truck.truck_id, {}) or {}).get(search_date.weekday())
+        if not hours:
+            continue
+        truck_open = dt.datetime.combine(search_date, hours[0], tzinfo=timezone.utc)
+        truck_close= dt.datetime.combine(search_date, hours[1], tzinfo=timezone.utc)
+
+        for h in hours_iter:
+            for m in (0,15,30,45):
+                start_dt = dt.datetime.combine(search_date, time(h, m), tzinfo=timezone.utc)
+                end_dt   = start_dt + dt.timedelta(minutes=haul_minutes)
+                if not (truck_open <= start_dt and end_dt <= truck_close):
+                    continue
+                if not check_truck_availability_optimized(truck.truck_id, start_dt, end_dt, compiled_schedule):
+                    continue
+
+                # Tide-critical checks vary by service type
+                ok_tide = False
+                if not tide_dependent:
+                    ok_tide = True
                 elif service_type == "Launch":
-                    tide_critical_moment = slot_start_dt + timedelta(hours=2)
-                    for tide_win in tide_windows_for_day:
-                        tide_win_start = dt.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
-                        tide_win_end = dt.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
-                        if tide_win_start <= tide_critical_moment <= tide_win_end: tide_check_passed = True; break
+                    # The ramp needs to be usable roughly two hours after truck start
+                    critical = start_dt + dt.timedelta(hours=2)
+                    for w in tide_windows:
+                        ws = dt.datetime.combine(search_date, w['start_time'], tzinfo=timezone.utc)
+                        we = dt.datetime.combine(search_date, w['end_time'],   tzinfo=timezone.utc)
+                        if ws <= critical <= we:
+                            ok_tide = True
+                            break
                 elif service_type == "Haul":
-                    tide_critical_start = slot_start_dt
-                    tide_critical_end = slot_start_dt + timedelta(minutes=30)
-                    for tide_win in tide_windows_for_day:
-                        tide_win_start = dt.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
-                        tide_win_end = dt.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
-                        if tide_critical_start < tide_win_end and tide_critical_end > tide_win_start: tide_check_passed = True; break
-                
-                if not tide_check_passed: continue
+                    # The first 30 minutes must intersect a tide window
+                    c0 = start_dt
+                    c1 = start_dt + dt.timedelta(minutes=30)
+                    for w in tide_windows:
+                        ws = dt.datetime.combine(search_date, w['start_time'], tzinfo=timezone.utc)
+                        we = dt.datetime.combine(search_date, w['end_time'],   tzinfo=timezone.utc)
+                        if c0 < we and c1 > ws:
+                            ok_tide = True
+                            break
 
-                crane_end_dt = None
+                if not ok_tide:
+                    continue
+
+                crane_end = None
                 if crane_needed:
                     s17_id = get_s17_truck_id()
-                    crane_end_dt = slot_start_dt + crane_duration
-                    if not check_truck_availability_optimized(s17_id, slot_start_dt, crane_end_dt, compiled_schedule): continue
-                
+                    crane_end = start_dt + dt.timedelta(minutes=crane_minutes)
+                    if not check_truck_availability_optimized(s17_id, start_dt, crane_end, compiled_schedule):
+                        continue
+
                 return {
                     'is_piggyback': is_opportunistic_search,
-                    'boat_id': boat.boat_id, 'customer_id': customer_id, "date": search_date,
-                    "time": slot_start_dt.time(), "truck_id": truck.truck_id, "ramp_id": ramp_id,
-                    "service_type": service_type, "S17_needed": crane_needed, "scheduled_end_datetime": slot_end_dt, 
-                    "S17_busy_end_datetime": crane_end_dt,
+                    'boat_id': boat.boat_id,
+                    'customer_id': customer_id,
+                    'date': search_date,
+                    'time': start_dt.time(),
+                    'truck_id': truck.truck_id,
+                    'ramp_id': ramp_id,
+                    'service_type': service_type,
+                    'S17_needed': crane_needed,
+                    'scheduled_end_datetime': end_dt,
+                    'S17_busy_end_datetime': crane_end,
                     'tide_rule_concise': get_concise_tide_rule(ramp, boat),
-                    'high_tide_times': [t['time'] for t in all_tides.get(search_date, []) if t['type'] == 'H'],
-                    'boat_draft': boat.draft_ft
+                    'high_tide_times': [t['time'] for t in day_tides if t.get('type') == 'H'],
+                    'boat_draft': getattr(boat, 'draft_ft', None),
                 }
     return None
-    
 def _generate_day_search_order(start_date, look_back, look_forward):
     """Generates a list of dates to check, starting from the center and expanding outwards."""
     search_order = [start_date]
@@ -1348,70 +1352,21 @@ def _is_anytide(ramp_id: str) -> bool:
     if not r: return False
     return r.tide_calculation_method in ("AnyTide", "AnyTideWithDraftRule")
 
-def _in_any_window(start_dt: dt.datetime, windows: List[Tuple[dt.time, dt.time]], date: dt.date) -> bool:
-
-
-    for s, e in windows:
-        sdt = dt.datetime.combine(date, s, tzinfo=timezone.utc)
-        edt = dt.datetime.combine(date, e, tzinfo=timezone.utc)
-        if sdt <= start_dt <= edt:
-            return True
+def _in_any_window(start_dt: dt.datetime, windows, date: dt.date) -> bool:
+    """
+    Generic helper: does start_dt fall inside ANY of the (start_time, end_time) windows for 'date'?
+    All comparisons are done with timezone-aware (UTC) datetimes.
+    """
+    try:
+        from datetime import timezone as _tz
+        for s, e in (windows or []):
+            sdt = dt.datetime.combine(date, s, tzinfo=_tz.utc)
+            edt = dt.datetime.combine(date, e, tzinfo=_tz.utc)
+            if sdt <= start_dt <= edt:
+                return True
+    except Exception:
+        pass
     return False
-
-def _is_crane_window(slot) -> bool:
-    """True if slot datetime sits inside a precomputed crane window for this ramp/day."""
-    key = (str(slot['ramp_id']), slot['date'])
-    wins = CRANE_WINDOWS.get(key, [])
-    if not wins: return False
-    start_dt = dt.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
-    return _in_any_window(start_dt, wins, slot['date'])
-
-def _is_low_tide_window(slot) -> bool:
-    """True if slot datetime sits inside (10–14) low‑tide window on AnyTide ramps."""
-    key = (str(slot['ramp_id']), slot['date'])
-    wins = ANYTIDE_LOW_TIDE_WINDOWS.get(key, [])
-    if not wins: return False
-    start_dt = dt.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
-    return _in_any_window(start_dt, wins, slot['date'])
-
-def calculate_ramp_windows(ramp, boat, tide_data, date):
-    if ramp.tide_calculation_method == "AnyTide":
-        return [{'start_time': dt.time.min, 'end_time': dt.time.max}]
-    if ramp.tide_calculation_method == "AnyTideWithDraftRule" and boat.draft_ft and boat.draft_ft < 5.0:
-        return [{'start_time': dt.time.min, 'end_time': dt.time.max}]
-
-    # Determine offset_hours based on method and draft
-    if ramp.tide_calculation_method == "HoursAroundHighTide_WithDraftRule":
-        offset_hours = 3.5 if boat.draft_ft and boat.draft_ft < 5.0 else 3.0
-    else:
-        # IMPORTANT: Do not treat 0 offset as 'no rule'. It means 0 hours around HT.
-        # Ensure it's a float; default to 0.0 if None
-        offset_hours = float(ramp.tide_offset_hours1) if ramp.tide_offset_hours1 is not None else 0.0
-
-    # If there's no tide data, we can't calculate windows around tides.
-    if not tide_data:
-        DEBUG_MESSAGES.append(f"DEBUG: No tide data available for {date} at ramp {ramp.ramp_name}.")
-        return []
-
-    # Calculate windows if there's tide data
-    offset = dt.timedelta(hours=offset_hours)
-    
-    # Filter for High Tides ('H' type) and create windows
-    high_tide_windows = []
-    for t in tide_data:
-        if t['type'] == 'H':
-            # Changed this line to make the combined datetime timezone-aware (UTC)
-            tide_dt_combined = dt.datetime.combine(date, t['time'], tzinfo=timezone.utc)
-            window_start_time = (tide_dt_combined - offset).time()
-            window_end_time = (tide_dt_combined + offset).time()
-            high_tide_windows.append({'start_time': window_start_time, 'end_time': window_end_time})
-            DEBUG_MESSAGES.append(f"DEBUG: Calculated tide window for {t['time']}: {window_start_time} - {window_end_time} (Offset: {offset_hours}h)")
-
-    if not high_tide_windows:
-        DEBUG_MESSAGES.append(f"DEBUG: No high tides found in tide_data for {date} or no windows generated.")
-
-    return high_tide_windows
-
 def get_final_schedulable_ramp_times(
     ramp_obj,
     boat_obj,
@@ -1422,100 +1377,74 @@ def get_final_schedulable_ramp_times(
     ramp_tide_blackout_enabled=True
 ):
     """
-    Calculates the final, schedulable time slots for a specific truck at a ramp on a given day.
-    -- CORRECTED to handle timezone-aware datetime objects consistently. --
+    Calculates schedulable windows for a *specific* truck, intersecting
+    truck hours with ramp tide windows using timezone‑aware comparisons.
     """
-    day_of_week = date_to_check.weekday()
-    
-    # --- Check 1: Collective Truck Hours ---
-    earliest_truck_start = dt.time(23, 59)
-    latest_truck_end = dt.time(0, 0)
-    any_truck_working_today = False
+    dow = date_to_check.weekday()
 
-    for t_id, t_hours_daily in truck_hours_schedule.items():
-        if t_hours := t_hours_daily.get(day_of_week):
-            any_truck_working_today = True
-            earliest_truck_start = min(earliest_truck_start, t_hours[0])
-            latest_truck_end = max(latest_truck_end, t_hours[1])
-
-    if not any_truck_working_today:
-        DEBUG_MESSAGES.append(f"DEBUG: No trucks working on {date_to_check.strftime('%Y-%m-%d')}. Returning empty slots.")
+    # 1) Collective truck hours (for diagnostics and broad tide overlap)
+    any_working = False
+    earliest = dt.time(23,59)
+    latest   = dt.time(0,0)
+    for _tid, daily in (truck_hours_schedule or {}).items():
+        hours = daily.get(dow)
+        if hours:
+            any_working = True
+            earliest = min(earliest, hours[0])
+            latest   = max(latest,  hours[1])
+    if not any_working:
+        DEBUG_MESSAGES.append(f"DEBUG: No trucks working {date_to_check}.")
         return []
 
-    specific_truck_hours = truck_hours_schedule.get(truck_id, {}).get(day_of_week)
-    if not specific_truck_hours:
+    collective_open = dt.datetime.combine(date_to_check, earliest, tzinfo=timezone.utc)
+    collective_close= dt.datetime.combine(date_to_check, latest,   tzinfo=timezone.utc)
+
+    # 2) Specific truck hours
+    my_hours = (truck_hours_schedule or {}).get(truck_id, {}).get(dow)
+    if not my_hours:
         return []
+    my_open  = dt.datetime.combine(date_to_check, my_hours[0], tzinfo=timezone.utc)
+    my_close = dt.datetime.combine(date_to_check, my_hours[1], tzinfo=timezone.utc)
 
-    # FIX: Make collective truck hours timezone-aware (UTC)
-    collective_truck_open_dt = dt.datetime.combine(date_to_check, earliest_truck_start, tzinfo=timezone.utc)
-    collective_truck_close_dt = dt.datetime.combine(date_to_check, latest_truck_end, tzinfo=timezone.utc)
+    # 3) Tide windows for this ramp/boat/day
+    tide_list = (all_tides or {}).get(date_to_check, [])
+    tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_list, date_to_check)
 
-    if not ramp_obj:
-        return [{'start_time': specific_truck_hours[0], 'end_time': specific_truck_hours[1], 'high_tide_times': [], 'tide_rule_concise': 'N/A'}]
-
-    # --- Check 2: Tidal Windows ---
-    tide_data_for_day = all_tides.get(date_to_check, [])
-    tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_data_for_day, date_to_check)
-    
-    filtered_tidal_windows = []
-    
-    # --- THIS LINE IS CORRECTED ---
-    # It now checks that draft_ft is not None before comparing it.
-    if ramp_obj.tide_calculation_method == "AnyTide" or (ramp_obj.tide_calculation_method == "AnyTideWithDraftRule" and boat_obj.draft_ft is not None and boat_obj.draft_ft < 5.0):
-        # For AnyTide, the tidal window is effectively the entire day.
-        filtered_tidal_windows = tidal_windows
+    filtered = []
+    if ramp_obj and ramp_obj.tide_calculation_method not in ("AnyTide", "AnyTideWithDraftRule"):
+        # Intersect with collective hours first
+        for w in tidal_windows:
+            ts = dt.datetime.combine(date_to_check, w['start_time'], tzinfo=timezone.utc)
+            te = dt.datetime.combine(date_to_check, w['end_time'],   tzinfo=timezone.utc)
+            if ts > te:
+                te += dt.timedelta(days=1)
+            # overlap with collective hours
+            a = max(ts, collective_open)
+            b = min(te, collective_close)
+            if a < b:
+                filtered.append({'start_time': a.time(), 'end_time': b.time()})
     else:
-        # For tide-dependent ramps, filter windows by collective truck hours
-        for t_win in tidal_windows:
-            # FIX: Make tidal windows timezone-aware (UTC)
-            tidal_start_dt = dt.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
-            tidal_end_dt = dt.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
+        # Any‑tide ramps: windows already represent "all day"; still emit at least one span
+        filtered = tidal_windows or [{'start_time': earliest, 'end_time': latest}]
 
-            if tidal_start_dt > tidal_end_dt:
-                tidal_end_dt += dt.timedelta(days=1)
-            
-            # Compare two aware datetimes
-            overlap_start = max(tidal_start_dt, collective_truck_open_dt)
-            overlap_end = min(tidal_end_dt, collective_truck_close_dt)
-
-            if overlap_start < overlap_end:
-                filtered_tidal_windows.append(t_win)
-            else:
-                DEBUG_MESSAGES.append(f"DEBUG: Tide window {t_win['start_time']}-{t_win['end_time']} at {ramp_obj.ramp_name} does NOT overlap with collective truck hours {earliest_truck_start}-{latest_truck_end} on {date_to_check}. Skipping.")
-
-    # --- Blackout Logic ---
-    if ramp_tide_blackout_enabled and not filtered_tidal_windows and ramp_obj.tide_calculation_method not in ["AnyTide", "AnyTideWithDraftRule"]:
-        DEBUG_MESSAGES.append(f"DEBUG: Ramp {ramp_obj.ramp_name} 'blacked out' on {date_to_check} due to no viable tide windows overlapping truck hours.")
+    if ramp_tide_blackout_enabled and not filtered and ramp_obj and ramp_obj.tide_calculation_method not in ("AnyTide", "AnyTideWithDraftRule"):
+        DEBUG_MESSAGES.append(f"DEBUG: Blackout {getattr(ramp_obj,'ramp_name',ramp_obj)} on {date_to_check}: no tide ∩ truck hours.")
         return []
 
-    # --- Final Slot Generation (for the specific truck) ---
-    # FIX: Make specific truck hours timezone-aware (UTC)
-    specific_truck_open_dt = dt.datetime.combine(date_to_check, specific_truck_hours[0], tzinfo=timezone.utc)
-    specific_truck_close_dt = dt.datetime.combine(date_to_check, specific_truck_hours[1], tzinfo=timezone.utc)
-
-    all_schedulable_slots = []
-    for t_win in filtered_tidal_windows:
-        # FIX: Make tidal window timezone-aware (UTC) again for specific truck comparison
-        tidal_start_dt = dt.datetime.combine(date_to_check, t_win['start_time'], tzinfo=timezone.utc)
-        tidal_end_dt = dt.datetime.combine(date_to_check, t_win['end_time'], tzinfo=timezone.utc)
-
-        if tidal_start_dt > tidal_end_dt:
-            tidal_end_dt += dt.timedelta(days=1)
-
-        # Compare two aware datetimes
-        overlap_start = max(tidal_start_dt, specific_truck_open_dt)
-        overlap_end = min(tidal_end_dt, specific_truck_close_dt)
-
-        if overlap_start < overlap_end:
-            all_schedulable_slots.append({
-                'start_time': overlap_start.time(), 'end_time': overlap_end.time(),
-                'high_tide_times': [t['time'] for t in tide_data_for_day if t['type'] == 'H'],
-                'low_tide_times': [t['time'] for t in tide_data_for_day if t['type'] == 'L'],
-                'tide_rule_concise': get_concise_tide_rule(ramp_obj, boat_obj)
+    # 4) Intersect with *this* truck hours
+    final_spans = []
+    for w in filtered:
+        ts = dt.datetime.combine(date_to_check, w['start_time'], tzinfo=timezone.utc)
+        te = dt.datetime.combine(date_to_check, w['end_time'],   tzinfo=timezone.utc)
+        a = max(ts, my_open)
+        b = min(te, my_close)
+        if a < b:
+            final_spans.append({
+                'start_time': a.time(),
+                'end_time': b.time(),
             })
 
-    return all_schedulable_slots
-
+    return final_spans
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
     all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and t.max_boat_length is not None and boat_len <= t.max_boat_length]
     if force_preferred and pref_truck_id and any(t.truck_name == pref_truck_id for t in all_suitable):
@@ -2366,3 +2295,57 @@ def get_S17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks
         if slot:
             return slot
     return None
+
+def _is_crane_window(slot) -> bool:
+    """True if slot datetime sits inside a precomputed crane window for this ramp/day."""
+    key = (str(slot['ramp_id']), slot['date'])
+    wins = CRANE_WINDOWS.get(key, [])
+    if not wins:
+        return False
+    start_dt = dt.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
+    return _in_any_window(start_dt, wins, slot['date'])
+
+def _is_low_tide_window(slot) -> bool:
+    """True if slot datetime sits inside (10–14) low‑tide window on AnyTide ramps."""
+    key = (str(slot['ramp_id']), slot['date'])
+    wins = ANYTIDE_LOW_TIDE_WINDOWS.get(key, [])
+    if not wins:
+        return False
+    start_dt = dt.datetime.combine(slot['date'], slot['time'], tzinfo=timezone.utc)
+    return _in_any_window(start_dt, wins, slot['date'])
+
+def calculate_ramp_windows(ramp, boat, tide_data, date):
+    """
+    Returns a list of dictionaries with 'start_time' and 'end_time' keys representing
+    tidal windows at the given ramp on the given date for the specified boat.
+    Uses HIGH tide windows with an offset determined by ramp method and draft.
+    """
+    # Any‑tide ramps are effectively open all day (unless draft rule restricts deep boats)
+    if ramp.tide_calculation_method == "AnyTide":
+        return [{'start_time': dt.time.min, 'end_time': dt.time.max}]
+    if ramp.tide_calculation_method == "AnyTideWithDraftRule" and boat.draft_ft and boat.draft_ft < 5.0:
+        return [{'start_time': dt.time.min, 'end_time': dt.time.max}]
+
+    # Determine offset_hours based on method and draft
+    if ramp.tide_calculation_method == "HoursAroundHighTide_WithDraftRule":
+        offset_hours = 3.5 if boat.draft_ft and boat.draft_ft < 5.0 else 3.0
+    else:
+        # IMPORTANT: 0 offset is a real rule (exact HT). Default to 0.0 if None.
+        offset_hours = float(ramp.tide_offset_hours1) if ramp.tide_offset_hours1 is not None else 0.0
+
+    # If there's no tide data, we can't calculate windows around tides.
+    if not tide_data:
+        DEBUG_MESSAGES.append(f"DEBUG: No tide data available for {date} at ramp {getattr(ramp, 'ramp_name', ramp)}.")
+        return []
+
+    offset = dt.timedelta(hours=offset_hours)
+    windows = []
+    for t in tide_data:
+        if t.get('type') == 'H':
+            # Use timezone‑aware math (UTC)
+            center = dt.datetime.combine(date, t['time'], tzinfo=timezone.utc)
+            start_t = (center - offset).time()
+            end_t   = (center + offset).time()
+            windows.append({'start_time': start_t, 'end_time': end_t})
+            DEBUG_MESSAGES.append(f"DEBUG: Tide window @ {t['time']}: {start_t}–{end_t} (±{offset_hours}h)")
+    return windows
