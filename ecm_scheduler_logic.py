@@ -767,6 +767,15 @@ def load_all_data_from_sheets():
         st.error(f"Error loading data: {e}")
         raise
 
+    # Build tide-protected windows now that ramps are loaded
+    try:
+        start = dt.date.today()
+        _build_protected_windows(start, start + dt.timedelta(days=90))
+        _log_debug("Built protected tide windows for next 90 days.")
+    except Exception as e:
+        _log_debug(f"WARNING: could not build protected windows: {e}")
+
+
 def _build_protected_windows(start_date: dt.date, end_date: dt.date):
     """Populate CRANE_WINDOWS and ANYTIDE_LOW_TIDE_WINDOWS for the given date range."""
     CRANE_WINDOWS.clear()
@@ -1727,8 +1736,8 @@ def precalculate_ideal_crane_days(year=2025):
     _log_debug(f"Pre-calculated {len(IDEAL_CRANE_DAYS)} ideal crane days for the season.")
 
 # Precompute protected windows for ~90 days (tweak as needed)
-today = dt.date.today()
-_build_protected_windows(today, today + dt.timedelta(days=90))
+# today = dt.date.today()
+# _build_protected_windows(today, today + dt.timedelta(days=90))
 
 
 # --- NEW HELPER: Finds a slot on a specific day using the new efficiency rules ---
