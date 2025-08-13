@@ -113,26 +113,40 @@ class Boat:
 
 class Job:
     def __init__(self, **kwargs):
-        # This internal helper now ensures all datetimes are timezone-aware (UTC).
-        def _parse_or_get_datetime(dt_value):
-            """Parse a value into a timezone-aware datetime (UTC) or return None."""
-            parsed = None  # <-- do NOT name this 'dt'; it shadows the datetime module
+        # parse datetime fields right away
+        self.scheduled_start_datetime = self._parse_or_get_datetime(kwargs.get("scheduled_start_datetime"))
+        self.scheduled_end_datetime = self._parse_or_get_datetime(kwargs.get("scheduled_end_datetime"))
+        # any other init logic here...
 
-            if isinstance(dt_value, dt.datetime):
-                parsed = dt_value
-            elif isinstance(dt_value, str):
-                try:
-                    parsed = dt.datetime.fromisoformat(dt_value.replace(" ", "T"))
-                except (ValueError, TypeError):
-                    return None  # parsing failed
+    def _parse_or_get_datetime(self, dt_value):
+        """Parse a value into a timezone-aware datetime (UTC) or return None."""
+        parsed = None  # <-- do NOT name this 'dt'; it shadows the datetime module
 
-            if parsed is None:
-                return None
+        if isinstance(dt_value, dt.datetime):
+            parsed = dt_value
+        elif isinstance(dt_value, str):
+            try:
+                parsed = dt.datetime.fromisoformat(dt_value.replace(" ", "T"))
+            except (ValueError, TypeError):
+                return None  # parsing failed
 
-            # Ensure timezone-aware (assume UTC if naive)
-            if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
-                return parsed.replace(tzinfo=dt.timezone.utc)
-            return parsed
+        if parsed is None:
+            return None
+
+        # Ensure timezone-aware (assume UTC if naive)
+        if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
+            return parsed.replace(tzinfo=dt.timezone.utc)
+
+        return parsed
+
+    # --- Back-compat alias properties (keep older code working) ---
+    @property
+    def scheduled_start_dt(self):
+        return self.scheduled_start_datetime
+
+    @property
+    def scheduled_end_dt(self):
+        return self.scheduled_end_datetime
 
 
         def _parse_int(int_string):
@@ -2181,14 +2195,30 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
     today = dt.date.today()
     total_all_boats = len(all_boats)
     scheduled_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled"}
-    
-    # This line is corrected to handle cases where the start time might be None
-    launched_customer_ids = {j.customer_id for j in scheduled_jobs if j.job_status == "Scheduled" and j.service_type == "Launch" and j.scheduled_start_datetime and j.scheduled_start_dt.date() < today}
-    
+
+    launched_customer_ids = {
+        j.customer_id
+        for j in scheduled_jobs
+        if (
+            j.job_status == "Scheduled"
+            and j.service_type == "Launch"
+            and j.scheduled_start_datetime
+            and j.scheduled_start_datetime.date() < today
+        )
+    }
+
     ecm_customer_ids = {boat.customer_id for boat in all_boats.values() if boat.is_ecm_boat}
     return {
-        'all_boats': {'total': total_all_boats, 'scheduled': len(scheduled_customer_ids), 'launched': len(launched_customer_ids)},
-        'ecm_boats': {'total': len(ecm_customer_ids), 'scheduled': len(scheduled_customer_ids.intersection(ecm_customer_ids)), 'launched': len(launched_customer_ids.intersection(ecm_customer_ids))}
+        'all_boats': {
+            'total': total_all_boats,
+            'scheduled': len(scheduled_customer_ids),
+            'launched': len(launched_customer_ids),
+        },
+        'ecm_boats': {
+            'total': len(ecm_customer_ids),
+            'scheduled': len(scheduled_customer_ids.intersection(ecm_customer_ids)),
+            'launched': len(launched_customer_ids.intersection(ecm_customer_ids)),
+        }
     }
     
 def confirm_and_schedule_job(selected_slot, parked_job_to_remove=None):
