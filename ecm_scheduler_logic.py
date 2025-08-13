@@ -113,33 +113,71 @@ class Boat:
 
 class Job:
     def __init__(self, **kwargs):
-        # parse datetime fields right away
-        self.scheduled_start_datetime = self._parse_or_get_datetime(kwargs.get("scheduled_start_datetime"))
-        self.scheduled_end_datetime = self._parse_or_get_datetime(kwargs.get("scheduled_end_datetime"))
-        # any other init logic here...
+        # ----- small helpers -----
+        def _parse_int(v):
+            try:
+                return int(v) if v is not None and str(v).strip() != "" else None
+            except (ValueError, TypeError):
+                return None
 
+        def _parse_float(v):
+            try:
+                return float(v) if v is not None and str(v).strip() != "" else None
+            except (ValueError, TypeError):
+                return None
+
+        # ----- scalar ids / strings -----
+        self.job_id                     = _parse_int(kwargs.get("job_id"))
+        self.customer_id                = _parse_int(kwargs.get("customer_id"))
+        self.boat_id                    = _parse_int(kwargs.get("boat_id"))
+        self.service_type               = kwargs.get("service_type")
+
+        # ----- datetimes (always timezone-aware UTC when present) -----
+        self.scheduled_start_datetime   = self._parse_or_get_datetime(kwargs.get("scheduled_start_datetime"))
+        self.scheduled_end_datetime     = self._parse_or_get_datetime(kwargs.get("scheduled_end_datetime"))
+        self.assigned_hauling_truck_id  = kwargs.get("assigned_hauling_truck_id")
+        self.assigned_crane_truck_id    = kwargs.get("assigned_crane_truck_id")
+        self.S17_busy_end_datetime      = self._parse_or_get_datetime(kwargs.get("S17_busy_end_datetime"))
+
+        # ----- ramps / addresses -----
+        self.pickup_ramp_id             = kwargs.get("pickup_ramp_id")
+        self.dropoff_ramp_id            = kwargs.get("dropoff_ramp_id")
+        self.pickup_street_address      = kwargs.get("pickup_street_address", "") or ""
+        self.dropoff_street_address     = kwargs.get("dropoff_street_address", "") or ""
+
+        # ----- status / notes -----
+        self.job_status                 = kwargs.get("job_status", "Scheduled")
+        self.notes                      = kwargs.get("notes", "")
+
+        # ----- coords (floats or None) -----
+        self.pickup_latitude            = _parse_float(kwargs.get("pickup_latitude"))
+        self.pickup_longitude           = _parse_float(kwargs.get("pickup_longitude"))
+        self.dropoff_latitude           = _parse_float(kwargs.get("dropoff_latitude"))
+        self.dropoff_longitude          = _parse_float(kwargs.get("dropoff_longitude"))
+
+    # ---- helper lives at class level (NOT nested inside __init__) ----
     def _parse_or_get_datetime(self, dt_value):
-        """Parse a value into a timezone-aware datetime (UTC) or return None."""
-        parsed = None  # <-- do NOT name this 'dt'; it shadows the datetime module
+        """Return a timezone-aware (UTC) datetime or None."""
+        parsed = None
 
         if isinstance(dt_value, dt.datetime):
             parsed = dt_value
         elif isinstance(dt_value, str):
             try:
+                # tolerate "YYYY-MM-DD HH:MM:SS" by replacing the space with "T"
                 parsed = dt.datetime.fromisoformat(dt_value.replace(" ", "T"))
             except (ValueError, TypeError):
-                return None  # parsing failed
+                return None
 
         if parsed is None:
             return None
 
-        # Ensure timezone-aware (assume UTC if naive)
+        # make UTC if naive
         if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
             return parsed.replace(tzinfo=dt.timezone.utc)
-
         return parsed
 
-    # --- Back-compat alias properties (keep older code working) ---
+    # --- Back-compat alias properties (keep existing code working) ---
     @property
     def scheduled_start_dt(self):
         return self.scheduled_start_datetime
@@ -147,52 +185,6 @@ class Job:
     @property
     def scheduled_end_dt(self):
         return self.scheduled_end_datetime
-
-
-        def _parse_int(int_string):
-            if not int_string: return None
-            try: return int(int_string)
-            except (ValueError, TypeError): return None
-
-        self.job_id = _parse_int(kwargs.get("job_id"))
-        self.customer_id = _parse_int(kwargs.get("customer_id"))
-        self.boat_id = _parse_int(kwargs.get("boat_id"))
-        self.service_type = kwargs.get("service_type")
-        self.scheduled_start_datetime = _parse_or_get_datetime(kwargs.get("scheduled_start_datetime"))
-        self.scheduled_end_datetime = _parse_or_get_datetime(kwargs.get("scheduled_end_datetime"))
-        self.assigned_hauling_truck_id = kwargs.get("assigned_hauling_truck_id")
-        self.assigned_crane_truck_id = kwargs.get("assigned_crane_truck_id")
-        self.S17_busy_end_datetime = _parse_or_get_datetime(kwargs.get("S17_busy_end_datetime"))
-        self.pickup_ramp_id = kwargs.get("pickup_ramp_id")
-        self.dropoff_ramp_id = kwargs.get("dropoff_ramp_id")
-        self.pickup_street_address = kwargs.get("pickup_street_address", "")
-        self.dropoff_street_address = kwargs.get("dropoff_street_address", "")
-        self.job_status = kwargs.get("job_status", "Scheduled")
-        self.notes = kwargs.get("notes", "")
-        self.pickup_latitude = float(kwargs.get("pickup_latitude")) if kwargs.get("pickup_latitude") is not None else None
-        self.pickup_longitude = float(kwargs.get("pickup_longitude")) if kwargs.get("pickup_longitude") is not None else None
-        self.dropoff_latitude = float(kwargs.get("dropoff_latitude")) if kwargs.get("dropoff_latitude") is not None else None
-        self.dropoff_longitude = float(kwargs.get("dropoff_longitude")) if kwargs.get("dropoff_longitude") is not None else None
-
-# --- CONFIGURATION AND GLOBAL CONSTANTS ---
-HOME_BASE_TOWN = "Pem"
-SOUTH_ROUTE = ["Han", "Nor", "Sci", "Mar", "Dux", "Kin", "Ply", "Bou", "San"]
-NORTH_ROUTE = ["Wey", "Hin", "Coh", "Hul", "Qui", "Bos"]
-YARD_ADDRESS = "43 Mattakeesett St, Pembroke, MA 02359"
-DEFAULT_TRUCK_OPERATING_HOURS = {
-    "S20/33": { 0: (time(7, 0), time(15, 0)), 1: (time(7, 0), time(15, 0)), 2: (time(7, 0), time(15, 0)), 3: (time(7, 0), time(15, 0)), 4: (time(7, 0), time(15, 0)), 5: (time(8, 0), time(12, 0)), 6: None },
-    "S21/77": { 0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)), 2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)), 4: (time(8, 0), time(16, 0)), 5: None, 6: None },
-    "S23/55": { 0: (time(8, 0), time(17, 0)), 1: (time(8, 0), time(17, 0)), 2: (time(8, 0), time(17, 0)), 3: (time(8, 0), time(17, 0)), 4: (time(8, 0), time(17, 0)), 5: (time(7, 30), time(17, 30)), 6: None },
-    "S17":    { 0: (time(8, 0), time(16, 0)), 1: (time(8, 0), time(16, 0)), 2: (time(8, 0), time(16, 0)), 3: (time(8, 0), time(16, 0)), 4: (time(8, 0), time(16, 0)), 5: None, 6: None }
-}
-BOOKING_RULES = {'Powerboat': {'truck_mins': 90, 'crane_mins': 0},'Sailboat DT': {'truck_mins': 180, 'crane_mins': 60},'Sailboat MT': {'truck_mins': 180, 'crane_mins': 90}}
-
-# --- IN-MEMORY DATA CACHES ---
-IDEAL_CRANE_DAYS = set() # ADD THIS LINE
-CANDIDATE_CRANE_DAYS = { 'ScituateHarborJericho': [], 'PlymouthHarbor': [], 'WeymouthWessagusset': [], 'CohassetParkerAve': [] }
-crane_daily_status = {}
-ECM_TRUCKS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_RAMPS, TRUCK_OPERATING_HOURS = {}, {}, {}, {}, {}
-SCHEDULED_JOBS, PARKED_JOBS = [], {}
 
 ### Helpers
 # --- HARD CONSTRAINTS + SCORING UPGRADE PACK ---
