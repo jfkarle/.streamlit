@@ -6,3 +6,4 @@ requests
 reportlab
 PyPDF2
 geopy
+gotrue==2.9.3
