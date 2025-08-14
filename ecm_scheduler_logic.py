@@ -251,6 +251,13 @@ class Job:
 
 import math
 
+# --- Booking Rules Defaults ---
+BOOKING_RULES = {
+    "Powerboat": {"truck_mins": 90, "crane_mins": 0},
+    "Sailboat":  {"truck_mins": 180, "crane_mins": 90},
+    # Add other types as needed...
+}
+
 def _norm_id(x):
     return None if x is None else str(x)
 
@@ -531,12 +538,14 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
         start_hour = 15 if is_ecm else 14
         hours_iter = range(start_hour, 7, -1)
 
-    rules_map = globals().get("BOOKING_RULES", {})
-    rules = rules_map.get(getattr(boat, "boat_type", None), {})
-    hauler_duration = timedelta(minutes=rules.get("truck_mins", 90))
-    crane_duration  = timedelta(minutes=rules.get("crane_mins", 0))
-    haul_minutes = int(rules.get("truck_mins", 90))
+    rules_map = globals().get("BOOKING_RULES", {}) or {}
+    rules = rules_map.get(getattr(boat, "boat_type", None), {}) or {}
+    
+    haul_minutes  = int(rules.get("truck_mins", 90))
     crane_minutes = int(rules.get("crane_mins", 0))
+    
+    hauler_duration = timedelta(minutes=haul_minutes)
+    crane_duration  = timedelta(minutes=crane_minutes)
 
     tides = fetch_noaa_tides_for_range(ramp.noaa_station_id, search_date, search_date)
     day_tides = tides.get(search_date, [])
