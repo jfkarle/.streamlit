@@ -1512,18 +1512,18 @@ elif app_mode == "Settings":
     st.markdown("**Boat Details:**")
     st.markdown(f"- **Type:** {boat.boat_type}")
     st.markdown(f"- **Length:** {boat.boat_length}'")
-
-    # Handle Draft
-    draft = boat.draft_ft if boat.draft_ft not in (None, '', 'N/A') else "N/A"
+    
+    # Corrected Draft Field
+    draft = boat.boat_draft if boat.boat_draft not in (None, '', 'N/A') else "N/A"
     st.markdown(f"- **Draft:** {draft}'")
-
-    # Handle Preferred Ramp
-    ramp = ECM_RAMPS.get(str(boat.preferred_ramp_id))
+    
+    # Corrected Preferred Ramp
+    ramp = ECM_RAMPS.get(str(boat.preferred_ramp))
     ramp_display = ramp.ramp_name if ramp else "N/A"
     st.markdown(f"- **Preferred Ramp:** {ramp_display}")
-
-    # Handle Preferred Truck
-    truck = ECM_TRUCKS.get(str(boat.preferred_truck_id))
+    
+    # Corrected Preferred Truck
+    truck = ECM_TRUCKS.get(str(boat.preferred_truck))
     truck_display = truck.truck_name if truck else "N/A"
     st.markdown(f"- **Preferred Truck:** {truck_display}")
 
