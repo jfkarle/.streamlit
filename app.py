@@ -1509,3 +1509,21 @@ elif app_mode == "Reporting":
 elif app_mode == "Settings":
     # Just call the function. That's it.
     show_settings_page()
+    st.markdown("**Boat Details:**")
+    st.markdown(f"- **Type:** {boat.boat_type}")
+    st.markdown(f"- **Length:** {boat.boat_length}'")
+
+    # Handle Draft
+    draft = boat.draft_ft if boat.draft_ft not in (None, '', 'N/A') else "N/A"
+    st.markdown(f"- **Draft:** {draft}'")
+
+    # Handle Preferred Ramp
+    ramp = ECM_RAMPS.get(str(boat.preferred_ramp_id))
+    ramp_display = ramp.ramp_name if ramp else "N/A"
+    st.markdown(f"- **Preferred Ramp:** {ramp_display}")
+
+    # Handle Preferred Truck
+    truck = ECM_TRUCKS.get(str(boat.preferred_truck_id))
+    truck_display = truck.truck_name if truck else "N/A"
+    st.markdown(f"- **Preferred Truck:** {truck_display}")
+
