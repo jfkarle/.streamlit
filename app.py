@@ -1509,7 +1509,30 @@ elif app_mode == "Reporting":
 elif app_mode == "Settings":
     # Just call the function. That's it.
     show_settings_page()
-    st.markdown("**Boat Details:**")
+    
+    selected_customer = st.session_state.get("selected_customer")
+    selected_boat = None
+    if selected_customer:
+        customer_boats = [b for b in ecm.LOADED_BOATS if b.customer_id == selected_customer.customer_id]
+        selected_boat = customer_boats[0] if customer_boats else None
+
+    if selected_customer:
+        st.subheader("Boat Details:")
+        boat_type = selected_boat.boat_type if selected_boat and selected_boat.boat_type else "N/A"
+        boat_length = f"{selected_boat.boat_length}'" if selected_boat and selected_boat.boat_length else "N/A"
+        draft = f"{selected_boat.boat_draft}'" if selected_boat and selected_boat.boat_draft else "N/A"
+
+        ramp_id = str(selected_boat.preferred_ramp) if selected_boat and selected_boat.preferred_ramp else None
+        ramp_obj = ecm.get_ramp_details(ramp_id) if ramp_id else None
+        ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
+
+        truck = selected_boat.preferred_truck if selected_boat and selected_boat.preferred_truck else "N/A"
+
+        st.markdown(f"- **Type:** {boat_type}")
+        st.markdown(f"- **Length:** {boat_length}")
+        st.markdown(f"- **Draft:** {draft}")
+        st.markdown(f"- **Preferred Ramp:** {ramp_name}")
+        st.markdown(f"- **Preferred Truck:** {truck}")
     st.markdown(f"- **Type:** {boat.boat_type}")
     st.markdown(f"- **Length:** {boat.boat_length}'")
     
