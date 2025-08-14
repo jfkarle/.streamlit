@@ -99,6 +99,12 @@ PARKED_JOBS: dict = {}
 
 DEBUG_MESSAGES = []
 
+BOOKING_RULES = {
+    'Powerboat':  {'truck_mins': 90,  'crane_mins': 0},
+    'Sailboat DT':{'truck_mins': 180, 'crane_mins': 60},
+    'Sailboat MT':{'truck_mins': 180, 'crane_mins': 90},
+}
+
 def _log_debug(msg):
     """Adds a timestamped message to the global debug log."""
     # Ensure DEBUG_MESSAGES is treated as a global variable
@@ -525,7 +531,10 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
         start_hour = 15 if is_ecm else 14
         hours_iter = range(start_hour, 7, -1)
 
-    rules = BOOKING_RULES.get(boat.boat_type, {})
+    rules_map = globals().get("BOOKING_RULES", {})
+    rules = rules_map.get(getattr(boat, "boat_type", None), {})
+    hauler_duration = timedelta(minutes=rules.get("truck_mins", 90))
+    crane_duration  = timedelta(minutes=rules.get("crane_mins", 0))
     haul_minutes = int(rules.get("truck_mins", 90))
     crane_minutes = int(rules.get("crane_mins", 0))
 
@@ -1566,7 +1575,10 @@ def _diagnose_failure_reasons(req_date, boat, ramp_obj, truck_hours, force_prefe
                     longest_window_found = max(longest_window_found, end_dt - start_dt)
 
     # --- NEW, MORE ACCURATE DURATION CHECK ---
-    rules = BOOKING_RULES.get(boat.boat_type, {})
+    rules_map = globals().get("BOOKING_RULES", {})
+    rules = rules_map.get(getattr(boat, "boat_type", None), {})
+    hauler_duration = timedelta(minutes=rules.get("truck_mins", 90))
+    crane_duration  = timedelta(minutes=rules.get("crane_mins", 0))
     # Note: This check uses base duration and does not account for travel time, but is a good indicator.
     job_duration = timedelta(minutes=rules.get('truck_mins', 90))
     
@@ -1818,9 +1830,10 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
         start_hour = 14 if not is_ecm_boat else 15
         time_iterator = range(start_hour, 7, -1)
 
-    rules = BOOKING_RULES.get(boat.boat_type, {})
-    hauler_duration = timedelta(minutes=rules.get('truck_mins', 90))
-    crane_duration = timedelta(minutes=rules.get('crane_mins', 0))
+    rules_map = globals().get("BOOKING_RULES", {})
+    rules = rules_map.get(getattr(boat, "boat_type", None), {})
+    hauler_duration = timedelta(minutes=rules.get("truck_mins", 90))
+    crane_duration  = timedelta(minutes=rules.get("crane_mins", 0))
 
     all_tides = fetch_noaa_tides_for_range(ramp.noaa_station_id, search_date, search_date)
     tide_windows_for_day = calculate_ramp_windows(ramp, boat, all_tides.get(search_date, []), search_date)
