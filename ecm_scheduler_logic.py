@@ -22,6 +22,31 @@ from geopy.geocoders import Nominatim
 from supabase import create_client
 from requests.adapters import HTTPAdapter, Retry
 
+# --- IN-MEMORY DATA CACHES & GLOBALS (must be defined before any function uses them) ---
+DEBUG_MESSAGES: list[str] = []
+
+IDEAL_CRANE_DAYS: set[tuple[str, dt.date]] = set()
+CANDIDATE_CRANE_DAYS: dict[str, list[dict]] = {
+    'ScituateHarborJericho': [],
+    'PlymouthHarbor': [],
+    'WeymouthWessagusset': [],
+    'CohassetParkerAve': []
+}
+
+# Master entities
+ECM_TRUCKS: dict[str, "Truck"] = {}
+LOADED_CUSTOMERS: dict[int, "Customer"] = {}
+LOADED_BOATS: dict[int, "Boat"] = {}
+ECM_RAMPS: dict[str, "Ramp"] = {}
+TRUCK_OPERATING_HOURS: dict[str, dict[int, tuple[dt.time, dt.time]]] = {}
+
+# Jobs
+SCHEDULED_JOBS: list["Job"] = []
+PARKED_JOBS: dict[int, "Job"] = {}
+
+# Tide protection windows
+CRANE_WINDOWS: dict[tuple[str, dt.date], list[tuple[dt.time, dt.time]]] = {}
+ANYTIDE_LOW_TIDE_WINDOWS: dict[tuple[str, dt.date], list[tuple[dt.time, dt.time]]] = {}
 
 # 1) Read whatever the UI handed you
 raw_url = st.secrets["SUPA_URL"]
@@ -658,6 +683,10 @@ def load_all_data_from_sheets():
     try:
         conn = get_db_connection()
 
+        # Safety guards (in case someone refactors import order later)
+        if SCHEDULED_JOBS is None: SCHEDULED_JOBS = []
+        if PARKED_JOBS is None: PARKED_JOBS = {}
+    
         # --- Jobs ---
         # MODIFIED: Explicitly list all columns in the select query to bypass any potential schema caching issues.
         query_columns = (
