@@ -67,6 +67,35 @@ _location_coords_cache = {} # Ensure this line is present here
 CRANE_WINDOWS = {}  # {(ramp_id:str, date:date): [(start_time, end_time), ...]}
 ANYTIDE_LOW_TIDE_WINDOWS = {}  # {(ramp_id:str, date:date): [(start_time, end_time), ...]}
 
+# ================================
+# GLOBAL DEFAULTS / SAFE BOOTSTRAP
+# (must exist before any functions use them)
+# ================================
+YARD_ADDRESS = "43 Mattakeesett St, Pembroke, MA 02359"
+
+# Pre-initialize global caches and registries
+DEBUG_MESSAGES: list[str] = []
+
+CRANE_WINDOWS: dict[tuple[str, dt.date], list[tuple[dt.time, dt.time]]] = {}
+ANYTIDE_LOW_TIDE_WINDOWS: dict[tuple[str, dt.date], list[tuple[dt.time, dt.time]]] = {}
+
+IDEAL_CRANE_DAYS: set[tuple[str, dt.date]] = set()
+CANDIDATE_CRANE_DAYS = {
+    'ScituateHarborJericho': [],
+    'PlymouthHarbor': [],
+    'WeymouthWessagusset': [],
+    'CohassetParkerAve': [],
+}
+crane_daily_status: dict = {}
+
+ECM_TRUCKS: dict = {}
+LOADED_CUSTOMERS: dict = {}
+LOADED_BOATS: dict = {}
+ECM_RAMPS: dict = {}
+TRUCK_OPERATING_HOURS: dict = {}
+
+SCHEDULED_JOBS: list = []
+PARKED_JOBS: dict = {}
 
 DEBUG_MESSAGES = []
 
