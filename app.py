@@ -1518,11 +1518,11 @@ elif app_mode == "Settings":
 
     if selected_customer:
         st.subheader("Boat Details:")
-        boat_type = selected_boat.boat_type if selected_boat and selected_boat.boat_type else "N/A"
-        boat_length = f"{selected_boat.boat_length}'" if selected_boat and selected_boat.boat_length else "N/A"
-        draft = f"{selected_boat.boat_draft}'" if selected_boat and selected_boat.boat_draft else "N/A"
+        boat_type = selected_boat["boat_type"] if selected_boat and selected_boat["boat_type"] else "N/A"
+        boat_length = f"{selected_boat["boat_length"]}'" if selected_boat and selected_boat["boat_length"] else "N/A"
+        draft = f"{selected_boat["boat_draft"]}'" if selected_boat and selected_boat["boat_draft"] else "N/A"
 
-        ramp_id = str(selected_boat.preferred_ramp) if selected_boat and selected_boat.preferred_ramp else None
+        ramp_id = str(selected_boat["preferred_ramp"]) if selected_boat and selected_boat["preferred_ramp"] else None
         ramp_obj = ecm.get_ramp_details(ramp_id) if ramp_id else None
         ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
 
