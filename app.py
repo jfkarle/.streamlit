@@ -1515,6 +1515,7 @@ elif app_mode == "Settings":
     if selected_customer:
         customer_boats = [b for b in ecm.LOADED_BOATS if b["customer_id"] == selected_customer.customer_id]
         selected_boat = customer_boats[0] if customer_boats else None
+    st.write("DEBUG Boat Object", selected_boat)
     
     if selected_boat:
         st.subheader("Boat Details:")
