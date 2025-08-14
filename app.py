@@ -1521,11 +1521,11 @@ elif app_mode == "Settings":
         boat_type = selected_boat.get("boat_type", "N/A")
         boat_length = f"{selected_boat.get('boat_length', 'N/A')}'"
         draft = selected_boat.get("boat_draft")
-        draft_display = f"{draft}'" if draft else "N/A"
+        draft_display = f"{draft}'" if draft is not None else "N/A"
     
         ramp_id = selected_boat.get("preferred_ramp")
         ramp = ecm.get_ramp_details(str(ramp_id)) if ramp_id else None
-        ramp_display = ramp.ramp_name if ramp else "N/A"
+        ramp_display = ramp.ramp_name if ramp and ramp.ramp_name is not None else "N/A"
     
         truck_display = selected_boat.get("preferred_truck", "N/A")
     
@@ -1541,7 +1541,7 @@ elif app_mode == "Settings":
     
     # Corrected Preferred Ramp
     ramp = ECM_RAMPS.get(str(boat.preferred_ramp))
-    ramp_display = ramp.ramp_name if ramp else "N/A"
+    ramp_display = ramp.ramp_name if ramp and ramp.ramp_name is not None else "N/A"
     st.markdown(f"- **Preferred Ramp:** {ramp_display}")
     
     # Corrected Preferred Truck
