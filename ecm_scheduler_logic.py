@@ -622,6 +622,31 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
                     'boat_draft': getattr(boat, 'draft_ft', None),
                 }
     return None
+
+
+
+def find_slot_across_days(requested_date, ramp_id, boat, service_type, crane_needed, compiled_schedule, customer_id, trucks_to_check):
+    """
+    Tries multiple days near the requested_date to find a valid slot.
+    """
+    def _get_range(ramp_id):
+        ramp = ECM_RAMPS.get(ramp_id)
+        method = getattr(ramp, "tide_calculation_method", "AnyTide")
+        if method in ("HoursAroundHighTide", "HoursAroundHighTide_WithDraftRule"):
+            return 15
+        elif method == "AnyTideWithDraftRule":
+            return 10
+        return 6
+
+    days_to_try = _get_range(ramp_id)
+    for i in range(days_to_try):
+        check_date = requested_date + dt.timedelta(days=i)
+        slot = _find_slot_on_day(check_date, boat, service_type, ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_check)
+        if slot:
+            return slot  # ✅ found one
+    return None  # ❌ nothing found
+
+
 def _generate_day_search_order(start_date, look_back, look_forward):
     """Generates a list of dates to check, starting from the center and expanding outwards."""
     search_order = [start_date]
