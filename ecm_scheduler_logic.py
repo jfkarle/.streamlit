@@ -2115,7 +2115,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     if prime_days:
     # Fallback retry logic if reservation blocked all possible slots
-        if ramp and crane_needed and _is_anytide_ramp(ramp):
+        if ramp and _is_anytide_ramp(ramp):
             _log_debug("Retrying search with prime-day restriction disabled...")
             retry_fb_days = sorted(set(fb_days + opp_days))
             retry_fb_days = order_dates_with_low_tide_bias(requested_date, retry_fb_days, set())
