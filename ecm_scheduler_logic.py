@@ -424,7 +424,29 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
     # gentle bonus after volume threshold
     if after_threshold:
         score += 1.5 * max(0, min(n, 3))
+
+        slot_date = slot.get("date")
+        boat_type = slot.get("boat_type", "")
+        ramp_id = str(slot.get("ramp_id") or slot.get("pickup_ramp_id"))
+        ramp = ECM_RAMPS.get(ramp_id)
+        tide_method = getattr(ramp, "tide_calculation_method", "AnyTide")
+        
+        # Prime day scoring
+        if slot_date in low_prime_days:
+            if boat_type == "Powerboat" and tide_method == "AnyTide":
+                score += 6.0  # Powerboat gets bonus
+            elif "Sailboat" in boat_type:
+                score -= 5.0  # Sailboat penalized
+        
+        if slot_date in high_prime_days:
+            if "Sailboat" in boat_type:
+                score += 6.0
+            if boat_type == "Powerboat" and tide_method != "AnyTide":
+                score -= 4.0
+       
     return score
+
+
 def tide_window_for_day(ramp_id: str, day: dt.date):
     """
     Returns a list of (start_time, end_time) tuples in local time when this ramp is usable.
@@ -496,6 +518,18 @@ def get_low_tide_prime_days(station_id: str, start_day: _date, end_day: _date) -
                         prime.add(d)
                         break
     return prime
+
+def get_prime_tide_days(tides_by_day, tide_type="L", start_hour=11, end_hour=13):
+    from datetime import time as dtime
+    prime_days = set()
+    for d, events in tides_by_day.items():
+        for e in events:
+            if e.get("type") == tide_type:
+                t = e.get("time")
+                if isinstance(t, dtime) and dtime(start_hour, 0) <= t <= dtime(end_hour, 0):
+                    prime_days.add(d)
+                    break
+    return prime_days
 
 def order_dates_with_low_tide_bias(requested_date: _date, candidate_dates: list[_date], prime_days: set[_date]) -> list[_date]:
     """
@@ -638,6 +672,17 @@ def find_slot_across_days(requested_date, ramp_id, boat, service_type, crane_nee
             return 10
         return 6
 
+    from datetime import date as _date
+    
+    station_id = _station_for_ramp_or_scituate(requested_ramp_id)
+    start_date = requested_date
+    end_date = requested_date + timedelta(days=15)
+    
+    tides_by_day = fetch_noaa_tides_for_range(station_id, start_date, end_date)
+    
+    low_prime_days = get_prime_tide_days(tides_by_day, tide_type="L", start_hour=11, end_hour=13)
+    high_prime_days = get_prime_tide_days(tides_by_day, tide_type="H", start_hour=10, end_hour=14)
+    
     days_to_try = _get_range(ramp_id)
     for i in range(days_to_try):
         check_date = requested_date + dt.timedelta(days=i)
