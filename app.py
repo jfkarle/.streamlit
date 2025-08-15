@@ -1537,7 +1537,7 @@ elif app_mode == "Settings":
         st.markdown(f"- **Preferred Truck:** {truck_display}")
     
     # Corrected Draft Field
-    draft = boat.boat_draft if boat.boat_draft not in (None, '', 'N/A') else "N/A"
+    draft = boat.draft_ft if boat.draft_ft not in (None, '', 'N/A') else "N/A"
     st.markdown(f"- **Draft:** {draft}'")
     
     # Corrected Preferred Ramp
