@@ -2027,9 +2027,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         other_trucks = all_suitable_trucks
 
     # --- Build candidate day windows (for tide-bias & reservation) ---
-    # Opportunistic window (for crane clustering):
     opp_window = [requested_date + dt.timedelta(days=i) for i in range(-7, 8)]
-    # Fallback window (existing logic):
     if crane_needed:
         potential = [d for r_id, d in IDEAL_CRANE_DAYS if str(r_id) == str(selected_ramp_id) and d >= requested_date]
         early = [d for d in potential if d <= requested_date + dt.timedelta(days=21)]
@@ -2040,7 +2038,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     else:
         fb_days = [requested_date + dt.timedelta(days=i) for i in range(14)]
 
-    # Compute low-tide "prime" days across the total span we might search
     if opp_window or fb_days:
         span_start = min([*opp_window, *fb_days]) if (opp_window or fb_days) else requested_date
         span_end   = max([*opp_window, *fb_days]) if (opp_window or fb_days) else requested_date
@@ -2048,9 +2045,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         span_start = span_end = requested_date
 
     station_id = _station_for_ramp_or_scituate(selected_ramp_id)
-    prime_days = get_low_tide_prime_days(station_id, span_start, span_end)  # set[date]
+    prime_days = get_low_tide_prime_days(station_id, span_start, span_end)
 
-    # Opportunistic: only days where crane is already active at this ramp; order with low-tide bias
     s17_id = get_s17_truck_id()
     active_crane_days = {
         j.scheduled_start_dt.date()
@@ -2062,18 +2058,14 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     }
     opp_days = sorted(list(active_crane_days), key=lambda d: abs((d - requested_date).days))
     opp_days = order_dates_with_low_tide_bias(requested_date, opp_days, prime_days)
-
-    # Fallback days: order with low-tide bias too
     fb_days = order_dates_with_low_tide_bias(requested_date, fb_days, prime_days)
 
-    # --- Internal Search Function to Avoid Code Duplication ---
     def _run_search(trucks_to_search, search_message_type):
         found = []
         POOL_CAP = max(20, num_suggestions_to_find * 20)
 
-        # Phase 1: Opportunistic Search (already- active crane days, ordered with low-tide bias)
+        # Phase 1: Opportunistic Search
         for day in opp_days:
-            # Reservation rule: if day is prime, only AnyTide ramps may book
             if day in prime_days and ramp and not _is_anytide_ramp(ramp):
                 continue
             slot = _find_slot_on_day(
@@ -2086,10 +2078,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 if len(found) >= POOL_CAP:
                     break
 
-        # Phase 2: Fallback Search (normal search horizon, ordered with low-tide bias)
+        # Phase 2: Fallback Search
         if len(found) < POOL_CAP:
             for day in fb_days:
-                # Reservation rule: if day is prime, only AnyTide ramps may book
                 if day in prime_days and ramp and not _is_anytide_ramp(ramp):
                     continue
                 is_also_opportunistic = day in active_crane_days
@@ -2103,14 +2094,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     if len(found) >= POOL_CAP:
                         break
 
-        # If we found anything, score & pick the top-K
         if found:
             best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
             msg = f"Found slots with {search_message_type} truck."
             return (best, msg)
         return ([], None)
 
-    # --- Execute the Search ---
     found_slots, message = [], None
     trucks_to_try = preferred_trucks if boat.preferred_truck_id else other_trucks
 
@@ -2124,8 +2113,31 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     if found_slots:
         return (found_slots, message, [], False)
 
-    # If we strictly enforced reservation and that eliminated everything, tell the user why.
     if prime_days:
+        # Fallback retry logic if reservation blocked all possible slots
+        if ramp and crane_needed and _is_anytide_ramp(ramp):
+            _log_debug("Retrying search with prime-day restriction disabled...")
+            retry_fb_days = sorted(set(fb_days + opp_days))
+            retry_fb_days = order_dates_with_low_tide_bias(requested_date, retry_fb_days, set())
+            def retry_search():
+                retry_found = []
+                for day in retry_fb_days:
+                    slot = _find_slot_on_day(
+                        day, boat, service_type, selected_ramp_id, crane_needed,
+                        compiled_schedule, customer_id, trucks_to_try,
+                        is_opportunistic_search=day in active_crane_days
+                    )
+                    if slot:
+                        retry_found.append(slot)
+                        if len(retry_found) >= num_suggestions_to_find:
+                            break
+                return retry_found
+
+            retry_slots = retry_search()
+            if retry_slots:
+                best = _select_best_slots(retry_slots, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
+                return (best, "Reservation logic was relaxed to offer these options.", [], False)
+
         return ([], "No slots found. Note: low-tide prime days (11:00–13:00) are reserved for AnyTide ramps.", [], True)
 
     return ([], "Could not find any available slots with the specified truck preference.", [], True)
