@@ -2114,33 +2114,32 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return (found_slots, message, [], False)
 
     if prime_days:
-        # Fallback retry logic if reservation blocked all possible slots
-        if ramp and crane_needed and _is_anytide_ramp(ramp):
-            _log_debug("Retrying search with prime-day restriction disabled...")
-            retry_fb_days = sorted(set(fb_days + opp_days))
-            retry_fb_days = order_dates_with_low_tide_bias(requested_date, retry_fb_days, set())
-            def retry_search():
-                retry_found = []
-                for day in retry_fb_days:
-                    slot = _find_slot_on_day(
-                        day, boat, service_type, selected_ramp_id, crane_needed,
-                        compiled_schedule, customer_id, trucks_to_try,
-                        is_opportunistic_search=day in active_crane_days
-                    )
-                    if slot:
-                        retry_found.append(slot)
-                        if len(retry_found) >= num_suggestions_to_find:
-                            break
-                return retry_found
+    # Fallback retry logic if reservation blocked all possible slots
+    if ramp and crane_needed and _is_anytide_ramp(ramp):
+        _log_debug("Retrying search with prime-day restriction disabled...")
+        retry_fb_days = sorted(set(fb_days + opp_days))
+        retry_fb_days = order_dates_with_low_tide_bias(requested_date, retry_fb_days, set())
+        def retry_search():
+            retry_found = []
+            for day in retry_fb_days:
+                slot = _find_slot_on_day(
+                    day, boat, service_type, selected_ramp_id, crane_needed,
+                    compiled_schedule, customer_id, trucks_to_try,
+                    is_opportunistic_search=day in active_crane_days
+                )
+                if slot:
+                    retry_found.append(slot)
+                    if len(retry_found) >= num_suggestions_to_find:
+                        break
+            return retry_found
 
-            retry_slots = retry_search()
-            if retry_slots:
-                best = _select_best_slots(retry_slots, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
-                return (best, "Reservation logic was relaxed to offer these options.", [], False)
+        retry_slots = retry_search()
+        if retry_slots:
+            best = _select_best_slots(retry_slots, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
+            return (best, "Reservation logic was relaxed to offer these options.", [], False)
 
-        return ([], "No slots found. Note: low-tide prime days (11:00–13:00) are reserved for AnyTide ramps.", [], True)
+    return ([], "No slots found. Note: low-tide prime days (11:00–13:00) are reserved for AnyTide ramps.", [], True)
 
-    return ([], "Could not find any available slots with the specified truck preference.", [], True)
 
 
 # --- Seasonal batch generator (Spring/Fall), sequential dates, safe if fewer boats remain ---
