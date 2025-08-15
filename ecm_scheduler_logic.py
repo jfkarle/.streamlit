@@ -2372,62 +2372,49 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
         }
     }
     
-def confirm_and_schedule_job(selected_slot, parked_job_to_remove=None):
+def confirm_and_schedule_job(final_slot: dict, boat: Boat, crane_required: bool = False) -> bool:
     """
-    Confirms and saves a job using only the details from the selected_slot object.
+    Finalize scheduling by locking the boat, assigning truck/crane, and updating global caches.
+    Also promotes crane days for sailboats scheduled on high tide prime days.
     """
-    try:
-        # CORRECTED: Removed 'ecm.' prefix from the function calls below
-        customer = get_customer_details(selected_slot.get('customer_id'))
-        boat = get_boat_details(selected_slot.get('boat_id'))
-        service_type = selected_slot.get('service_type')
-        
-        pickup_addr, dropoff_addr, pickup_rid, dropoff_rid = "", "", None, None
-        
-        if service_type == "Launch":
-            pickup_addr = boat.storage_address
-            dropoff_rid = selected_slot.get('ramp_id') or boat.preferred_ramp_id
-            dropoff_ramp_obj = get_ramp_details(str(dropoff_rid))
-            dropoff_addr = dropoff_ramp_obj.ramp_name if dropoff_ramp_obj else ""
-            
-        elif service_type == "Haul":
-            dropoff_addr = boat.storage_address
-            pickup_rid = selected_slot.get('ramp_id') or boat.preferred_ramp_id
-            pickup_ramp_obj = get_ramp_details(str(pickup_rid))
-            pickup_addr = pickup_ramp_obj.ramp_name if pickup_ramp_obj else ""
-        
-        start_dt = dt.datetime.combine(selected_slot.get('date'), selected_slot.get('time'), tzinfo=timezone.utc)
-        
-        s17_truck_id = get_s17_truck_id()
+    date = final_slot["date"]
+    start_time = final_slot["start_time"]
+    end_time = final_slot["end_time"]
+    truck_id = final_slot["truck_id"]
+    ramp_id = final_slot.get("ramp_id") or final_slot.get("pickup_ramp_id")
 
-        new_job = Job(
-            customer_id=customer.customer_id,
-            boat_id=boat.boat_id,
-            service_type=service_type,
-            scheduled_start_datetime=start_dt,
-            scheduled_end_datetime=selected_slot.get('scheduled_end_datetime'),
-            assigned_hauling_truck_id=str(selected_slot.get('truck_id')),
-            assigned_crane_truck_id=str(s17_truck_id) if selected_slot.get('S17_needed') else None,
-            S17_busy_end_datetime=selected_slot.get('S17_busy_end_datetime'),
-            pickup_ramp_id=pickup_rid,
-            dropoff_ramp_id=dropoff_rid,
-            job_status="Scheduled",
-            pickup_street_address=pickup_addr,
-            dropoff_street_address=dropoff_addr
-        )
-        
-        save_job(new_job)
-        SCHEDULED_JOBS.append(new_job)
-        
-        if parked_job_to_remove and parked_job_to_remove in PARKED_JOBS:
-            del PARKED_JOBS[parked_job_to_remove]
-            delete_job_from_db(parked_job_to_remove)
-            
-        message = f"SUCCESS: Job #{new_job.job_id} for {customer.customer_name} scheduled for {start_dt.strftime('%A, %b %d at %I:%M %p')}."
-        return new_job.job_id, message
-        
-    except Exception as e:
-        return None, f"An error occurred in confirm_and_schedule_job: {e}"
+    # Prevent overlaps
+    JOBS_BY_TRUCK_AND_DAY[(truck_id, date)].append((start_time, end_time))
+    if crane_required:
+        J17_JOBS_BY_DAY[date].append((start_time, end_time))
+
+    # Record job
+    SCHEDULED_JOBS.append({
+        "customer_name": boat.customer_name,
+        "boat_id": boat.boat_id,
+        "boat_type": boat.boat_type,
+        "truck_id": truck_id,
+        "crane_required": crane_required,
+        "ramp_id": ramp_id,
+        "date": date,
+        "start_time": start_time,
+        "end_time": end_time,
+        "job_type": boat.job_type,
+    })
+
+    # Mark boat as scheduled
+    boat.scheduled = True
+    LOADED_BOATS[boat.boat_id] = boat
+
+    # 🔺 PATCH 4: Promote this day as a crane day if sailboat on high tide prime day
+    if "Sailboat" in boat.boat_type and date in high_prime_days:
+        key = (ramp_id, date)
+        if key not in PROMOTED_CRANE_DAYS:
+            PROMOTED_CRANE_DAYS.add(key)
+            _log_debug(f"🔺 PROMOTED {date} at {ramp_id} to Crane Day")
+
+    return True
+
 
 def find_available_ramps_for_boat(boat, all_ramps):
     """
