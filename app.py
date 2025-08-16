@@ -937,6 +937,7 @@ def show_scheduler_page():
                 slot_dicts, msg, warnings, forced = [], "", [], False
 
                 # Lookup full ramp object by name
+                selected_ramp_name = st.session_state.get("preferred_ramp")
                 selected_ramp = next((r for r in all_ramps if r.ramp_name == selected_ramp_name), None)
                 if not selected_ramp:
                     st.error(f"Ramp '{selected_ramp_name}' not found in loaded ramp list.")
