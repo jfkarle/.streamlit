@@ -1526,84 +1526,36 @@ def _in_any_window(start_dt: dt.datetime, windows, date: dt.date) -> bool:
     except Exception:
         pass
     return False
-def get_final_schedulable_ramp_times(
-    ramp_obj,
-    boat_obj,
-    date_to_check,
-    all_tides,
-    truck_id,
-    truck_hours_schedule,
-    ramp_tide_blackout_enabled=True
-):
-    """
-    Calculates schedulable windows for a *specific* truck, intersecting
-    truck hours with ramp tide windows using timezone‑aware comparisons.
-    """
-    dow = date_to_check.weekday()
+def get_final_schedulable_ramp_times(ramp: Ramp, boat: Boat, tides_for_day: dict, draft: float):
+    from datetime import time
 
-    # 1) Collective truck hours (for diagnostics and broad tide overlap)
-    any_working = False
-    earliest = dt.time(23,59)
-    latest   = dt.time(0,0)
-    for _tid, daily in (truck_hours_schedule or {}).items():
-        hours = daily.get(dow)
-        if hours:
-            any_working = True
-            earliest = min(earliest, hours[0])
-            latest   = max(latest,  hours[1])
-    if not any_working:
-        DEBUG_MESSAGES.append(f"DEBUG: No trucks working {date_to_check}.")
-        return []
+    if ramp.ramp_id == 'ScituateHarborJericho' and draft <= 5:
+        # Override: full open window for boats with ≤5' draft at Scituate
+        return [(time(8, 0), time(14, 30))]
 
-    collective_open = dt.datetime.combine(date_to_check, earliest, tzinfo=timezone.utc)
-    collective_close= dt.datetime.combine(date_to_check, latest,   tzinfo=timezone.utc)
+    method = ramp.tide_method or "AnyTide"
+    high_tides = tides_for_day.get("high", [])
+    low_tides = tides_for_day.get("low", [])
 
-    # 2) Specific truck hours
-    my_hours = (truck_hours_schedule or {}).get(truck_id, {}).get(dow)
-    if not my_hours:
-        return []
-    my_open  = dt.datetime.combine(date_to_check, my_hours[0], tzinfo=timezone.utc)
-    my_close = dt.datetime.combine(date_to_check, my_hours[1], tzinfo=timezone.utc)
-
-    # 3) Tide windows for this ramp/boat/day
-    tide_list = (all_tides or {}).get(date_to_check, [])
-    tidal_windows = calculate_ramp_windows(ramp_obj, boat_obj, tide_list, date_to_check)
-
-    filtered = []
-    if ramp_obj and ramp_obj.tide_calculation_method not in ("AnyTide", "AnyTideWithDraftRule"):
-        # Intersect with collective hours first
-        for w in tidal_windows:
-            ts = dt.datetime.combine(date_to_check, w['start_time'], tzinfo=timezone.utc)
-            te = dt.datetime.combine(date_to_check, w['end_time'],   tzinfo=timezone.utc)
-            if ts > te:
-                te += dt.timedelta(days=1)
-            # overlap with collective hours
-            a = max(ts, collective_open)
-            b = min(te, collective_close)
-            if a < b:
-                filtered.append({'start_time': a.time(), 'end_time': b.time()})
+    if method == "AnyTide":
+        return [(time(8, 0), time(14, 30))]
+    elif method == "HighTideOnly":
+        return expand_tide_window(high_tides, hours=3)
+    elif method == "LowTideOnly":
+        return expand_tide_window(low_tides, hours=3)
+    elif method == "HighTideWithDraftRule":
+        if draft <= 5:
+            return [(time(8, 0), time(14, 30))]
+        else:
+            return expand_tide_window(high_tides, hours=3)
+    elif method == "LowTideWithDraftRule":
+        if draft <= 5:
+            return [(time(8, 0), time(14, 30))]
+        else:
+            return expand_tide_window(low_tides, hours=3)
     else:
-        # Any‑tide ramps: windows already represent "all day"; still emit at least one span
-        filtered = tidal_windows or [{'start_time': earliest, 'end_time': latest}]
-
-    if ramp_tide_blackout_enabled and not filtered and ramp_obj and ramp_obj.tide_calculation_method not in ("AnyTide", "AnyTideWithDraftRule"):
-        DEBUG_MESSAGES.append(f"DEBUG: Blackout {getattr(ramp_obj,'ramp_name',ramp_obj)} on {date_to_check}: no tide ∩ truck hours.")
-        return []
-
-    # 4) Intersect with *this* truck hours
-    final_spans = []
-    for w in filtered:
-        ts = dt.datetime.combine(date_to_check, w['start_time'], tzinfo=timezone.utc)
-        te = dt.datetime.combine(date_to_check, w['end_time'],   tzinfo=timezone.utc)
-        a = max(ts, my_open)
-        b = min(te, my_close)
-        if a < b:
-            final_spans.append({
-                'start_time': a.time(),
-                'end_time': b.time(),
-            })
-
-    return final_spans
+        return expand_tide_window(high_tides, hours=3)
+        
 def get_suitable_trucks(boat_len, pref_truck_id=None, force_preferred=False):
     all_suitable = [t for t in ECM_TRUCKS.values() if not t.is_crane and t.max_boat_length is not None and boat_len <= t.max_boat_length]
     if force_preferred and pref_truck_id and any(t.truck_name == pref_truck_id for t in all_suitable):
@@ -1977,37 +1929,23 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
 # --- REPLACEMENT: The new efficiency-driven slot finding engine ---
 
 def score_slot(slot, boat, ramp, tide_window, crane_truck_needed, high_tide_times, low_tide_times):
-    score = 0
+    score = 10  # Base score
+    start_time = slot['start_time']
 
-    # Prefer early slots in the day
-    if slot.start_time.hour < 10:
-        score += 1
-
-    # Prefer slots that align with tide window center
-    if tide_window:
-        tide_midpoint = (tide_window[0] + tide_window[1]) / 2
-        time_diff = abs(slot.start_time.hour + slot.start_time.minute / 60 - tide_midpoint)
-        score += max(0, 2 - time_diff)  # Up to +2 points for being close to center
-
-    # Prime Low Tide Day bias: encourage powerboats at shallow-draft ramps
-    if low_tide_times:
-        for lt in low_tide_times:
-            if 11 <= lt.hour <= 13:
-                if boat.boat_type == 'Powerboat' and boat.draft_ft <= 5.0:
-                    if ramp.tide_method_draft5 or ramp.tide_method_draft5 == "NormalTideRule":
-                        score += 4
-                break
-
-    # High Tide Bias for Sailboats
-    if high_tide_times and boat.boat_type == 'Sailboat':
+    # BONUS: Crane efficiency — center on high tide for sailboats
+    if crane_truck_needed and high_tide_times:
         for ht in high_tide_times:
-            if 10 <= ht.hour <= 14:
-                score += 3
-                break
+            delta = abs((datetime.combine(datetime.today(), ht) - datetime.combine(datetime.today(), start_time)).total_seconds()) / 60
+            if delta <= 90:
+                score += 2
 
-    # Penalty if crane truck is required and crane is already busy elsewhere
-    if crane_truck_needed and slot.truck_id != 'S17':
-        score -= 10
+    # PENALTY: Sailboat on low tide prime day (11AM–1PM) and >5′ draft
+    low_prime = any(11 <= lt.hour <= 13 for lt in low_tide_times)
+    if crane_truck_needed and low_prime:
+        if boat.draft > 5:
+            return -1  # REJECT this slot
+        elif ramp.ramp_id != 'ScituateHarborJericho':
+            score -= 4  # apply minor penalty to sailboats elsewhere
 
     return score
 
