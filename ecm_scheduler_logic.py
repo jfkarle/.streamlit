@@ -1976,171 +1976,88 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
 
 # --- REPLACEMENT: The new efficiency-driven slot finding engine ---
 
-def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, **kwargs):
-    """
-    Finds available slots by first searching ONLY for the preferred truck, then
-    falling back to other trucks ONLY if relax_truck_preference is True.
-    Uses scoring to rank all found candidates and returns the top-K.
+def score_slot(slot, boat, ramp, tide_window, crane_truck_needed, high_tide_times, low_tide_times):
+    score = 0
 
-    Enhancements:
-      - Reserve "prime" low-tide days (any LOW between 11:00–13:00) for AnyTide ramps only.
-      - When the requested date is within ±3 days of a prime day, search those prime days first.
-    """
-    global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
+    # Prefer early slots in the day
+    if slot.start_time.hour < 10:
+        score += 1
 
-    relax_truck_preference = kwargs.get('relax_truck_preference', False)
-    fetch_scheduled_jobs()
+    # Prefer slots that align with tide window center
+    if tide_window:
+        tide_midpoint = (tide_window[0] + tide_window[1]) / 2
+        time_diff = abs(slot.start_time.hour + slot.start_time.minute / 60 - tide_midpoint)
+        score += max(0, 2 - time_diff)  # Up to +2 points for being close to center
 
-    # --- Validation & Initial Setup ---
-    if not requested_date_str:
-        return [], "Please select a target date before searching.", [], False
-    try:
-        requested_date = dt.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
-    except ValueError:
-        return [], f"Date '{requested_date_str}' is not valid.", [], True
+    # Prime Low Tide Day bias: encourage powerboats at shallow-draft ramps
+    if low_tide_times:
+        for lt in low_tide_times:
+            if 11 <= lt.hour <= 13:
+                if boat.boat_type == 'Powerboat' and boat.draft_ft <= 5.0:
+                    if ramp.tide_method_draft5 or ramp.tide_method_draft5 == "NormalTideRule":
+                        score += 4
+                break
 
-    compiled_schedule, daily_last_locations = _compile_truck_schedules(SCHEDULED_JOBS)
+    # High Tide Bias for Sailboats
+    if high_tide_times and boat.boat_type == 'Sailboat':
+        for ht in high_tide_times:
+            if 10 <= ht.hour <= 14:
+                score += 3
+                break
 
-    boat = get_boat_details(boat_id)
-    if not boat:
-        return [], f"Could not find boat ID: {boat_id}", [], True
+    # Penalty if crane truck is required and crane is already busy elsewhere
+    if crane_truck_needed and slot.truck_id != 'S17':
+        score -= 10
 
-    crane_needed = "Sailboat" in boat.boat_type
-    ramp = get_ramp_details(selected_ramp_id) if selected_ramp_id else None
+    return score
 
-    def _is_anytide_ramp(r):
-        if not r:
-            return False
-        tide_method = getattr(r, "tide_method", None) or getattr(r, "tide_rule", None)
-        return str(tide_method) == "AnyTide"
 
-    # --- Separate Trucks into Preferred and Others ---
-    all_suitable_trucks = get_suitable_trucks(boat.boat_length)
-    preferred_trucks, other_trucks = [], []
-    if boat.preferred_truck_id:
-        for t in all_suitable_trucks:
-            if t.truck_name == boat.preferred_truck_id:
-                preferred_trucks.append(t)
-            else:
-                other_trucks.append(t)
-    else:
-        other_trucks = all_suitable_trucks
+def find_available_job_slots(boat, ramp, date, trucks, settings, tides):
+    available_slots = []
 
-    # --- Build candidate day windows (for tide-bias & reservation) ---
-    opp_window = [requested_date + dt.timedelta(days=i) for i in range(-7, 8)]
-    if crane_needed:
-        potential = [d for r_id, d in IDEAL_CRANE_DAYS if str(r_id) == str(selected_ramp_id) and d >= requested_date]
-        early = [d for d in potential if d <= requested_date + dt.timedelta(days=21)]
-        fb_days = sorted(early)[:30]
-        if not fb_days:
-            wider = [d for d in potential if d <= requested_date + dt.timedelta(days=45)]
-            fb_days = sorted(wider)[:30]
-    else:
-        fb_days = [requested_date + dt.timedelta(days=i) for i in range(14)]
+    for truck in trucks:
+        if boat.requires_crane and truck.truck_id != 'S17':
+            continue
 
-    if opp_window or fb_days:
-        span_start = min([*opp_window, *fb_days]) if (opp_window or fb_days) else requested_date
-        span_end   = max([*opp_window, *fb_days]) if (opp_window or fb_days) else requested_date
-    else:
-        span_start = span_end = requested_date
+        # Get tide data and windows for the ramp/date
+        tide_data = tides.get((ramp.ramp_id, date)) or tides.get(('ScituateHarborJericho', date))
+        if not tide_data:
+            continue
 
-    station_id = _station_for_ramp_or_scituate(selected_ramp_id)
-    prime_days = get_low_tide_prime_days(station_id, span_start, span_end)
+        high_tide_times = tide_data.get('high', [])
+        low_tide_times = tide_data.get('low', [])
 
-    s17_id = get_s17_truck_id()
-    active_crane_days = {
-        j.scheduled_start_dt.date()
-        for j in SCHEDULED_JOBS
-        if j.scheduled_start_datetime
-        and j.scheduled_start_dt.date() in opp_window
-        and j.assigned_crane_truck_id == str(s17_id)
-        and (str(j.pickup_ramp_id) == str(selected_ramp_id) or str(j.dropoff_ramp_id) == str(selected_ramp_id))
-    }
-    opp_days = sorted(list(active_crane_days), key=lambda d: abs((d - requested_date).days))
-    opp_days = order_dates_with_low_tide_bias(requested_date, opp_days, prime_days)
-    fb_days = order_dates_with_low_tide_bias(requested_date, fb_days, prime_days)
+        tide_window = get_final_schedulable_ramp_times(
+            ramp=ramp,
+            boat=boat,
+            tides_for_day=tide_data,
+            draft=boat.draft_ft,
+        )
 
-    def _run_search(trucks_to_search, search_message_type):
-        found = []
-        POOL_CAP = max(20, num_suggestions_to_find * 20)
+        truck_slots = generate_candidate_slots(
+            boat=boat,
+            truck=truck,
+            ramp=ramp,
+            date=date,
+            tide_window=tide_window,
+            settings=settings,
+        )
 
-        # Phase 1: Opportunistic Search
-        for day in opp_days:
-            if day in prime_days and ramp and not _is_anytide_ramp(ramp):
-                continue
-            slot = _find_slot_on_day(
-                day, boat, service_type, selected_ramp_id, crane_needed,
-                compiled_schedule, customer_id, trucks_to_search,
-                is_opportunistic_search=True
+        for slot in truck_slots:
+            slot_score = score_slot(
+                slot=slot,
+                boat=boat,
+                ramp=ramp,
+                tide_window=tide_window,
+                crane_truck_needed=boat.requires_crane,
+                high_tide_times=high_tide_times,
+                low_tide_times=low_tide_times,
             )
-            if slot:
-                found.append(slot)
-                if len(found) >= POOL_CAP:
-                    break
+            if slot_score >= 0:
+                available_slots.append((slot_score, slot))
 
-        # Phase 2: Fallback Search
-        if len(found) < POOL_CAP:
-            for day in fb_days:
-                if day in prime_days and ramp and not _is_anytide_ramp(ramp):
-                    continue
-                is_also_opportunistic = day in active_crane_days
-                slot = _find_slot_on_day(
-                    day, boat, service_type, selected_ramp_id, crane_needed,
-                    compiled_schedule, customer_id, trucks_to_search,
-                    is_opportunistic_search=is_also_opportunistic
-                )
-                if slot:
-                    found.append(slot)
-                    if len(found) >= POOL_CAP:
-                        break
-
-        if found:
-            best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
-            msg = f"Found slots with {search_message_type} truck."
-            return (best, msg)
-        return ([], None)
-
-    found_slots, message = [], None
-    trucks_to_try = preferred_trucks if boat.preferred_truck_id else other_trucks
-
-    if trucks_to_try:
-        search_type = "preferred" if boat.preferred_truck_id else "any suitable"
-        found_slots, message = _run_search(trucks_to_try, search_type)
-
-    if (not found_slots) and relax_truck_preference and other_trucks:
-        found_slots, message = _run_search(other_trucks, "other")
-
-    if found_slots:
-        return (found_slots, message, [], False)
-
-    if prime_days:
-    # Fallback retry logic if reservation blocked all possible slots
-        if ramp and _is_anytide_ramp(ramp):
-            _log_debug("Retrying search with prime-day restriction disabled...")
-            retry_fb_days = sorted(set(fb_days + opp_days))
-            retry_fb_days = order_dates_with_low_tide_bias(requested_date, retry_fb_days, set())
-            def retry_search():
-                retry_found = []
-                for day in retry_fb_days:
-                    slot = _find_slot_on_day(
-                        day, boat, service_type, selected_ramp_id, crane_needed,
-                        compiled_schedule, customer_id, trucks_to_try,
-                        is_opportunistic_search=day in active_crane_days
-                    )
-                    if slot:
-                        retry_found.append(slot)
-                        if len(retry_found) >= num_suggestions_to_find:
-                            break
-                return retry_found
-    
-            retry_slots = retry_search()
-            if retry_slots:
-                best = _select_best_slots(retry_slots, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
-                return (best, "Reservation logic was relaxed to offer these options.", [], False)
-
-    return ([], "No slots found. Note: low-tide prime days (11:00–13:00) are reserved for AnyTide ramps.", [], True)
-
-
+    available_slots.sort(key=lambda x: -x[0])  # highest scoring first
+    return [slot for score, slot in available_slots[:settings['num_suggestions_to_find']]]
 
 # --- Seasonal batch generator (Spring/Fall), sequential dates, safe if fewer boats remain ---
 def simulate_job_requests(
