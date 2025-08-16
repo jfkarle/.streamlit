@@ -938,9 +938,12 @@ def show_scheduler_page():
 
                 if st.sidebar.button("Find Best Slot"):
                     slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
-                        customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
-                        requested_date_str=req_date.strftime("%Y-%m-%d"), selected_ramp_id=selected_ramp_id,
-                        num_suggestions_to_find=st.session_state.get('num_suggestions', 3), manager_override=override
+                        customer_id=customer.customer_id,
+                        boat_id=boat.boat_id,
+                        service_type=service_type,
+                        requested_date_str=req_date.strftime("%Y-%m-%d"),
+                        selected_ramp_id=selected_ramp_id,
+                        num_suggestions_to_find=st.session_state.get('num_suggestions', 3)
                     )
                     st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
                     st.session_state.failure_reasons = warnings
