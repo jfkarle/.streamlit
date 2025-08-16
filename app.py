@@ -1007,7 +1007,7 @@ def show_scheduler_page():
             parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
             st.warning(f"DEBUG: Attempting to confirm job for slot = {slot}")
             new_id, message = ecm.confirm_and_schedule_job(
-                slot,
+                slot.raw_slot,
                 parked_job_to_remove=parked_to_remove
             )
             if new_id:
