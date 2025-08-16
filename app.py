@@ -937,11 +937,17 @@ def show_scheduler_page():
                 slot_dicts, msg, warnings, forced = [], "", [], False
 
                 if st.sidebar.button("Find Best Slot"):
-                    slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
-                        customer_id=customer.customer_id, boat_id=boat.boat_id, service_type=service_type,
-                        requested_date_str=req_date.strftime("%Y-%m-%d"), selected_ramp_id=selected_ramp_id,
-                        num_suggestions_to_find=st.session_state.get('num_suggestions', 3), manager_override=override
-                    )
+                    slot_dicts = ecm.find_available_job_slots(
+                    boat=boat,
+                    ramp=selected_ramp,
+                    date=req_date,
+                    trucks=trucks,  # You may already have this, or need to load your list of truck objects
+                    settings={
+                        'num_suggestions_to_find': st.session_state.get('num_suggestions', 3),
+                        'manager_override': override
+                    },
+                    tides=tide_data_dict  # This must be passed in from your tide-loading logic
+                )
                     st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
                     st.session_state.failure_reasons = warnings
                     st.session_state.was_forced_search = forced
