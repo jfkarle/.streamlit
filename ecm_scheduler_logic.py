@@ -2526,3 +2526,4 @@ def calculate_ramp_windows(ramp, boat, tide_data, date):
             windows.append({'start_time': start_t, 'end_time': end_t})
             DEBUG_MESSAGES.append(f"DEBUG: Tide window @ {t['time']}: {start_t}–{end_t} (±{offset_hours}h)")
     return windows
+
