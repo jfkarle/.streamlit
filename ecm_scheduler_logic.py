@@ -2397,7 +2397,7 @@ def confirm_and_schedule_job(final_slot: dict, boat: Boat, crane_required: bool 
     # Prevent overlaps
     JOBS_BY_TRUCK_AND_DAY[(truck_id, date)].append((start_time, end_time))
     if crane_required:
-        J17_JOBS_BY_DAY[date].append((start_time, end_time))
+        S17_JOBS_BY_DAY[date].append((start_time, end_time))
 
     # Record job
     SCHEDULED_JOBS.append({
