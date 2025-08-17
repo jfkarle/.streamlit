@@ -2356,50 +2356,83 @@ def calculate_scheduling_stats(all_customers, all_boats, scheduled_jobs):
         }
     }
     
-def confirm_and_schedule_job(final_slot: dict, boat: Boat, crane_required: bool = False):
+def confirm_and_schedule_job(final_slot: dict, parked_job_to_remove: int = None):
     """
-    Finalize scheduling by locking the boat, assigning truck/crane, and updating global caches.
-    Also promotes crane days for sailboats scheduled on high tide prime days.
+    Creates a new Job object from a finalized slot, saves it to the database,
+    removes an old parked job if rebooking, and refreshes the in-memory schedule.
     """
-    date = final_slot["date"]
-    start_time = final_slot["start_time"]
-    end_time = final_slot["end_time"]
-    truck_id = final_slot["truck_id"]
-    ramp_id = final_slot.get("ramp_id") or final_slot.get("pickup_ramp_id")
+    try:
+        # 1. Look up the boat object
+        boat = get_boat_details(final_slot.get('boat_id'))
+        if not boat:
+            return None, "Error: Could not find boat details for the selected job."
 
-    # Prevent overlaps
-    JOBS_BY_TRUCK_AND_DAY[(truck_id, date)].append((start_time, end_time))
-    if crane_required:
-        S17_JOBS_BY_DAY[date].append((start_time, end_time))
+        # 2. Construct datetime objects
+        start_dt = datetime.datetime.combine(final_slot['date'], final_slot['time'], tzinfo=timezone.utc)
+        
+        # Use the full end datetime from the slot if available, otherwise calculate it
+        end_dt = final_slot.get('scheduled_end_datetime')
+        if not end_dt:
+            rules = BOOKING_RULES.get(boat.boat_type, {'truck_mins': 90})
+            duration = timedelta(minutes=rules['truck_mins'])
+            end_dt = start_dt + duration
+        
+        # Ensure end_dt is timezone-aware
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
 
-    # Record job
-    new_job = {
-        "customer_name": boat.customer_name,
-        "boat_id": boat.boat_id,
-        "boat_type": boat.boat_type,
-        "truck_id": truck_id,
-        "crane_required": crane_required,
-        "ramp_id": ramp_id,
-        "date": date,
-        "start_time": start_time,
-        "end_time": end_time,
-        "job_type": boat.job_type,
-    }
-    SCHEDULED_JOBS.append(new_job)
+        # 3. Determine pickup and dropoff locations based on service type
+        service_type = final_slot.get('service_type')
+        pickup_addr, dropoff_addr = "", ""
+        pickup_ramp, dropoff_ramp = None, None
 
-    # Mark boat as scheduled
-    boat.scheduled = True
-    LOADED_BOATS[boat.boat_id] = boat
+        if service_type == "Launch":
+            pickup_addr = boat.storage_address
+            dropoff_ramp = final_slot.get('ramp_id')
+        elif service_type == "Haul":
+            pickup_ramp = final_slot.get('ramp_id')
+            dropoff_addr = boat.storage_address
+        
+        # 4. Create a complete Job object
+        new_job = Job(
+            customer_id=final_slot.get('customer_id'),
+            boat_id=final_slot.get('boat_id'),
+            service_type=service_type,
+            scheduled_start_datetime=start_dt,
+            scheduled_end_datetime=end_dt,
+            assigned_hauling_truck_id=final_slot.get('truck_id'),
+            assigned_crane_truck_id=get_s17_truck_id() if final_slot.get('S17_needed') else None,
+            S17_busy_end_datetime=final_slot.get('S17_busy_end_datetime'),
+            pickup_ramp_id=pickup_ramp,
+            dropoff_ramp_id=dropoff_ramp,
+            pickup_street_address=pickup_addr,
+            dropoff_street_address=dropoff_addr,
+            job_status="Scheduled"
+        )
 
-    # 🔺 PATCH 4: Promote this day as a crane day if sailboat on high tide prime day
-    if "Sailboat" in boat.boat_type and date in high_prime_days:
-        key = (ramp_id, date)
-        if key not in PROMOTED_CRANE_DAYS:
-            PROMOTED_CRANE_DAYS.add(key)
-            _log_debug(f"🔺 PROMOTED {date} at {ramp_id} to Crane Day")
+        # 5. Save the new job to the database
+        save_job(new_job) # This will also assign the new job_id back to the object
 
-    # ✅ Return both the job and confirmation message
-    return new_job, f"{boat.customer_name} scheduled for {date} at {start_time.strftime('%-I:%M %p')}."
+        # 6. If this was a rebooking, delete the old parked job
+        if parked_job_to_remove:
+            delete_job_from_db(parked_job_to_remove)
+            _log_debug(f"Removed old parked job ID: {parked_job_to_remove}")
+
+        # 7. Refresh the global jobs list to reflect the changes immediately
+        fetch_scheduled_jobs()
+
+        # 8. Return the new Job ID and a success message
+        customer = get_customer_details(new_job.customer_id)
+        message = (
+            f"Successfully scheduled {service_type} for {customer.customer_name} on "
+            f"{start_dt.strftime('%A, %b %d @ %-I:%M %p')}."
+        )
+        return new_job.job_id, message
+
+    except Exception as e:
+        _log_debug(f"ERROR in confirm_and_schedule_job: {e}")
+        return None, f"An unexpected error occurred during confirmation: {e}"
+
 
 
 
