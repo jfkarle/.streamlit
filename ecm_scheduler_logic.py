@@ -2360,7 +2360,6 @@ def confirm_and_schedule_job(final_slot: dict, boat: Boat, crane_required: bool 
     """
     Finalize scheduling by locking the boat, assigning truck/crane, and updating global caches.
     Also promotes crane days for sailboats scheduled on high tide prime days.
-    Returns (new_job_id, confirmation_message).
     """
     date = final_slot["date"]
     start_time = final_slot["start_time"]
@@ -2392,13 +2391,14 @@ def confirm_and_schedule_job(final_slot: dict, boat: Boat, crane_required: bool 
     boat.scheduled = True
     LOADED_BOATS[boat.boat_id] = boat
 
-    # 🔺 Promote as crane day if sailboat on high tide prime day
+    # 🔺 PATCH 4: Promote this day as a crane day if sailboat on high tide prime day
     if "Sailboat" in boat.boat_type and date in high_prime_days:
         key = (ramp_id, date)
         if key not in PROMOTED_CRANE_DAYS:
             PROMOTED_CRANE_DAYS.add(key)
             _log_debug(f"🔺 PROMOTED {date} at {ramp_id} to Crane Day")
 
+    # ✅ Return both the job and confirmation message
     return new_job, f"{boat.customer_name} scheduled for {date} at {start_time.strftime('%-I:%M %p')}."
 
 
