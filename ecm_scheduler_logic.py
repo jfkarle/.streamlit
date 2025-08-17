@@ -2368,7 +2368,8 @@ def confirm_and_schedule_job(final_slot: dict, parked_job_to_remove: int = None)
             return None, "Error: Could not find boat details for the selected job."
 
         # 2. Construct datetime objects
-        start_dt = datetime.datetime.combine(final_slot['date'], final_slot['time'], tzinfo=timezone.utc)
+        #    FIX: Use the 'dt' alias for the datetime module
+        start_dt = dt.datetime.combine(final_slot['date'], final_slot['time'], tzinfo=timezone.utc)
         
         # Use the full end datetime from the slot if available, otherwise calculate it
         end_dt = final_slot.get('scheduled_end_datetime')
@@ -2432,8 +2433,6 @@ def confirm_and_schedule_job(final_slot: dict, parked_job_to_remove: int = None)
     except Exception as e:
         _log_debug(f"ERROR in confirm_and_schedule_job: {e}")
         return None, f"An unexpected error occurred during confirmation: {e}"
-
-
 
 
 def find_available_ramps_for_boat(boat, all_ramps):
