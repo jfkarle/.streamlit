@@ -2056,10 +2056,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 compiled_schedule, customer_id, trucks_to_search,
                 is_opportunistic_search=is_also_opportunistic
             )
-                if slot:
-                    found.append(slot)
-                    if len(found) >= POOL_CAP:
-                        break
+            if slot:
+                found.append(slot)
+                if len(found) >= POOL_CAP:
+                    break
 
         if found:
             best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
