@@ -659,10 +659,13 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
 
 
 
-def find_slot_across_days(requested_date, ramp_id, boat, service_type, crane_needed, compiled_schedule, customer_id, trucks_to_check):
+def find_slot_across_days(requested_date, ramp_id, boat, service_type, crane_needed, compiled_schedule, customer_id, trucks_to_check, num_suggestions_to_find):
     """
-    Tries multiple days near the requested_date to find a valid slot.
+    Tries multiple days near the requested_date to find a valid slot,
+    collecting up to a maximum number of suggestions.
     """
+    found_slots = []
+    
     def _get_range(ramp_id):
         ramp = ECM_RAMPS.get(ramp_id)
         method = getattr(ramp, "tide_calculation_method", "AnyTide")
@@ -672,24 +675,20 @@ def find_slot_across_days(requested_date, ramp_id, boat, service_type, crane_nee
             return 10
         return 6
 
-    from datetime import date as _date
-    
-    station_id = _station_for_ramp_or_scituate(requested_ramp_id)
-    start_date = requested_date
-    end_date = requested_date + timedelta(days=15)
-    
-    tides_by_day = fetch_noaa_tides_for_range(station_id, start_date, end_date)
-    
-    low_prime_days = get_prime_tide_days(tides_by_day, tide_type="L", start_hour=11, end_hour=13)
-    high_prime_days = get_prime_tide_days(tides_by_day, tide_type="H", start_hour=10, end_hour=14)
-    
     days_to_try = _get_range(ramp_id)
+
     for i in range(days_to_try):
         check_date = requested_date + dt.timedelta(days=i)
-        slot = _find_slot_on_day(check_date, boat, service_type, ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_check)
+        slot = _find_slot_on_day(
+            check_date, boat, service_type, ramp_id, crane_needed,
+            compiled_schedule, customer_id, trucks_to_check
+        )
         if slot:
-            return slot  # ✅ found one
-    return None  # ❌ nothing found
+            found_slots.append(slot)
+            if len(found_slots) >= num_suggestions_to_find:
+                break  # Stop once we have enough
+
+    return found_slots
 
 
 def _generate_day_search_order(start_date, look_back, look_forward):
