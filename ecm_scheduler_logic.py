@@ -2034,7 +2034,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     def _run_search(trucks_to_search, search_message_type):
         found = []
         POOL_CAP = max(20, num_suggestions_to_find * 20)
-
+    
         # Phase 1: Opportunistic Search
         for day in opp_days:
             slot = _find_slot_on_day(
@@ -2044,10 +2044,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             )
             if slot:
                 found.append(slot)
-                if len(found) >= POOL_CAP:
-                    break
-
+                # Do NOT break here, keep searching for all opportunistic days
+    
         # Phase 2: Fallback Search
+        # Only search fallback days if we haven't found enough slots yet
         if len(found) < POOL_CAP:
             for day in fb_days:
                 is_also_opportunistic = day in active_crane_days
@@ -2058,9 +2058,9 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 )
                 if slot:
                     found.append(slot)
-                    if len(found) >= POOL_CAP:
-                        break
-
+                # Do NOT break here either
+    
+        # After both search phases are complete, check if any slots were found
         if found:
             best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
             msg = f"Found slots with {search_message_type} truck."
