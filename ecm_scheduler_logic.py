@@ -2031,40 +2031,39 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     fb_days = order_dates_with_low_tide_bias(requested_date, fb_days, prime_days)
 
     def _run_search(trucks_to_search, search_message_type):
-        found = []
-        POOL_CAP = max(20, num_suggestions_to_find * 20)
-    
-        # Phase 1: Opportunistic Search
-        for day in opp_days:
+    found = []
+    POOL_CAP = max(20, num_suggestions_to_find * 20)
+
+    # Phase 1: Opportunistic Search
+    for day in opp_days:
+        slot = _find_slot_on_day(
+            day, boat, service_type, selected_ramp_id, crane_needed,
+            compiled_schedule, customer_id, trucks_to_search,
+            is_opportunistic_search=True
+        )
+        if slot:
+            found.append(slot)
+            # The break statement was here. It has been removed.
+
+    # Phase 2: Fallback Search
+    if len(found) < POOL_CAP:
+        for day in fb_days:
+            is_also_opportunistic = day in active_crane_days
             slot = _find_slot_on_day(
                 day, boat, service_type, selected_ramp_id, crane_needed,
                 compiled_schedule, customer_id, trucks_to_search,
-                is_opportunistic_search=True
+                is_opportunistic_search=is_also_opportunistic
             )
             if slot:
                 found.append(slot)
-                # Do NOT break here, keep searching for all opportunistic days
-    
-        # Phase 2: Fallback Search
-        # Only search fallback days if we haven't found enough slots yet
-        if len(found) < POOL_CAP:
-            for day in fb_days:
-                is_also_opportunistic = day in active_crane_days
-                slot = _find_slot_on_day(
-                    day, boat, service_type, selected_ramp_id, crane_needed,
-                    compiled_schedule, customer_id, trucks_to_search,
-                    is_opportunistic_search=is_also_opportunistic
-                )
-                if slot:
-                    found.append(slot)
-                # Do NOT break here either
-    
-        # After both search phases are complete, check if any slots were found
-        if found:
-            best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
-            msg = f"Found slots with {search_message_type} truck."
-            return (best, msg)
-        return ([], None)
+            # The break statement was here. It has been removed.
+
+    if found:
+        # Select the top 'num_suggestions_to_find' from ALL found slots
+        best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
+        msg = f"Found slots with {search_message_type} truck."
+        return (best, msg)
+    return ([], None)
 
     found_slots, message = [], None
     trucks_to_try = preferred_trucks if boat.preferred_truck_id else other_trucks
