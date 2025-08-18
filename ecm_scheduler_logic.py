@@ -1742,7 +1742,7 @@ def _select_best_slots(all_found_slots, compiled_schedule, daily_last_locations,
     """
     # Tunable weights for the AnyTide prime-day preference
     ANYTIDE_PRIME_BONUS = 20.0
-    NON_ANYTIDE_PRIME_PENALTY = 15.0
+    NON_ANYTIDE_PRIME_PENALTY = 15.0 # <-- ADD THIS CONSTANT
 
     total_now = _total_jobs_from_compiled_schedule(compiled_schedule)
     after_threshold = total_now >= 25
@@ -1759,26 +1759,23 @@ def _select_best_slots(all_found_slots, compiled_schedule, daily_last_locations,
 
         # -------- AnyTide prime-day nudge (soft) --------
         try:
-            # Expecting slot fields:
-            #   s['date'] -> dt.date (or datetime -> we coerce to .date())
-            #   s['ramp_id'] -> ramp identifier
             slot_date = s.get("date")
-            if hasattr(slot_date, "date"):  # datetime -> date
+            if hasattr(slot_date, "date"):
                 slot_date = slot_date.date()
 
             ramp_id = s.get("ramp_id")
             if slot_date and ramp_id:
                 station_id = _station_for_ramp_or_scituate(ramp_id)
-                prime_days = get_low_tide_prime_days(station_id, slot_date, slot_date)  # set of 0/1 day
+                prime_days = get_low_tide_prime_days(station_id, slot_date, slot_date)
                 if slot_date in prime_days:
                     ramp_obj = get_ramp_details(ramp_id)
                     tide_method = getattr(ramp_obj, "tide_method", None) or getattr(ramp_obj, "tide_rule", None)
+                    # V-- THIS IS THE MODIFIED LOGIC --V
                     if str(tide_method) == "AnyTide":
                         sc += ANYTIDE_PRIME_BONUS
                     else:
                         sc -= NON_ANYTIDE_PRIME_PENALTY
         except Exception:
-            # Fail-safe: if anything goes weird in nudge logic, ignore the nudge
             pass
         # -------- end AnyTide nudge --------
 
