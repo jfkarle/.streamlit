@@ -2010,7 +2010,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     if opp_window or fb_days:
         span_start = min([*opp_window, *fb_days]) if (opp_window or fb_days) else requested_date
-        span_end   = max([*opp_window, *fb_days]) if (opp_window or fb_days) else requested_date
+        span_end = max([*opp_window, *fb_days]) if (opp_window or fb_days) else requested_date
     else:
         span_start = span_end = requested_date
 
@@ -2031,39 +2031,36 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     fb_days = order_dates_with_low_tide_bias(requested_date, fb_days, prime_days)
 
     def _run_search(trucks_to_search, search_message_type):
-    found = []
-    POOL_CAP = max(20, num_suggestions_to_find * 20)
+        found = []
+        POOL_CAP = max(20, num_suggestions_to_find * 20)
 
-    # Phase 1: Opportunistic Search
-    for day in opp_days:
-        slot = _find_slot_on_day(
-            day, boat, service_type, selected_ramp_id, crane_needed,
-            compiled_schedule, customer_id, trucks_to_search,
-            is_opportunistic_search=True
-        )
-        if slot:
-            found.append(slot)
-            # The break statement was here. It has been removed.
-
-    # Phase 2: Fallback Search
-    if len(found) < POOL_CAP:
-        for day in fb_days:
-            is_also_opportunistic = day in active_crane_days
+        # Phase 1: Opportunistic Search
+        for day in opp_days:
             slot = _find_slot_on_day(
                 day, boat, service_type, selected_ramp_id, crane_needed,
                 compiled_schedule, customer_id, trucks_to_search,
-                is_opportunistic_search=is_also_opportunistic
+                is_opportunistic_search=True
             )
             if slot:
                 found.append(slot)
-            # The break statement was here. It has been removed.
 
-    if found:
-        # Select the top 'num_suggestions_to_find' from ALL found slots
-        best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
-        msg = f"Found slots with {search_message_type} truck."
-        return (best, msg)
-    return ([], None)
+        # Phase 2: Fallback Search
+        if len(found) < POOL_CAP:
+            for day in fb_days:
+                is_also_opportunistic = day in active_crane_days
+                slot = _find_slot_on_day(
+                    day, boat, service_type, selected_ramp_id, crane_needed,
+                    compiled_schedule, customer_id, trucks_to_search,
+                    is_opportunistic_search=is_also_opportunistic
+                )
+                if slot:
+                    found.append(slot)
+
+        if found:
+            best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
+            msg = f"Found slots with {search_message_type} truck."
+            return (best, msg)
+        return ([], None)
 
     found_slots, message = [], None
     trucks_to_try = preferred_trucks if boat.preferred_truck_id else other_trucks
@@ -2079,7 +2076,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return (found_slots, message, [], False)
 
     if prime_days:
-        # Fallback retry logic if reservation blocked all possible slots
+    # Fallback retry logic if reservation blocked all possible slots
         if ramp and _is_anytide_ramp(ramp):
             _log_debug("Retrying search with prime-day restriction disabled...")
             retry_fb_days = sorted(set(fb_days + opp_days))
@@ -2097,7 +2094,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                         if len(retry_found) >= num_suggestions_to_find:
                             break
                 return retry_found
-            
+        
             retry_slots = retry_search()
             if retry_slots:
                 best = _select_best_slots(retry_slots, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
