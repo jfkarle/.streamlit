@@ -2035,34 +2035,30 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     fb_days = order_dates_with_low_tide_bias(requested_date, fb_days, prime_days)
 
     def _run_search(trucks_to_search, search_message_type):
-        found = []
-        POOL_CAP = max(20, num_suggestions_to_find * 20)
+    found = []
+    POOL_CAP = max(20, num_suggestions_to_find * 20)
 
-        # Phase 1: Opportunistic Search
-        for day in opp_days:
-            if day in prime_days and ramp and not _is_anytide_ramp(ramp):
-                continue
+    # Phase 1: Opportunistic Search
+    for day in opp_days:
+        slot = _find_slot_on_day(
+            day, boat, service_type, selected_ramp_id, crane_needed,
+            compiled_schedule, customer_id, trucks_to_search,
+            is_opportunistic_search=True
+        )
+        if slot:
+            found.append(slot)
+            if len(found) >= POOL_CAP:
+                break
+
+    # Phase 2: Fallback Search
+    if len(found) < POOL_CAP:
+        for day in fb_days:
+            is_also_opportunistic = day in active_crane_days
             slot = _find_slot_on_day(
                 day, boat, service_type, selected_ramp_id, crane_needed,
                 compiled_schedule, customer_id, trucks_to_search,
-                is_opportunistic_search=True
+                is_opportunistic_search=is_also_opportunistic
             )
-            if slot:
-                found.append(slot)
-                if len(found) >= POOL_CAP:
-                    break
-
-        # Phase 2: Fallback Search
-        if len(found) < POOL_CAP:
-            for day in fb_days:
-                if day in prime_days and ramp and not _is_anytide_ramp(ramp):
-                    continue
-                is_also_opportunistic = day in active_crane_days
-                slot = _find_slot_on_day(
-                    day, boat, service_type, selected_ramp_id, crane_needed,
-                    compiled_schedule, customer_id, trucks_to_search,
-                    is_opportunistic_search=is_also_opportunistic
-                )
                 if slot:
                     found.append(slot)
                     if len(found) >= POOL_CAP:
