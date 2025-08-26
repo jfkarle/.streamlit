@@ -2126,8 +2126,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             )
             if slot:
                 pool.append(slot)
+                _log_debug(f"✓ Slot found on {day} (total now {len(pool)})")
                 if len(pool) >= k:
                     return True
+            else:
+                _log_debug(f"– No valid slot on {day}")
         return False
 
     # Preferred first, then others (only if allowed)
@@ -2135,6 +2138,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     while len(pool) < k and radius <= FALLBACK_MAX_RADIUS:
         days = [requested_date + dt.timedelta(days=offset)
                 for offset in range(-radius, radius+1)]
+        _log_debug(f"Expanding search to ±{radius} days (currently {len(pool)} slot(s) found)")
+
         if preferred_trucks:
             if _search_dates(days, preferred_trucks, is_opportunistic=False):
                 break
@@ -2147,6 +2152,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         best = _select_best_slots(
             pool, compiled_schedule, daily_last_locations, k=k
         )
+        _log_debug(f"Guaranteed fallback finished after ±{radius} days with {len(best)} slot(s).")
         return (
             best,
             f"Expanded search ±{radius} days to guarantee {len(best)} option(s).",
@@ -2154,6 +2160,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             False
         )
 
+    _log_debug(f"Guaranteed fallback failed: no slots after ±{FALLBACK_MAX_RADIUS} days.")
     return (
         [],
         "No slots found after searching ±60 days. "
