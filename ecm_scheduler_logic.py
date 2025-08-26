@@ -2079,11 +2079,12 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return (found_slots, message, [], False)
 
     if prime_days:
-    # Fallback retry logic if reservation blocked all possible slots
+        # Fallback retry logic if reservation blocked all possible slots
         if ramp and _is_anytide_ramp(ramp):
             _log_debug("Retrying search with prime-day restriction disabled...")
             retry_fb_days = sorted(set(fb_days + opp_days))
             retry_fb_days = order_dates_with_low_tide_bias(requested_date, retry_fb_days, set())
+
             def retry_search():
                 retry_found = []
                 for day in retry_fb_days:
@@ -2100,10 +2101,66 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
             retry_slots = retry_search()
             if retry_slots:
-                best = _select_best_slots(retry_slots, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
+                best = _select_best_slots(
+                    retry_slots, compiled_schedule, daily_last_locations,
+                    k=num_suggestions_to_find
+                )
                 return (best, "Reservation logic was relaxed to offer these options.", [], False)
-    
-    return ([], "No slots found. Note: low-tide prime days (11:00–13:00) are reserved for AnyTide ramps.", [], True)
+
+    # --- GUARANTEED FALLBACK: expand search radius until we have k slots ---
+    k = max(1, int(num_suggestions_to_find or 3))
+    FALLBACK_MAX_RADIUS = 60            # days
+    FALLBACK_STEP = 5                   # grow radius in 5-day chunks
+    checked_dates = set()
+    pool = []
+
+    def _search_dates(dates, trucks, is_opportunistic=False):
+        for day in dates:
+            if day in checked_dates:
+                continue
+            checked_dates.add(day)
+            slot = _find_slot_on_day(
+                day, boat, service_type, selected_ramp_id, crane_needed,
+                compiled_schedule, customer_id, trucks,
+                is_opportunistic_search=is_opportunistic
+            )
+            if slot:
+                pool.append(slot)
+                if len(pool) >= k:
+                    return True
+        return False
+
+    # Preferred first, then others (only if allowed)
+    radius = 7
+    while len(pool) < k and radius <= FALLBACK_MAX_RADIUS:
+        days = [requested_date + dt.timedelta(days=offset)
+                for offset in range(-radius, radius+1)]
+        if preferred_trucks:
+            if _search_dates(days, preferred_trucks, is_opportunistic=False):
+                break
+        if relax_truck_preference and other_trucks:
+            if _search_dates(days, other_trucks, is_opportunistic=False):
+                break
+        radius += FALLBACK_STEP
+
+    if pool:
+        best = _select_best_slots(
+            pool, compiled_schedule, daily_last_locations, k=k
+        )
+        return (
+            best,
+            f"Expanded search ±{radius} days to guarantee {len(best)} option(s).",
+            DEBUG_MESSAGES,
+            False
+        )
+
+    return (
+        [],
+        "No slots found after searching ±60 days. "
+        "(Note: we only *prioritize* 11:00–13:00 low-tide days for AnyTide ramps; it is not a hard block.)",
+        DEBUG_MESSAGES,
+        True
+    )
 
 
 # --- Seasonal batch generator (Spring/Fall), sequential dates, safe if fewer boats remain ---
