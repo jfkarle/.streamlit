@@ -2061,7 +2061,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
         if found:
             best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
-            msg = f"Found slots with {search_message_type} truck."
+            msg = f"Found {len(best)} slot(s) using {search_message_type} truck."
             return (best, msg)
         return ([], None)
 
@@ -2101,11 +2101,8 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         
             retry_slots = retry_search()
             if retry_slots:
-                best = _select_best_slots(
-                    retry_slots, compiled_schedule, daily_last_locations,
-                    k=num_suggestions_to_find
-                )
-                return (best, "Reservation logic was relaxed to offer these options.", [], False)
+                best = _select_best_slots(retry_slots, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
+                return (best, f"Prime-day reservation relaxed — {len(best)} slot(s) available.", [], False)
 
     # --- GUARANTEED FALLBACK: expand search radius until we have k slots ---
     k = max(1, int(num_suggestions_to_find or 3))
@@ -2148,23 +2145,20 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                 break
         radius += FALLBACK_STEP
 
+    used_radius = min(radius, FALLBACK_MAX_RADIUS)
     if pool:
-        best = _select_best_slots(
-            pool, compiled_schedule, daily_last_locations, k=k
-        )
-        _log_debug(f"Guaranteed fallback finished after ±{radius} days with {len(best)} slot(s).")
+        best = _select_best_slots(pool, compiled_schedule, daily_last_locations, k=k)
+        _log_debug(f"Guaranteed fallback finished after ±{used_radius} days with {len(best)} slot(s).")
         return (
             best,
-            f"Expanded search ±{radius} days to guarantee {len(best)} option(s).",
+            f"Expanded search ±{used_radius} days — {len(best)} slot(s) found.",
             DEBUG_MESSAGES,
             False
         )
-
     _log_debug(f"Guaranteed fallback failed: no slots after ±{FALLBACK_MAX_RADIUS} days.")
     return (
         [],
-        "No slots found after searching ±60 days. "
-        "(Note: we only *prioritize* 11:00–13:00 low-tide days for AnyTide ramps; it is not a hard block.)",
+        f"No slots found after searching ±{FALLBACK_MAX_RADIUS} days.",
         DEBUG_MESSAGES,
         True
     )
