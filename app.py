@@ -831,11 +831,20 @@ def show_scheduler_page():
         return
 
     # --- EXISTING LOGIC: Message Handling ---
+    # --- EXISTING LOGIC: Message Handling (patched for dynamic banner) ---
     if info_msg := st.session_state.get('info_message'):
-        st.info(info_msg)
+        if st.session_state.get('found_slots'):
+            st.success(info_msg)   # slots found → green banner
+        elif st.session_state.get('was_forced_search'):
+            st.warning(info_msg)   # forced/fallback → yellow banner
+        else:
+            st.error(info_msg)     # nothing at all → red banner
+    
         if reasons := st.session_state.get('failure_reasons'):
             for reason in reasons:
                 st.warning(reason)
+
+        # clear one-time messages
         st.session_state.info_message = ""
         st.session_state.failure_reasons = []
 
@@ -948,10 +957,7 @@ def show_scheduler_page():
                     st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
                     st.session_state.failure_reasons = warnings
                     st.session_state.was_forced_search = forced
-                    st.session_state.current_job_request = {
-                        'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'service_type': service_type,
-                        'requested_date_str': req_date.strftime("%Y-%m-%d"), 'ignore_forced_search': override
-                    }
+                    st.session_state.current_job_request = {...}
                     st.session_state.search_requested_date = req_date
                     st.session_state.info_message = msg
                     st.session_state.conflict_warning_details = None
