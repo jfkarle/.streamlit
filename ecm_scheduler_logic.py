@@ -659,36 +659,39 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
 
 
 
-def find_slot_across_days(requested_date, ramp_id, boat, service_type, crane_needed, compiled_schedule, customer_id, trucks_to_check, num_suggestions_to_find):
+def find_slot_across_days(requested_date, ramp_id, boat, service_type, crane_needed,
+                          compiled_schedule, customer_id, trucks_to_check,
+                          num_suggestions_to_find):
     """
-    Tries multiple days near the requested_date to find a valid slot,
-    collecting up to a maximum number of suggestions.
+    Keep searching around the requested date until we have at least k slots.
+    Searches forward AND backward, expanding the radius as needed.
     """
-    found_slots = []
-    
-    def _get_range(ramp_id):
+    k = max(1, int(num_suggestions_to_find or 3))
+    found = []
+    # Base span chosen by ramp tide method; this is just the first pass.
+    def _base_span(ramp_id):
         ramp = ECM_RAMPS.get(ramp_id)
         method = getattr(ramp, "tide_calculation_method", "AnyTide")
-        if method in ("HoursAroundHighTide", "HoursAroundHighTide_WithDraftRule"):
-            return 15
-        elif method == "AnyTideWithDraftRule":
-            return 10
-        return 6
+        return 6 if method == "AnyTide" else (10 if method == "AnyTideWithDraftRule" else 15)
 
-    days_to_try = _get_range(ramp_id)
+    # Expand outward until we have k or we’ve gone pretty far
+    max_radius = 45  # safety ceiling
+    radius = _base_span(ramp_id)
+    while len(found) < k and radius <= max_radius:
+        search_order = _generate_day_search_order(requested_date, radius, radius)
+        for day in search_order:
+            # Skip dates we already tried (avoid duplicates on expansion)
+            if any(s["date"] == day for s in found):
+                continue
+            slot = _find_slot_on_day(day, boat, service_type, ramp_id, crane_needed,
+                                     compiled_schedule, customer_id, trucks_to_check)
+            if slot:
+                found.append(slot)
+                if len(found) >= k:
+                    break
+        radius += 5  # expand window in chunks
+    return found[:k]
 
-    for i in range(days_to_try):
-        check_date = requested_date + dt.timedelta(days=i)
-        slot = _find_slot_on_day(
-            check_date, boat, service_type, ramp_id, crane_needed,
-            compiled_schedule, customer_id, trucks_to_check
-        )
-        if slot:
-            found_slots.append(slot)
-            if len(found_slots) >= num_suggestions_to_find:
-                break  # Stop once we have enough
-
-    return found_slots
 
 
 def _generate_day_search_order(start_date, look_back, look_forward):
