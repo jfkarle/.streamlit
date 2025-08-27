@@ -952,14 +952,31 @@ def show_scheduler_page():
                         service_type=service_type,
                         requested_date_str=req_date.strftime("%Y-%m-%d"),
                         selected_ramp_id=selected_ramp_id,
-                        num_suggestions_to_find=st.session_state.get('num_suggestions', 3)
+                        num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
+                        relax_truck_preference=st.session_state.get("relax_truck_preference", False),
                     )
+                
                     st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
                     st.session_state.failure_reasons = warnings
                     st.session_state.was_forced_search = forced
-                    st.session_state.current_job_request = {...}
+                    st.session_state.current_job_request = {
+                        "customer_id": customer.customer_id,
+                        "boat_id": boat.boat_id,
+                        "service_type": service_type,
+                        "requested_date": req_date,
+                        "selected_ramp_id": selected_ramp_id,
+                    }
                     st.session_state.search_requested_date = req_date
                     st.session_state.info_message = msg
+                
+                    # NEW: build the custom heading text
+                    ramp_obj = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None   # NEW
+                    ramp_name = getattr(ramp_obj, "ramp_name", getattr(ramp_obj, "name", "Selected Ramp"))  # NEW
+                    st.session_state.slot_search_heading = (                                             # NEW
+                        f"Finding a slot for {customer.display_name} "
+                        f"on {req_date.strftime('%A, %B %d, %Y')} "
+                        f"with HIGH TIDE at {ramp_name}"
+                    )
                     st.session_state.conflict_warning_details = None
 
     # --- SLOT DISPLAY AND PAGINATION (remains unchanged) ---
