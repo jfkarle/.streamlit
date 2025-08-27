@@ -1018,13 +1018,31 @@ def show_scheduler_page():
             )
             if new_id:
                 st.session_state.confirmation_message = message
-                svc = st.session_state.current_job_request['service_type']
-                if svc in ["Launch", "Haul"]:
-                    customer = ecm.get_customer_details(slot.customer_id); boat = ecm.get_boat_details(slot.boat_id)
-                    st.session_state.last_seasonal_job = {'customer_id': customer.customer_id, 'boat_id': boat.boat_id, 'original_service': svc}
-                for key in ['found_slots', 'selected_slot', 'current_job_request', 'search_requested_date', 'rebooking_details', 'failure_reasons', 'was_forced_search']:
+                # --- robust context (works even if current_job_request is absent) ---
+                ctx      = st.session_state.get('current_job_request') or {}
+                svc      = ctx.get('service_type') or getattr(slot, "service_type", slot.raw_data.get("service_type"))
+                cust_id  = ctx.get('customer_id')  or getattr(slot, "customer_id", slot.raw_data.get("customer_id"))
+                boat_id  = ctx.get('boat_id')      or getattr(slot, "boat_id", slot.raw_data.get("boat_id"))
+        
+                # Seasonal follow-up prompt (Launch/Haul only)
+                if svc in ["Launch", "Haul"] and cust_id and boat_id:
+                    st.session_state.last_seasonal_job = {
+                        'customer_id': cust_id,
+                        'boat_id': boat_id,
+                        'original_service': svc
+                    }
+        
+                # Clear one-time state
+                for key in [
+                    'found_slots', 'selected_slot', 'current_job_request',
+                    'search_requested_date', 'rebooking_details',
+                    'failure_reasons', 'was_forced_search'
+                ]:
                     st.session_state.pop(key, None)
+        
                 st.rerun()
+            else:
+                st.error(message or "Failed to schedule this job.")
                 
 def show_reporting_page():
     """
