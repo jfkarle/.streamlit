@@ -247,6 +247,46 @@ class Job:
         return self.scheduled_end_datetime
 
 ### Helpers
+
+# --- Public helper: probe the exact requested day once ---
+def probe_requested_date_slot(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, relax_truck_preference=False):
+    """
+    Returns a single slot dict for the exact requested date if feasible, else None.
+    Tries preferred trucks first, then (optionally) other suitable trucks.
+    """
+    if not requested_date_str:
+        return None
+    try:
+        requested_date = dt.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+    fetch_scheduled_jobs()
+    compiled_schedule, _ = _compile_truck_schedules(SCHEDULED_JOBS)
+
+    boat = get_boat_details(boat_id)
+    if not boat:
+        return None
+
+    crane_needed = "Sailboat" in boat.boat_type
+    all_suitable = get_suitable_trucks(boat.boat_length)
+    preferred, others = [], []
+    if boat.preferred_truck_id:
+        for t in all_suitable:
+            (preferred if t.truck_name == boat.preferred_truck_id else others).append(t)
+    else:
+        others = all_suitable
+
+    def _try(trucks):
+        if not trucks:
+            return None
+        return _find_slot_on_day(
+            requested_date, boat, service_type, selected_ramp_id, crane_needed,
+            compiled_schedule, customer_id, trucks, is_opportunistic_search=False
+        )
+
+    return _try(preferred) or (_try(others) if relax_truck_preference else None)
+
 # --- HARD CONSTRAINTS + SCORING UPGRADE PACK ---
 
 import math
