@@ -972,12 +972,27 @@ def show_scheduler_page():
                     ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
                     ramp_name = getattr(ramp_obj, "ramp_name", getattr(ramp_obj, "name", "Selected Ramp"))
                     cust_name = getattr(customer, "customer_name", None) or getattr(customer, "display_name", "Selected Customer")
+                    date_str  = req_date.strftime("%B %d, %Y")
                     
-                    date_str = req_date.strftime("%B %d, %Y")  # e.g., April 17, 2025
+                    ht_str = "N/A"
+                    try:
+                        # Get tide station for this ramp (fallback to Scituate if none)
+                        station_id = ecm._station_for_ramp_or_scituate(str(selected_ramp_id)) if selected_ramp_id else None
+                        tides_by_day = ecm.fetch_noaa_tides_for_range(station_id, req_date, req_date) if station_id else {}
+                        events = tides_by_day.get(req_date, []) or []
+                    
+                        # Pick the high tide closest to midday (same rule used in slot cards)
+                        highs = [e.get("time") for e in events if e.get("type") == "H" and hasattr(e.get("time"), "hour")]
+                        if highs:
+                            primary = sorted(highs, key=lambda t: abs(t.hour - 12))[0]
+                            ht_str = ecm.format_time_for_display(primary)
+                    except Exception as ex:
+                        # Don’t blow up the UI; log to your existing debug buffer
+                        ecm.DEBUG_MESSAGES.append(f"Header high tide lookup failed: {ex}")
+                    
                     st.session_state.slot_search_heading = (
-                        f"Finding a slot for {cust_name} on {date_str} with HIGH TIDE at {ramp_name}"
+                        f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
                     )
-                    st.session_state.conflict_warning_details = None
 
     # --- SLOT DISPLAY AND PAGINATION (remains unchanged) ---
     if st.session_state.get('found_slots') and not st.session_state.get('selected_slot'):
