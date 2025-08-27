@@ -968,12 +968,14 @@ def show_scheduler_page():
                     }
                     st.session_state.search_requested_date = req_date
                     st.session_state.info_message = msg
-                
+
+                    # Build pieces for the heading
                     ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
                     ramp_name = getattr(ramp_obj, "ramp_name", getattr(ramp_obj, "name", "Selected Ramp"))
                     cust_name = getattr(customer, "customer_name", None) or getattr(customer, "display_name", "Selected Customer")
                     date_str  = req_date.strftime("%B %d, %Y")
                     
+                    # -------- Tide lookup (this is the TRY block) --------
                     ht_str = "N/A"
                     try:
                         # Get tide station for this ramp (fallback to Scituate if none)
@@ -981,46 +983,99 @@ def show_scheduler_page():
                         tides_by_day = ecm.fetch_noaa_tides_for_range(station_id, req_date, req_date) if station_id else {}
                         events = tides_by_day.get(req_date, []) or []
                     
-                        # Pick the high tide closest to midday (same rule used in slot cards)
+                        # Pick the high tide closest to midday
                         highs = [e.get("time") for e in events if e.get("type") == "H" and hasattr(e.get("time"), "hour")]
                         if highs:
                             primary = sorted(highs, key=lambda t: abs(t.hour - 12))[0]
                             ht_str = ecm.format_time_for_display(primary)
                     except Exception as ex:
-                        # Don’t blow up the UI; log to your existing debug buffer
                         ecm.DEBUG_MESSAGES.append(f"Header high tide lookup failed: {ex}")
+                    # -------- end TRY block --------
                     
+                    # Now set the heading using the tide time we just computed
                     st.session_state.slot_search_heading = (
                         f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
                     )
 
-    # --- SLOT DISPLAY AND PAGINATION (remains unchanged) ---
+    # --- SLOT DISPLAY (Requested first, then Preferred/Ideal Crane Days) ---
     if st.session_state.get('found_slots') and not st.session_state.get('selected_slot'):
-        found = st.session_state.found_slots
-        total, page, per_page = len(found), st.session_state.get('slot_page_index', 0), 3
-
+        requested_raw = st.session_state.get('requested_slot')
+        preferred = st.session_state.get('found_slots', [])
+    
+        # Heading stays
         st.subheader(st.session_state.get("slot_search_heading", "Select a Slot"))
+    
+        # (4) Friendly explainer line if we have a separate requested-day option
+        if requested_raw:
+            st.caption(
+                "Requested day can work, but it's **not** an *Ideal Crane Day*. "
+                "We show it below as **CAN DO (not preferred)**, followed by **Preferred dates** (*Ideal Crane Days*)."
+            )
+    
+        # --- REQUESTED DATE (single card) ---
+        if requested_raw:
+            req_slot = SlotDetail(requested_raw)
+            st.markdown("##### Requested date · CAN DO (not preferred)")
+            with st.container(border=True):
+                col1, col2, col3 = st.columns((2, 3, 2))
+    
+                with col1:
+                    ramp_display_name = req_slot.ramp_name
+                    if req_slot.get('is_piggyback'):
+                        ramp_display_name += " (Efficient Slot ⚡️)"
+                    st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
+                    st.markdown(f"**🗓️ Date & Time**<br>{req_slot.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
+    
+                with col2:
+                    draft_value = req_slot.raw_data.get('boat_draft')
+                    draft_str = f\"{draft_value:.1f}'\" if isinstance(draft_value, (int, float)) else "N/A"
+                    st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
+                    tide_rule = req_slot.raw_data.get('tide_rule_concise', 'N/A')
+                    st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
+                    tide_times = req_slot.raw_data.get('high_tide_times', [])
+                    primary_tide = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
+                    primary_tide_str = ecm.format_time_for_display(primary_tide) if primary_tide else "N/A"
+                    st.markdown(f"**🔑 Key High Tide**<br>{primary_tide_str}", unsafe_allow_html=True)
+    
+                with col3:
+                    st.markdown(f"**🚚 Truck**<br>{req_slot.truck_name}", unsafe_allow_html=True)
+                    crane_needed = "S17 (Required)" if req_slot.raw_data.get('S17_needed') else "Not Required"
+                    st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
+                    st.button("Select", key=f"sel_req_{req_slot.slot_id}", use_container_width=True,
+                              on_click=lambda s=req_slot: st.session_state.__setitem__('selected_slot', s))
+    
+            st.divider()
+    
+        # --- PREFERRED DATES (Ideal Crane Days) with pagination ---
+        total = len(preferred)
+        page = st.session_state.get('slot_page_index', 0)
+        per_page = 3
+    
+        st.markdown("##### Preferred dates · Ideal Crane Days")
         cols = st.columns([1,1,5,1,1])
         cols[0].button("← Prev", on_click=lambda: st.session_state.update(slot_page_index=max(page-1, 0)))
         cols[1].button("Next →", on_click=lambda: st.session_state.update(slot_page_index=min(page+1, (total-1)//per_page)))
-        if total: cols[3].write(f"{page*per_page+1}–{min((page+1)*per_page, total)} of {total}")
-        
-        for slot in found[page*per_page:(page+1)*per_page]:
+        if total:
+            cols[3].write(f"{page*per_page+1}–{min((page+1)*per_page, total)} of {total}")
     
-            st.json(slot.raw_data) 
-
+        for slot in preferred[page*per_page:(page+1)*per_page]:
+            # st.json(slot.raw_data)  # (optional) keep off to reduce noise
             with st.container(border=True):
                 col1, col2, col3 = st.columns((2, 3, 2))
-        
+    
                 with col1:
                     ramp_display_name = slot.ramp_name
                     if slot.get('is_piggyback'):
                         ramp_display_name += " (Efficient Slot ⚡️)"
                     st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
-                    st.markdown(f"**🗓️ Date & Time**<br>{slot.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
-        
+                    st.markdown(
+                        f"**🗓️ Date & Time**<br>{slot.start_datetime.strftime('%b %d, %Y at %I:%M %p')}",
+                        unsafe_allow_html=True
+                    )
+    
                 with col2:
-                    draft_value = slot.raw_data.get('boat_draft'); draft_str = f"{draft_value:.1f}'" if isinstance(draft_value, (int, float)) else "N/A"
+                    draft_value = slot.raw_data.get('boat_draft')
+                    draft_str = f\"{draft_value:.1f}'\" if isinstance(draft_value, (int, float)) else "N/A"
                     st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
                     tide_rule = slot.raw_data.get('tide_rule_concise', 'N/A')
                     st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
@@ -1028,12 +1083,13 @@ def show_scheduler_page():
                     primary_tide = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
                     primary_tide_str = ecm.format_time_for_display(primary_tide) if primary_tide else "N/A"
                     st.markdown(f"**🔑 Key High Tide**<br>{primary_tide_str}", unsafe_allow_html=True)
-        
+    
                 with col3:
                     st.markdown(f"**🚚 Truck**<br>{slot.truck_name}", unsafe_allow_html=True)
                     crane_needed = "S17 (Required)" if slot.raw_data.get('S17_needed') else "Not Required"
                     st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
-                    st.button("Select", key=f"sel_{slot.slot_id}", use_container_width=True, on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
+                    st.button("Select", key=f"sel_{slot.slot_id}", use_container_width=True,
+                              on_click=lambda s=slot: st.session_state.__setitem__('selected_slot', s))
             
     # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
     if st.session_state.get('selected_slot'):
