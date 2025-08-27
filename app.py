@@ -969,15 +969,13 @@ def show_scheduler_page():
                     st.session_state.search_requested_date = req_date
                     st.session_state.info_message = msg
                 
-                    # ▼▼ INSERT THESE LINES *RIGHT HERE* ▼▼
                     ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
                     ramp_name = getattr(ramp_obj, "ramp_name", getattr(ramp_obj, "name", "Selected Ramp"))
                     cust_name = getattr(customer, "customer_name", None) or getattr(customer, "display_name", "Selected Customer")
-                
+                    
+                    date_str = req_date.strftime("%B %d, %Y")  # e.g., April 17, 2025
                     st.session_state.slot_search_heading = (
-                        f"Finding a slot for {cust_name} "
-                        f"on {req_date.strftime('%A, %B %d, %Y')} "
-                        f"with HIGH TIDE at {ramp_name}"
+                        f"Finding a slot for {cust_name} on {date_str} with HIGH TIDE at {ramp_name}"
                     )
                     st.session_state.conflict_warning_details = None
 
