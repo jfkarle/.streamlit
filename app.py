@@ -1019,10 +1019,34 @@ def show_scheduler_page():
             if new_id:
                 st.session_state.confirmation_message = message
                 # --- robust context (works even if current_job_request is absent) ---
-                ctx      = st.session_state.get('current_job_request') or {}
-                svc      = ctx.get('service_type') or getattr(slot, "service_type", slot.raw_data.get("service_type"))
-                cust_id  = ctx.get('customer_id')  or getattr(slot, "customer_id", slot.raw_data.get("customer_id"))
-                boat_id  = ctx.get('boat_id')      or getattr(slot, "boat_id", slot.raw_data.get("boat_id"))
+                # --- robust context (works even if current_job_request is absent or not a dict) ---
+                ctx = st.session_state.get('current_job_request')
+                if not isinstance(ctx, dict):
+                    ctx = {}
+        
+                def pick(*vals):
+                    for v in vals:
+                        if v not in (None, "", "N/A"):
+                            return v
+                    return None
+        
+                svc = pick(
+                    ctx.get('service_type'),
+                    getattr(slot, "service_type", None),
+                    getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("service_type")
+                )
+        
+                cust_id = pick(
+                    ctx.get('customer_id'),
+                    getattr(slot, "customer_id", None),
+                    getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("customer_id")
+                )
+        
+                boat_id = pick(
+                    ctx.get('boat_id'),
+                    getattr(slot, "boat_id", None),
+                    getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("boat_id")
+                )
         
                 # Seasonal follow-up prompt (Launch/Haul only)
                 if svc in ["Launch", "Haul"] and cust_id and boat_id:
