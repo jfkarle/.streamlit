@@ -384,7 +384,13 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
     pickup_id= str(slot.get("pickup_ramp_id") or ramp_id)
     drop_id  = str(slot.get("dropoff_ramp_id") or "")
 
-    todays = (compiled_schedule.get(truck_id, {}) or {}).get(date, [])
+    # Robust: support {truck_id: {date: [..]}} OR {truck_id: [(start_dt, end_dt), ...]}
+    raw_sched = compiled_schedule.get(truck_id, [])
+    if isinstance(raw_sched, dict):
+        todays = raw_sched.get(date, [])
+    else:
+        # filter this truck's intervals to the current date
+        todays = [iv for iv in raw_sched if iv and hasattr(iv[0], "date") and iv[0].date() == date]
     n = len(todays)
     if n == 0: score += 2.0
     if n == 1: score += 6.0
