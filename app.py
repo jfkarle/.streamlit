@@ -984,7 +984,7 @@ def show_scheduler_page():
         found = st.session_state.found_slots
         total, page, per_page = len(found), st.session_state.get('slot_page_index', 0), 3
 
-        st.subheader("Select a Slot:")
+        st.subheader(st.session_state.get("slot_search_heading", "Select a Slot"))
         cols = st.columns([1,1,5,1,1])
         cols[0].button("← Prev", on_click=lambda: st.session_state.update(slot_page_index=max(page-1, 0)))
         cols[1].button("Next →", on_click=lambda: st.session_state.update(slot_page_index=min(page+1, (total-1)//per_page)))
