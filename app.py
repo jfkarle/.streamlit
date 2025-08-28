@@ -67,9 +67,6 @@ def render_slot_lists():
     requested_raw = st.session_state.get('requested_slot')
 
     # If requested_slot wasn't computed yet, try to compute it now (safe fallback)
-    if requested_raw is None:
-        try:
-            # If requested_slot wasn't computed yet, try to compute it now (safe fallback)
         if requested_raw is None:
             try:
                 ctx = st.session_state.get("current_job_request", {}) or {}
