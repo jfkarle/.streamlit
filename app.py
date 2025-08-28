@@ -69,39 +69,53 @@ def render_slot_lists():
     # If requested_slot wasn't computed yet, try to compute it now (safe fallback)
     if requested_raw is None:
         try:
-            # Build a robust YYYY-MM-DD for requested date
-            _rd = ctx.get("requested_date")
-            if isinstance(_rd, (datetime.date, datetime.datetime)):
-                _requested_date_str = _rd.strftime("%Y-%m-%d")
-            elif isinstance(_rd, str) and _rd:
-                # handle "YYYY-MM-DDTHH:MM" style
-                _requested_date_str = _rd.split("T")[0][:10]
-            else:
-                _requested_date_str = ""
+            # If requested_slot wasn't computed yet, try to compute it now (safe fallback)
+        if requested_raw is None:
+            try:
+                ctx = st.session_state.get("current_job_request", {}) or {}
+                if ctx:
+                    req_slot_dict = getattr(ecm, "probe_requested_date_slot", None)
+                    if callable(req_slot_dict):
+                        # Build a robust YYYY-MM-DD for requested date
+                        _rd = ctx.get("requested_date")
+                        if isinstance(_rd, (datetime.date, datetime.datetime)):
+                            _requested_date_str = _rd.strftime("%Y-%m-%d")
+                        elif isinstance(_rd, str) and _rd:
+                            # handle "YYYY-MM-DDTHH:MM" style
+                            _requested_date_str = _rd.split("T")[0][:10]
+                        else:
+                            _requested_date_str = ""
 
-            # IMPORTANT: use ramp_id (NOT selected_ramp_id)
-            can_do = ecm.probe_requested_date_slot(
-                customer_id=ctx.get("customer_id"),
-                boat_id=ctx.get("boat_id"),
-                service_type=ctx.get("service_type"),
-                requested_date_str=_requested_date_str,
-                ramp_id=ctx.get("selected_ramp_id") or ctx.get("ramp_id") or "",
-                relax_truck_preference=st.session_state.get("relax_truck_preference", False),
-                tide_policy=_tide_policy_from_ui() if '_tide_policy_from_ui' in globals() else {},
-            )
+                        # IMPORTANT: use ramp_id (NOT selected_ramp_id)
+                        can_do = ecm.probe_requested_date_slot(
+                            customer_id=ctx.get("customer_id"),
+                            boat_id=ctx.get("boat_id"),
+                            service_type=ctx.get("service_type"),
+                            requested_date_str=_requested_date_str,
+                            ramp_id=ctx.get("selected_ramp_id") or ctx.get("ramp_id") or "",
+                            relax_truck_preference=st.session_state.get("relax_truck_preference", False),
+                            tide_policy=_tide_policy_from_ui() if '_tide_policy_from_ui' in globals() else {},
+                        )
 
+                        # de-dupe against preferred list
+                        def _same(a, b):
+                            if not a or not b: 
+                                return False
+                            def getv(d, k):
+                                return d.get(k) if isinstance(d, dict) else getattr(d, k, None)
+                            return (
+                                str(getv(a,'date'))     == str(getv(b,'date')) and
+                                str(getv(a,'time'))     == str(getv(b,'time')) and
+                                str(getv(a,'ramp_id'))  == str(getv(b,'ramp_id')) and
+                                str(getv(a,'truck_id')) == str(getv(b,'truck_id'))
+                            )
 
-                    # IMPORTANT: use ramp_id= (NOT selected_ramp_id=)
-                    can_do = ecm.probe_requested_date_slot(
-                        customer_id=ctx.get("customer_id"),
-                        boat_id=ctx.get("boat_id"),
-                        service_type=ctx.get("service_type"),
-                        requested_date_str=_requested_date_str,
-                        ramp_id=ctx.get("selected_ramp_id") or ctx.get("ramp_id") or "",
-                        relax_truck_preference=st.session_state.get("relax_truck_preference", False),
-                        tide_policy=_tide_policy_from_ui() if '_tide_policy_from_ui' in globals() else {},
-                    )
-                    # de-dupe against preferred list
+                        if can_do and not any(_same(can_do, s.raw_data if hasattr(s, "raw_data") else s) for s in preferred):
+                            requested_raw = can_do
+                            st.session_state.requested_slot = can_do
+            except Exception:
+                # quiet fallback – requested stays None
+                pass
                     def _same(a, b):
                         if not a or not b: return False
                         def getv(d, k):
