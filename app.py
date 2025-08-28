@@ -968,6 +968,9 @@ def show_scheduler_page():
                     }
                     st.session_state.search_requested_date = req_date
                     st.session_state.info_message = msg
+                    # reset view state for fresh results
+                    st.session_state.pop('selected_slot', None)   # in case a prior selection was set
+                    st.session_state.slot_page_index = 0          # avoid empty slice from old page
 
                     # Build pieces for the heading
                     ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
@@ -1053,9 +1056,10 @@ def fmt_draft(val):
             st.divider()
     
         # --- PREFERRED DATES (Ideal Crane Days) with pagination ---
-        total = len(preferred)
-        page = st.session_state.get('slot_page_index', 0)
+        total = len(found)
         per_page = 3
+        # clamp page into valid range every render
+        page = min(st.session_state.get('slot_page_index', 0), max(0, (total - 1) // per_page))
     
         st.markdown("##### Preferred dates · Ideal Crane Days")
         cols = st.columns([1,1,5,1,1])
