@@ -69,20 +69,27 @@ def render_slot_lists():
     # If requested_slot wasn't computed yet, try to compute it now (safe fallback)
     if requested_raw is None:
         try:
-            ctx = st.session_state.get("current_job_request", {}) or {}
-            if ctx:
-                req_slot_dict = getattr(ecm, "probe_requested_date_slot", None)
-                if callable(req_slot_dict):
-                    can_do = ecm.probe_requested_date_slot(
-                        # Build a robust YYYY-MM-DD for requested date
-                    _rd = ctx.get("requested_date")
-                    if isinstance(_rd, (datetime.date, datetime.datetime)):
-                        _requested_date_str = _rd.strftime("%Y-%m-%d")
-                    elif isinstance(_rd, str) and _rd:
-                        # handle "YYYY-MM-DDTHH:MM" style
-                        _requested_date_str = _rd.split("T")[0][:10]
-                    else:
-                        _requested_date_str = ""
+            # Build a robust YYYY-MM-DD for requested date
+            _rd = ctx.get("requested_date")
+            if isinstance(_rd, (datetime.date, datetime.datetime)):
+                _requested_date_str = _rd.strftime("%Y-%m-%d")
+            elif isinstance(_rd, str) and _rd:
+                # handle "YYYY-MM-DDTHH:MM" style
+                _requested_date_str = _rd.split("T")[0][:10]
+            else:
+                _requested_date_str = ""
+
+            # IMPORTANT: use ramp_id (NOT selected_ramp_id)
+            can_do = ecm.probe_requested_date_slot(
+                customer_id=ctx.get("customer_id"),
+                boat_id=ctx.get("boat_id"),
+                service_type=ctx.get("service_type"),
+                requested_date_str=_requested_date_str,
+                ramp_id=ctx.get("selected_ramp_id") or ctx.get("ramp_id") or "",
+                relax_truck_preference=st.session_state.get("relax_truck_preference", False),
+                tide_policy=_tide_policy_from_ui() if '_tide_policy_from_ui' in globals() else {},
+            )
+
 
                     # IMPORTANT: use ramp_id= (NOT selected_ramp_id=)
                     can_do = ecm.probe_requested_date_slot(
