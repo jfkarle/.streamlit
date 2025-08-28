@@ -145,8 +145,7 @@ def render_slot_lists():
                 st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
                 st.button("Select", key=f"sel_{s.slot_id}", use_container_width=True,
                           on_click=lambda ss=s: st.session_state.__setitem__('selected_slot', ss))
-                
-def _load_data():
+\1def _load_data():
     # Try a few common names in case it was renamed
     for name in ("load_all_data_from_sheets", "load_data_from_sheets", "load_all_data", "load_data"):
         if hasattr(ecm, name):
@@ -168,8 +167,7 @@ class SlotDetail:
     """A wrapper class to make slot dictionaries easier to use in the UI."""
     def __init__(self, slot_dict):
         self.raw_data = slot_dict
-        
-        self.date = slot_dict.get('date')
+\1        self.date = slot_dict.get('date')
         self.time = slot_dict.get('time')
         self.truck_id = slot_dict.get('truck_id')
         self.ramp_id = slot_dict.get('ramp_id')
@@ -178,24 +176,19 @@ class SlotDetail:
             self.start_datetime = datetime.datetime.combine(self.date, self.time)
         else:
             self.start_datetime = None
-        
-        truck_obj = ecm.ECM_TRUCKS.get(self.truck_id)
+\1        truck_obj = ecm.ECM_TRUCKS.get(self.truck_id)
         self.truck_name = truck_obj.truck_name if truck_obj else "N/A"
-        
-        ramp_obj = ecm.get_ramp_details(str(self.ramp_id))
+\1        ramp_obj = ecm.get_ramp_details(str(self.ramp_id))
         self.ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
-        
-        self.slot_id = str(uuid.uuid4())
+\1        self.slot_id = str(uuid.uuid4())
         self.customer_id = slot_dict.get('customer_id', 'N/A')
         self.boat_id = slot_dict.get('boat_id', 'N/A')
         self.service_type = slot_dict.get('service_type', 'N/A')
-        
-    @property
+\1    @property
     def confirmation_text(self):
         customer = ecm.get_customer_details(self.customer_id)
         boat = ecm.get_boat_details(self.boat_id)
-        
-        return (
+\1        return (
             f"You are about to schedule a **{self.service_type}** for **{customer.customer_name}**'s "
             f"{boat.boat_length}' {boat.boat_type} on **{self.start_datetime.strftime('%A, %B %d, %Y')}** "
             f"at **{self.start_datetime.strftime('%I:%M %p')}** using **{self.truck_name}** at **{self.ramp_name}**."
@@ -203,8 +196,7 @@ class SlotDetail:
 
     def __getitem__(self, key):
         return self.raw_data[key]
-    
-    def get(self, key, default=None):
+\1    def get(self, key, default=None):
         return self.raw_data.get(key, default)
 
 # ... (the rest of your helper functions)
@@ -268,10 +260,8 @@ def _compute_truck_utilization_metrics(scheduled_jobs):
 
 def create_gauge(value, max_value, label):
     """Generates an SVG string for a semi-circle gauge chart that displays an absolute value."""
-    if max_value == 0: 
-        percent = 0
-    else: 
-        percent = min(max(value / max_value, 0), 1)
+    if max_value == 0:\1        percent = 0
+    else:\1        percent = min(max(value / max_value, 0), 1)
 
     # If the value is zero, create an empty path so no colored arc is drawn.
     if value == 0:
@@ -281,23 +271,19 @@ def create_gauge(value, max_value, label):
         # Map the percentage to an angle from -180 (left) to 0 (right) degrees
         angle_deg = -180 + (percent * 180)
         rads = math.radians(angle_deg)
-        
-        # Calculate the end point of the arc
+\1        # Calculate the end point of the arc
         x = 50 + 40 * math.cos(rads)
         y = 50 + 40 * math.sin(rads)
-        
-        # Determine if the arc should be drawn the "long way" (for >50%)
+\1        # Determine if the arc should be drawn the "long way" (for >50%)
         large_arc_flag = 1 if percent > 0.5 else 0
-        
-        # The start point of the arc is fixed at (10, 50)
+\1        # The start point of the arc is fixed at (10, 50)
         d = f"M 10 50 A 40 40 0 {large_arc_flag} 1 {x} {y}"
 
     fill_color = "#F44336"
     if percent >= 0.4: fill_color = "#FFC107"
     if percent >= 0.8: fill_color = "#4CAF50"
     main_text, sub_label = str(value), f"{label.upper()} OF {max_value}"
-    
-    return f'''
+\1    return f'''
     <svg viewBox="0 0 100 65" style="width: 150px;height: 97px; overflow: visible;">
         <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="#e0e0e0" stroke-width="10" fill="none" />
         <path d="{d}" stroke="{fill_color}" stroke-width="10" fill="none" />
@@ -336,7 +322,8 @@ def handle_slot_selection(slot_data):
 def display_crane_day_calendar(crane_days_for_ramp):
     candidate_dates, today = {d['date'] for d in crane_days_for_ramp}, datetime.date.today()
     _, cal_col, _ = st.columns([1, 2, 1])
-    with cal_col, st.container(border=True):
+    with cal_col:
+        with st.container(border=True):
         selected_month_str = st.selectbox("Select a month to view:", [(today + datetime.timedelta(days=30*i)).strftime("%B %Y") for i in range(6)])
         if not selected_month_str: return
         selected_month = datetime.datetime.strptime(selected_month_str, "%B %Y")
@@ -668,12 +655,10 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     merger = PdfMerger()
     for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
         jobs_for_day = [j for j in jobs if j.scheduled_start_datetime and j.scheduled_start_datetime.date() == single_date]
-        
-        if jobs_for_day:
+\1        if jobs_for_day:
             daily_pdf_buffer = generate_daily_planner_pdf(single_date, jobs_for_day)
             merger.append(daily_pdf_buffer)
-            
-    output = BytesIO()
+\1    output = BytesIO()
     if len(merger.pages) > 0:
         merger.write(output)
     merger.close()
@@ -887,8 +872,7 @@ def show_scheduler_page():
     if job_info := st.session_state.get('last_seasonal_job'):
         st.success(st.session_state.get('confirmation_message', "Job Scheduled!"))
         st.markdown("---")
-        
-        opposite_service = "Haul" if job_info['original_service'] == "Launch" else "Launch"
+\1        opposite_service = "Haul" if job_info['original_service'] == "Launch" else "Launch"
         st.info(f"**Would you like to schedule the corresponding '{opposite_service}' for this boat?**")
 
         def setup_return_trip():
@@ -934,14 +918,12 @@ def show_scheduler_page():
     if conflict_job := st.session_state.get('conflict_warning_details'):
         customer = ecm.get_customer_details(conflict_job.customer_id)
         customer_name = customer.customer_name if customer else "This customer"
-        
-        st.warning(f"""
+\1        st.warning(f"""
         **⚠️ Scheduling Conflict Detected** {customer_name} is already scheduled for a **{conflict_job.service_type}** service on **{conflict_job.scheduled_start_datetime.strftime('%A, %B %d, %Y')}**.
 
         Scheduling the same service again within 30 days is unusual.
         """)
-        
-        def override_conflict():
+\1        def override_conflict():
             st.session_state.conflict_override_acknowledged = True
             st.session_state.conflict_warning_details = None
 
@@ -963,8 +945,7 @@ def show_scheduler_page():
             st.warning(info_msg)   # forced/fallback → yellow banner
         else:
             st.error(info_msg)     # nothing at all → red banner
-    
-        if reasons := st.session_state.get('failure_reasons'):
+\1        if reasons := st.session_state.get('failure_reasons'):
             for reason in reasons:
                 st.warning(reason)
 
@@ -1020,10 +1001,8 @@ def show_scheduler_page():
 
         st.sidebar.text_input("Selected Customer:", value=customer.customer_name, disabled=True)
         st.sidebar.button("Clear Selection", on_click=clear_selection, use_container_width=True)
-        
-        boats_for_customer = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id]
-        
-        if not boats_for_customer:
+\1        boats_for_customer = [b for b in ecm.LOADED_BOATS.values() if b.customer_id == customer.customer_id]
+\1        if not boats_for_customer:
             st.sidebar.error(f"No boats found for {customer.customer_name}.")
         elif len(boats_for_customer) == 1:
             st.session_state.selected_boat_id = boats_for_customer[0].boat_id
@@ -1047,13 +1026,11 @@ def show_scheduler_page():
                 ramp_obj = ecm.ECM_RAMPS.get(boat.preferred_ramp_id)
                 ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
                 st.sidebar.markdown(f"- **Preferred Ramp:** {ramp_name}")
-                
-                # All the following UI elements are now safely inside the `if boat:` block.
+\1                # All the following UI elements are now safely inside the `if boat:` block.
                 service_type = st.sidebar.selectbox("Service Type:", ["Launch", "Haul", "Sandblast", "Paint"])
                 req_date = st.sidebar.date_input("Requested Date:", min_value=None)
                 override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
-                
-                # This function is now guaranteed to receive a valid 'boat' object.
+\1                # This function is now guaranteed to receive a valid 'boat' object.
                 available_ramp_ids = list(ecm.find_available_ramps_for_boat(boat, ecm.ECM_RAMPS))
 
                 if boat.preferred_ramp_id and (boat.preferred_ramp_id not in available_ramp_ids):
@@ -1066,8 +1043,7 @@ def show_scheduler_page():
                     default_ramp_index = available_ramp_ids.index(boat.preferred_ramp_id)
 
                 selected_ramp_id = st.sidebar.selectbox("Ramp:", options=available_ramp_ids, index=default_ramp_index, format_func=lambda ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name)
-                
-                slot_dicts, msg, warnings, forced = [], "", [], False
+\1                slot_dicts, msg, warnings, forced = [], "", [], False
 
                 if st.sidebar.button("Find Best Slot", key="btn_find_best_slot"):
                     # 1) Run the search
@@ -1081,8 +1057,7 @@ def show_scheduler_page():
                         relax_truck_preference=st.session_state.get("relax_truck_preference", False),
                         tide_policy=_tide_policy_from_ui(),   # ← NEW
                     )
-                
-                    # 2) Store results in session
+\1                    # 2) Store results in session
                     st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
                     st.session_state.failure_reasons = warnings
                     st.session_state.was_forced_search = forced
@@ -1097,14 +1072,12 @@ def show_scheduler_page():
                     st.session_state.info_message = msg
                     st.session_state.pop('selected_slot', None)   # reset any old selection
                     st.session_state.slot_page_index = 0
-                
-                    # 3) Compute banner pieces HERE (so they always exist)
+\1                    # 3) Compute banner pieces HERE (so they always exist)
                     ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
                     ramp_name = getattr(ramp_obj, "ramp_name", None) or getattr(ramp_obj, "name", "Selected Ramp")
                     cust_name = getattr(customer, "customer_name", None) or getattr(customer, "display_name", "Selected Customer")
                     date_str  = req_date.strftime("%B %d, %Y") if isinstance(req_date, datetime.date) else "requested date"
-                
-                    ht_str = "N/A"
+\1                    ht_str = "N/A"
                     try:
                         station_id = ecm._station_for_ramp_or_scituate(str(selected_ramp_id)) if selected_ramp_id else None
                         tides_by_day = ecm.fetch_noaa_tides_for_range(station_id, req_date, req_date) if station_id else {}
@@ -1116,12 +1089,10 @@ def show_scheduler_page():
                             ht_str = ecm.format_time_for_display(primary)
                     except Exception as ex:
                         ecm.DEBUG_MESSAGES.append(f"Header high tide lookup failed: {ex}")
-                
-                    st.session_state.slot_search_heading = (
+\1                    st.session_state.slot_search_heading = (
                         f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
                     )
-                
-                # Always render if we have results (works on reruns too)
+\1                # Always render if we have results (works on reruns too)
                 render_slot_lists()
 
                 # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
@@ -1129,10 +1100,10 @@ def show_scheduler_page():
                     slot = st.session_state.selected_slot
                     st.subheader("Preview & Confirm Job")
                     st.success(slot.confirmation_text)
-                
-                    if st.button("CONFIRM THIS JOB"):
+\1                    if st.button("CONFIRM THIS JOB"):
                         parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
-                        st.warning(f"DEBUG: Attempting to confirm job for slot = {slot}")
+                        if st.session_state.get("debug_mode"):
+                        st.info(f"[debug] confirming job for: {slot}")
                         new_id, message = ecm.confirm_and_schedule_job(
                             slot.raw_data,
                             parked_job_to_remove=parked_to_remove
@@ -1144,48 +1115,41 @@ def show_scheduler_page():
                             ctx = st.session_state.get('current_job_request')
                             if not isinstance(ctx, dict):
                                 ctx = {}
-                    
-                            def pick(*vals):
+\1                            def pick(*vals):
                                 for v in vals:
                                     if v not in (None, "", "N/A"):
                                         return v
                                 return None
-                    
-                            svc = pick(
+\1                            svc = pick(
                                 ctx.get('service_type'),
                                 getattr(slot, "service_type", None),
                                 getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("service_type")
                             )
-                    
-                            cust_id = pick(
+\1                            cust_id = pick(
                                 ctx.get('customer_id'),
                                 getattr(slot, "customer_id", None),
                                 getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("customer_id")
                             )
-                    
-                            boat_id = pick(
+\1                            boat_id = pick(
                                 ctx.get('boat_id'),
                                 getattr(slot, "boat_id", None),
                                 getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("boat_id")
                             )
-                    
-                            # Seasonal follow-up prompt (Launch/Haul only)
+\1                            # Seasonal follow-up prompt (Launch/Haul only)
                             if svc in ["Launch", "Haul"] and cust_id and boat_id:
                                 st.session_state.last_seasonal_job = {
                                     'customer_id': cust_id,
                                     'boat_id': boat_id,
                                     'original_service': svc
                                 }
-                    
-                            # Clear one-time state
+\1                            # Clear one-time state
                             for key in [
                                 'found_slots', 'selected_slot', 'current_job_request',
                                 'search_requested_date', 'rebooking_details',
                                 'failure_reasons', 'was_forced_search'
                             ]:
                                 st.session_state.pop(key, None)
-                    
-                            st.rerun()
+\1                            st.rerun()
                         else:
                             st.error(message or "Failed to schedule this job.")
 
@@ -1204,8 +1168,7 @@ def _tide_policy_from_ui() -> dict:
         'haul_water_phase_min':   int(st.session_state.get('haul_water_phase_min', 30)),
     }
 
-                
-def show_reporting_page():
+\1def show_reporting_page():
     """
     Displays the entire Reporting dashboard, including all original tabs and
     interactive job management with a confirmation step for cancellation.
@@ -1272,31 +1235,18 @@ def show_reporting_page():
 
             # Sort jobs by date to display them chronologically
             sorted_jobs = sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max.replace(tzinfo=datetime.timezone.utc))
-            
-            for j in sorted_jobs:
+\1            for j in sorted_jobs:
                 customer = ecm.get_customer_details(j.customer_id)
                 if not customer:
                     continue # Safety check
 
                 # Create 7 columns for each row of job data
                 cols = st.columns((2, 1, 2, 2, 1, 1, 3))
-                
-                cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p") if j.scheduled_start_datetime else "No Date Set")
+\1                cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p") if j.scheduled_start_datetime else "No Date Set")
                 cols[1].write(j.service_type)
                 cols[2].write(customer.customer_name)
 
-                # --- START: TEMPORARY DEBUGGING CODE ---
-                ramp_id_to_check = j.dropoff_ramp_id or j.pickup_ramp_id
-                if ramp_id_to_check:
-                    print(f"--- DEBUG FOR JOB {j.job_id} ---")
-                    print(f"1. Looking for ramp_id: '{ramp_id_to_check}'")
-                    # The next line assumes the main ramp dictionary is ecm.ECM_RAMPS
-                    # This will show us all the ramp IDs your app actually knows about.
-                    print(f"2. Available ramp keys: {list(ecm.ECM_RAMPS.keys())}")
-                    print("--- END DEBUG ---")
-                # --- END: TEMPORARY DEBUGGING CODE ---
-                
-                # Find and display the ramp name for the job
+\1                # Find and display the ramp name for the job
                 ramp_id = j.dropoff_ramp_id or j.pickup_ramp_id
                 # V-- FIX: Convert ramp_id to a string for the lookup --V
                 ramp_name = ecm.get_ramp_details(str(ramp_id)).ramp_name if ramp_id and ecm.get_ramp_details(str(ramp_id)) else "—"
@@ -1320,8 +1270,7 @@ def show_reporting_page():
                         btn_cols[2].button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
         else:
             st.write("No jobs scheduled.")
-    
-    with tab2:
+\1    with tab2:
         st.subheader("Crane Day Candidate Calendar")
         st.info("This calendar shows potential days with ideal tides for crane operations.")
         ramp_options = {ramp_id: ramp.ramp_name for ramp_id, ramp in ecm.CANDIDATE_CRANE_DAYS.items() if ecm.CANDIDATE_CRANE_DAYS.get(ramp_id)}
@@ -1397,8 +1346,7 @@ def show_reporting_page():
             for job_id, job in ecm.PARKED_JOBS.items():
                 customer = ecm.get_customer_details(job.customer_id)
                 boat = ecm.get_boat_details(job.boat_id)
-                
-                if not customer or not boat:
+\1                if not customer or not boat:
                     continue # SAFETY CHECK: Skip this job if customer or boat data is missing
 
                 cols = st.columns((2, 2, 1, 2))
@@ -1515,8 +1463,7 @@ def show_settings_page():
     # --- TAB 3: Developer Tools ---
     with tab3:
         st.subheader("Developer Tools")
-        
-        # Danger Zone (moved inside QA tab)
+\1        # Danger Zone (moved inside QA tab)
         st.markdown("---")
         st.subheader("⚠️ Danger Zone")
         with st.expander("Permanently Delete All Jobs"):
@@ -1569,9 +1516,7 @@ def show_settings_page():
                 )
             st.success(msg)
             st.info("Re-run as needed; if fewer boats remain than requested, it will schedule only what's available.")
-    
-    
-    # --- TAB 5: Tide Charts (Scituate) ---
+\1\1    # --- TAB 5: Tide Charts (Scituate) ---
     with tab5:
         st.subheader("Monthly Tide Chart for Scituate Harbor")
 
@@ -1650,8 +1595,7 @@ def initialize_session_state():
         'selected_customer_id': None,
         'selected_boat_id': None, # <-- THIS LINE WAS MISSING
         'job_to_cancel': None,
-        'selected_tide_day': None, 
-        'sailboat_priority_enabled': True,
+        'selected_tide_day': None,\1        'sailboat_priority_enabled': True,
         'ramp_tide_blackout_enabled': True, # Add this
         'scituate_powerboat_priority_enabled': True,
         'dynamic_duration_enabled': False,
@@ -1662,15 +1606,12 @@ def initialize_session_state():
         'haul_water_phase_min': 30,    # first N minutes of a Haul must be inside the window
         'max_job_distance': 10,'last_seasonal_job': None
     }
-    
-    for key, default_value in defaults.items():
+\1    for key, default_value in defaults.items():
         if key not in st.session_state: st.session_state[key] = default_value
-            
-    if not st.session_state.get('data_loaded'):
+\1    if not st.session_state.get('data_loaded'):
         ecm.load_all_data_from_sheets()
         st.session_state.data_loaded = True
-        
-initialize_session_state()
+\1initialize_session_state()
 
 # --- Main App Body ---
 st.title("ECM Logistics")
@@ -1738,4 +1679,4 @@ elif app_mode == "Reporting":
 elif app_mode == "Settings":
     # Just call the function. That's it.
     show_settings_page()
-    
+\1
