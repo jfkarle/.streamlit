@@ -145,7 +145,8 @@ def render_slot_lists():
                 st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
                 st.button("Select", key=f"sel_{s.slot_id}", use_container_width=True,
                           on_click=lambda ss=s: st.session_state.__setitem__('selected_slot', ss))
-\1def _load_data():
+    
+    def _load_data():
     # Try a few common names in case it was renamed
     for name in ("load_all_data_from_sheets", "load_data_from_sheets", "load_all_data", "load_data"):
         if hasattr(ecm, name):
