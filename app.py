@@ -1436,7 +1436,7 @@ def show_settings_page():
             help="Enforces that a truck's next job must be within this many miles of its previous job's location."
         )
 
-            st.markdown("---")
+        st.markdown("---")
         st.subheader("Tide Window Tolerances (minutes)")
 
         c1, c2 = st.columns(2)
