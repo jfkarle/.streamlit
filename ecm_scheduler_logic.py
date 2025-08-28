@@ -246,6 +246,32 @@ class Job:
 
 ### Helpers
 
+# ---- TIDE POLICY (default, adjustable later from UI) ----
+DEFAULT_TIDE_POLICY = {
+    # Launch: allowed lead *before* the ramp window OPENS
+    "launch_open_lead_power_mins": 30,     # powerboats
+    "launch_open_lead_sail_mins": 120,     # sailboats
+
+    # Haul: job may START this much time *before* the ramp window CLOSES
+    "haul_close_lead_all_mins": 30,
+
+    # Step size when scanning start times
+    "scan_step_mins": 15,
+}
+
+# A process-wide policy you can change at runtime if you want
+_GLOBAL_TIDE_POLICY = DEFAULT_TIDE_POLICY.copy()
+
+def set_global_tide_policy(policy: dict | None):
+    """Optional: let the UI push a policy once. Safe no-op if None."""
+    global _GLOBAL_TIDE_POLICY
+    if isinstance(policy, dict):
+        merged = DEFAULT_TIDE_POLICY.copy()
+        merged.update({k: v for k, v in policy.items() if v is not None})
+        _GLOBAL_TIDE_POLICY = merged
+    return _GLOBAL_TIDE_POLICY
+
+
 ### New rules around truck job sart before and after ramp tide windows
 import datetime as dt
 
@@ -273,87 +299,76 @@ def _windows_dt_for_day(windows_time_list, day: dt.date):
     return out
 
 def tide_policy_ok(
-    *,
     service_type: str,
-    boat_type: str,
-    day: dt.date,
-    start_time: dt.time,
-    duration_min: int,
-    tide_windows_time,      # list[(time_start, time_end)]
-    tide_policy: dict | None,
-    ramp_method: str | None = None
+    boat,                                  # Boat object
+    start_dt: dt.datetime,
+    end_dt:   dt.datetime,
+    windows: list[tuple[datetime.time, datetime.time]],
+    policy: dict | None = None,
 ) -> bool:
     """
-    Implements your rules:
+    Implements your universal truths:
 
-    Launch:
-      - The LAST N minutes of the job must be inside the tide window ("water phase").
-      - Job may START up to PREP minutes BEFORE the window opens.
-        (PREP minutes = launch_prep_power_min | launch_prep_sail_min)
-
-    Haul:
-      - The FIRST N minutes of the job must be inside the tide window ("water phase" at the beginning).
-
-    AnyTide ramps bypass all checks.
+    Powerboats: 90 min job. First 30 min is load/drive. Can START 30 min BEFORE window OPENS.
+    Sailboats:  180 min job. First 120 min is truck+crane prep. Can START 120 min BEFORE window OPENS.
+    Hauls (both): may START 30 min BEFORE window CLOSES (so first on-ramp work is inside).
     """
-    # AnyTide → always OK
-    if str(ramp_method) == "AnyTide":
-        return True
+    policy = (policy or _GLOBAL_TIDE_POLICY or DEFAULT_TIDE_POLICY)
 
-    tide_policy = tide_policy or {}
-    start = dt.datetime.combine(day, start_time)
-    end = start + _minutes(duration_min)
-    windows = _windows_dt_for_day(tide_windows_time, day)
-
+    is_sail = "Sail" in (getattr(boat, "boat_type", "") or "")
     if service_type == "Launch":
-        water_phase_min = int(tide_policy.get("launch_water_phase_min", 60))
-        prep_power = int(tide_policy.get("launch_prep_power_min", 30))
-        prep_sail  = int(tide_policy.get("launch_prep_sail_min", 120))
-        is_sail    = ("sail" in (boat_type or "").lower())
-        prep_td    = _minutes(prep_sail if is_sail else prep_power)
-        water_td   = _minutes(water_phase_min)
+        # Critical in-water moment occurs after the “prep lead”
+        lead = policy["launch_open_lead_sail_mins"] if is_sail else policy["launch_open_lead_power_mins"]
+        critical = start_dt + dt.timedelta(minutes=lead)
 
-        water_phase_start = end - water_td  # the final minutes must be within the window
-        for ws, we in windows:
-            # start must not be earlier than (window start - prep)
-            # and the final water phase must be fully inside the window
-            if start >= (ws - prep_td) and water_phase_start >= ws and end <= we:
+        # Valid if that *critical* moment falls inside any window
+        for a, b in windows:
+            ws = dt.datetime.combine(start_dt.date(), a, tzinfo=start_dt.tzinfo)
+            we = dt.datetime.combine(start_dt.date(), b, tzinfo=start_dt.tzinfo)
+            if ws <= critical <= we:
                 return True
         return False
 
-    elif service_type == "Haul":
-        first_phase_min = int(tide_policy.get("haul_water_phase_min", 30))
-        first_td = _minutes(first_phase_min)
-
-        for ws, we in windows:
-            # first water-phase must be fully inside the window
-            if start >= ws and (start + first_td) <= we:
+    # Haul: first act happens on ramp, so we require that to be inside the window.
+    # Your rule says job may START 30 min before the window CLOSES.
+    if service_type == "Haul":
+        grace = dt.timedelta(minutes=policy["haul_close_lead_all_mins"])
+        for a, b in windows:
+            ws = dt.datetime.combine(start_dt.date(), a, tzinfo=start_dt.tzinfo)
+            we = dt.datetime.combine(start_dt.date(), b, tzinfo=start_dt.tzinfo)
+            # Start must be no earlier than (window close - grace) AND not after window close
+            if (we - grace) <= start_dt <= we:
                 return True
         return False
 
-    # Other service types – no tide restriction
-    return True
+    # Other services: be conservative — require the start to actually be in a window
+    for a, b in windows:
+        ws = dt.datetime.combine(start_dt.date(), a, tzinfo=start_dt.tzinfo)
+        we = dt.datetime.combine(start_dt.date(), b, tzinfo=start_dt.tzinfo)
+        if ws <= start_dt <= we:
+            return True
+    return False
 
 
 # --- Public helper: probe the exact requested day once ---
 def probe_requested_date_slot(
-    customer_id,
-    boat_id,
-    service_type,
-    requested_date_str,
-    selected_ramp_id,
-    relax_truck_preference=False,
-    tide_policy=None,                # ← NEW
-    **kwargs
+    customer_id: str,
+    boat_id: str,
+    service_type: str,
+    requested_date_str: str,
+    selected_ramp_id: str | None,
+    relax_truck_preference: bool = False,
+    tide_policy: dict | None = None,
 ):
     """
-    Returns a single slot dict for the exact requested date if feasible, else None.
-    Tries preferred trucks first, then (optionally) other suitable trucks.
+    Returns a single CAN-DO slot for the exact requested date if one exists, otherwise None.
+    Does NOT search other days.
     """
     if not requested_date_str:
         return None
+
     try:
-        requested_date = dt.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
+        day = dt.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
     except Exception:
         return None
 
@@ -364,7 +379,10 @@ def probe_requested_date_slot(
     if not boat:
         return None
 
-    crane_needed = "Sailboat" in boat.boat_type
+    ramp_id = selected_ramp_id or getattr(boat, "preferred_ramp_id", None)
+    if not ramp_id:
+        return None
+
     all_suitable = get_suitable_trucks(boat.boat_length)
     preferred, others = [], []
     if boat.preferred_truck_id:
@@ -373,26 +391,22 @@ def probe_requested_date_slot(
     else:
         others = all_suitable
 
-    def _try(trucks):
-        if not trucks:
-            return None
-        return _find_slot_on_day(
-            requested_date, boat, service_type, selected_ramp_id, crane_needed,
-            compiled_schedule, customer_id, trucks, is_opportunistic_search=False
-        )
+    trucks = preferred or (all_suitable if relax_truck_preference else preferred)
+    trucks = trucks or others
 
-    return _try(preferred) or (_try(others) if relax_truck_preference else None)
-
-# --- HARD CONSTRAINTS + SCORING UPGRADE PACK ---
-
-import math
-
-# --- Booking Rules Defaults ---
-BOOKING_RULES = {
-    "Powerboat": {"truck_mins": 90, "crane_mins": 0},
-    "Sailboat":  {"truck_mins": 180, "crane_mins": 90},
-    # Add other types as needed...
-}
+    crane_needed = "Sail" in (boat.boat_type or "")
+    return _find_slot_on_day(
+        day,
+        boat,
+        service_type,
+        ramp_id,
+        crane_needed,
+        compiled_schedule,
+        customer_id,
+        trucks,
+        is_opportunistic_search=False,
+        tide_policy=tide_policy,
+    )
 
 def _norm_id(x):
     return None if x is None else str(x)
@@ -589,40 +603,43 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
     return score
 
 
-def tide_window_for_day(ramp_id: str, day: dt.date):
+def tide_window_for_day(ramp, day: date) -> list[tuple[datetime.time, datetime.time]]:
     """
-    Returns a list of (start_time, end_time) tuples in local time when this ramp is usable.
-    Uses the ramp's NOAA station (no fallback unless ramp has no station).
+    Returns a list of (start_time, end_time) ramp windows for the given day.
+    AnyTide ramps => 00:00–23:59. Otherwise we expand +/- pad around each tide “center”.
     """
-    ramp = get_ramp_details(ramp_id)
     if not ramp:
-        return []  # unknown ramp -> no tide gating
-    station = getattr(ramp, "noaa_station_id", None)
-    if not station:
-        return []  # ramps without station are treated AnyTide
+        return [(datetime.time(0, 0), datetime.time(23, 59))]
 
-    tides = fetch_noaa_tides_for_range(str(station), day, day).get(day, [])
-    method = (getattr(ramp, "tide_method", None) or getattr(ramp, "tide_rule", None) or "AnyTide")
+    # Method name field varies in your data; normalize
+    method = getattr(ramp, "tide_method", None) or getattr(ramp, "tide_rule", None) or "AnyTide"
 
-    # Example rules: adjust to match your ramp rules
-    # AnyTide: unrestricted; DT/MT: allow ±X around High (or Low), per ramp config
+    # AnyTide = whole day permitted
     if str(method) == "AnyTide":
-        return [(_time(0,0), _time(23,59))]
+        return [(datetime.time(0, 0), datetime.time(23, 59))]
 
-    windows = []
-    # If your ramps store window mins like ramp.window_minutes_each_side, use that here.
-    pad = getattr(ramp, "window_minutes_each_side", 60)  # default 60m each side
-    use_high = getattr(ramp, "uses_high_tide", True)     # some ramps might use low
-    for t in tides:
-        if (use_high and t.get("type") == "H") or ((not use_high) and t.get("type") == "L"):
-            tt = t["time"]
-            if not isinstance(tt, _time): 
-                continue
-            center = _dt.combine(day, tt)
-            start = (center - dt.timedelta(minutes=pad)).time()
-            end   = (center + dt.timedelta(minutes=pad)).time()
-            windows.append((start, end))
-    return windows
+    # Pull NOAA events for this specific day
+    events_by_day = fetch_noaa_tides_for_range(ramp.noaa_station_id, day, day) or {}
+    events = events_by_day.get(day, []) or []
+
+    # How far either side of the center tide we allow; default 180 mins (your “3 hrs +/-”)
+    pad = getattr(ramp, "window_minutes_each_side", 180)
+
+    use_high = getattr(ramp, "uses_high_tide", True)
+    use_low  = getattr(ramp, "uses_low_tide", False)
+
+    windows: list[tuple[datetime.time, datetime.time]] = []
+    for ev in events:
+        if ev.get("type") == "H" and use_high or ev.get("type") == "L" and use_low:
+            t = ev.get("time")
+            if isinstance(t, datetime.time):
+                center = dt.datetime.combine(day, t)
+                a = (center - dt.timedelta(minutes=pad)).time()
+                b = (center + dt.timedelta(minutes=pad)).time()
+                windows.append((a, b))
+
+    # If no windows found (data hiccup), treat as unrestricted day
+    return windows or [(datetime.time(0, 0), datetime.time(23, 59))]
 
 def time_within_any_window(check_time: dt.time, windows: List[Tuple[dt.time, dt.time]]) -> bool:
     for a,b in windows:
@@ -812,38 +829,94 @@ def _find_slot_on_day(
 
 
 
-def find_slot_across_days(requested_date, ramp_id, boat, service_type, crane_needed,
-                          compiled_schedule, customer_id, trucks_to_check,
-                          num_suggestions_to_find):
+def _find_slot_on_day(
+    day: date,
+    boat,
+    service_type: str,
+    ramp_id: str,
+    crane_needed: bool,
+    compiled_schedule,
+    customer_id,
+    trucks_to_check: list,
+    is_opportunistic_search: bool = False,
+    tide_policy: dict | None = None,
+):
     """
-    Keep searching around the requested date until we have at least k slots.
-    Searches forward AND backward, expanding the radius as needed.
+    Single-day scanner. Honors truck hours, existing bookings, ramp windows, and your tide tolerances.
+    Returns a slot dict or None.
     """
-    k = max(1, int(num_suggestions_to_find or 3))
-    found = []
-    # Base span chosen by ramp tide method; this is just the first pass.
-    def _base_span(ramp_id):
-        ramp = ECM_RAMPS.get(ramp_id)
-        method = getattr(ramp, "tide_calculation_method", "AnyTide")
-        return 6 if method == "AnyTide" else (10 if method == "AnyTideWithDraftRule" else 15)
+    policy = (tide_policy or _GLOBAL_TIDE_POLICY or DEFAULT_TIDE_POLICY)
 
-    # Expand outward until we have k or we’ve gone pretty far
-    max_radius = 45  # safety ceiling
-    radius = _base_span(ramp_id)
-    while len(found) < k and radius <= max_radius:
-        search_order = _generate_day_search_order(requested_date, radius, radius)
-        for day in search_order:
-            # Skip dates we already tried (avoid duplicates on expansion)
-            if any(s["date"] == day for s in found):
+    ramp = get_ramp_details(ramp_id)
+    windows = tide_window_for_day(ramp, day)     # [(start_time, end_time), ...]
+    day_tides = fetch_noaa_tides_for_range(ramp.noaa_station_id, day, day).get(day, []) if getattr(ramp, "noaa_station_id", None) else []
+
+    # Base durations
+    is_sail = "Sail" in (getattr(boat, "boat_type", "") or "")
+    job_minutes   = 180 if is_sail else 90
+    crane_minutes = 120 if crane_needed else 0
+
+    # Scan step
+    step = dt.timedelta(minutes=int(policy.get("scan_step_mins", 15)))
+
+    for truck in trucks_to_check:
+        # Truck working hours for this weekday
+        hours = TRUCK_OPERATING_HOURS.get(truck.truck_id, {}).get(day.weekday())
+        if not hours:
+            continue
+        open_t, close_t = hours
+        truck_open  = dt.datetime.combine(day, open_t,  tzinfo=timezone.utc)
+        truck_close = dt.datetime.combine(day, close_t, tzinfo=timezone.utc)
+
+        # First possible start and last allowed start (must fit by truck_close)
+        first_start = truck_open
+        last_start  = truck_close - dt.timedelta(minutes=job_minutes)
+
+        probe = first_start
+        while probe <= last_start:
+            start_dt = probe
+            end_dt   = start_dt + dt.timedelta(minutes=job_minutes)
+
+            # 1) Truck availability
+            if not check_truck_availability_optimized(truck.truck_id, start_dt, end_dt, compiled_schedule):
+                probe += step
                 continue
-            slot = _find_slot_on_day(day, boat, service_type, ramp_id, crane_needed,
-                                     compiled_schedule, customer_id, trucks_to_check)
-            if slot:
-                found.append(slot)
-                if len(found) >= k:
-                    break
-        radius += 5  # expand window in chunks
-    return found[:k]
+
+            # 2) Tide policy (launch/haul tolerances)
+            if not tide_policy_ok(service_type, boat, start_dt, end_dt, windows, policy):
+                probe += step
+                continue
+
+            # 3) If sail, ensure S17 (crane) is available for the crane_minutes block
+            crane_end = None
+            if crane_needed and crane_minutes > 0:
+                s17_id = get_s17_truck_id()
+                crane_end = start_dt + dt.timedelta(minutes=crane_minutes)
+                if not check_truck_availability_optimized(s17_id, start_dt, crane_end, compiled_schedule):
+                    probe += step
+                    continue
+
+            # All checks passed — assemble the slot
+            return {
+                "is_piggyback": is_opportunistic_search,
+                "boat_id": boat.boat_id,
+                "customer_id": customer_id,
+                "date": day,
+                "time": start_dt.time(),
+                "truck_id": truck.truck_id,
+                "ramp_id": ramp_id,
+                "service_type": service_type,
+                "S17_needed": crane_needed,
+                "scheduled_end_datetime": end_dt,
+                "S17_busy_end_datetime": crane_end,
+                "tide_rule_concise": get_concise_tide_rule(ramp, boat),
+                "high_tide_times": [t.get("time") for t in day_tides if t.get("type") == "H"],
+                "boat_draft": getattr(boat, "draft_ft", None),
+            }
+
+            # (not reached)
+        # next truck
+    return None
 
 
 
