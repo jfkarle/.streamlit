@@ -1,11 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, List, Union, Tuple, Set, Dict
+from typing import Optional, List, Union, Tuple, Set
 
 import csv
 import os
+from typing import Optional, List, Union, Tuple, Set, Dict
 import datetime as dt
-import datetime
 from datetime import time, date, timedelta, timezone
 from datetime import datetime as _dt, time as _time, date as _date, timedelta as _td
 import pandas as pd
@@ -15,7 +15,7 @@ import random
 import json
 import streamlit as st
 from st_supabase_connection import SupabaseConnection, execute_query
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict   # pull in defaultdict here
 from geopy.geocoders import Nominatim
 from supabase import create_client
 from requests.adapters import HTTPAdapter, Retry
@@ -621,14 +621,14 @@ def tide_window_for_day(ramp, day: date) -> list[tuple[datetime.time, datetime.t
     AnyTide ramps => 00:00–23:59. Otherwise we expand +/- pad around each tide “center”.
     """
     if not ramp:
-        return [(datetime.time(0, 0), datetime.time(23, 59))]
+        return [(time(0, 0), time(23, 59))]
 
     # Method name field varies in your data; normalize
     method = getattr(ramp, "tide_method", None) or getattr(ramp, "tide_rule", None) or "AnyTide"
 
     # AnyTide = whole day permitted
     if str(method) == "AnyTide":
-        return [(datetime.time(0, 0), datetime.time(23, 59))]
+        return [(time(0, 0), time(23, 59))]
 
     # Pull NOAA events for this specific day
     events_by_day = fetch_noaa_tides_for_range(ramp.noaa_station_id, day, day) or {}
@@ -651,7 +651,7 @@ def tide_window_for_day(ramp, day: date) -> list[tuple[datetime.time, datetime.t
                 windows.append((a, b))
 
     # If no windows found (data hiccup), treat as unrestricted day
-    return windows or [(datetime.time(0, 0), datetime.time(23, 59))]
+    return windows or [(time(0, 0), time(23, 59))]
 
 def time_within_any_window(check_time: dt.time, windows: List[Tuple[dt.time, dt.time]]) -> bool:
     for a,b in windows:
@@ -724,6 +724,8 @@ def get_s17_truck_id():
         if truck_obj.truck_name == "S17":
             return truck_id
     return None # Return None if S17 is not found
+
+
 
 def _generate_day_search_order(start_date, look_back, look_forward):
     """Generates a list of dates to check, starting from the center and expanding outwards."""
@@ -2532,7 +2534,7 @@ def calculate_ramp_windows(ramp, boat, tide_data, date):
     return windows
 
 def _find_slot_on_day(
-    day: dt.date,
+    day: date,
     boat,
     service_type: str,
     ramp_id: str,
@@ -2544,7 +2546,7 @@ def _find_slot_on_day(
     tide_policy: dict | None = None,
 ):
     """
-    Single-day scanner. Honors truck hours, existing bookings, ramp windows, and your tide tolerances.
+    Single-day scanner. Honors truck hours, existing bookings, ramp windows, and tide tolerances.
     Returns a slot dict or None.
     """
     # Resolve ramp
@@ -2552,13 +2554,13 @@ def _find_slot_on_day(
     if not ramp:
         return None
 
-    # Duration rules: 180 min for sailboats, 90 min otherwise (Launch/Haul)
+    # Duration rules: 180 min for sailboats on Launch/Haul, 90 min otherwise
     boat_type = (getattr(boat, "boat_type", "") or "").lower()
     is_sail = "sail" in boat_type
     duration_mins = 180 if service_type in ("Launch", "Haul") and is_sail else 90
-    job_duration = dt.timedelta(minutes=duration_mins)
+    job_duration = timedelta(minutes=duration_mins)
 
-    # Tide windows for this day (list of (start_time, end_time) in local-time objects)
+    # Tide windows for this day (list[(time, time)] in local time)
     windows = tide_window_for_day(ramp, day)
 
     # Tide policy (scan step + tolerances)
@@ -2567,7 +2569,7 @@ def _find_slot_on_day(
         step_mins = int(policy.get("scan_step_mins", 15))
     except Exception:
         step_mins = 15
-    step = dt.timedelta(minutes=step_mins)
+    step = timedelta(minutes=step_mins)
 
     # Optional: crane lock duration from BOOKING_RULES
     rules_map = globals().get("BOOKING_RULES", {}) or {}
@@ -2594,7 +2596,7 @@ def _find_slot_on_day(
                 start_dt += step
                 continue
 
-            # Tide rule check (uses your universal tide_policy_ok helper)
+            # Tide rule check
             if not tide_policy_ok(service_type, boat, start_dt, end_dt, windows, policy):
                 start_dt += step
                 continue
@@ -2603,14 +2605,17 @@ def _find_slot_on_day(
             crane_end_dt = None
             if crane_needed and crane_minutes > 0:
                 s17_id = get_s17_truck_id()
-                crane_end_dt = start_dt + dt.timedelta(minutes=crane_minutes)
+                crane_end_dt = start_dt + timedelta(minutes=crane_minutes)
                 if not check_truck_availability_optimized(s17_id, start_dt, crane_end_dt, compiled_schedule):
                     start_dt += step
                     continue
 
             # Success → return slot dict
-            tides_today = fetch_noaa_tides_for_range(ramp.noaa_station_id, day, day) or {}
-            highs = [t["time"] for t in tides_today.get(day, []) if t.get("type") == "H"]
+            try:
+                tides_today = fetch_noaa_tides_for_range(ramp.noaa_station_id, day, day) or {}
+                highs = [t["time"] for t in tides_today.get(day, []) if t.get("type") == "H"]
+            except Exception:
+                highs = []
 
             return {
                 "is_piggyback": is_opportunistic_search,
@@ -2628,15 +2633,4 @@ def _find_slot_on_day(
                 "high_tide_times": highs,
                 "boat_draft": getattr(boat, "draft_ft", None),
             }
-
-            # (never reached)
-            # start_dt += step
-
-            # (Safety break, though loop returns on success)
-            # break
-
-            # END while
-
-        # Continue to next truck
     return None
-
