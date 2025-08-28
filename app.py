@@ -997,6 +997,12 @@ def show_scheduler_page():
                         f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
                     )
 
+def fmt_draft(val):
+    try:
+        return f"{float(val):.1f}'"
+    except (TypeError, ValueError):
+        return "N/A"
+    
     # --- SLOT DISPLAY (Requested first, then Preferred/Ideal Crane Days) ---
     if st.session_state.get('found_slots') and not st.session_state.get('selected_slot'):
         requested_raw = st.session_state.get('requested_slot')
@@ -1028,7 +1034,7 @@ def show_scheduler_page():
     
                 with col2:
                     draft_value = req_slot.raw_data.get('boat_draft')
-                    draft_str = f\"{draft_value:.1f}'\" if isinstance(draft_value, (int, float)) else "N/A"
+                    draft_str = fmt_draft(draft_value)   # <-- replaces the line with backslashes
                     st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
                     tide_rule = req_slot.raw_data.get('tide_rule_concise', 'N/A')
                     st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
@@ -1075,7 +1081,7 @@ def show_scheduler_page():
     
                 with col2:
                     draft_value = slot.raw_data.get('boat_draft')
-                    draft_str = f\"{draft_value:.1f}'\" if isinstance(draft_value, (int, float)) else "N/A"
+                    draft_str = fmt_draft(draft_value)
                     st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
                     tide_rule = slot.raw_data.get('tide_rule_concise', 'N/A')
                     st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
