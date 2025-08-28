@@ -1,11 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Optional, List, Union, Tuple, Set
+from typing import Optional, List, Union, Tuple, Set, Dict
 
 import csv
 import os
-from typing import Optional, List, Union, Tuple, Set, Dict
 import datetime as dt
+import datetime
 from datetime import time, date, timedelta, timezone
 from datetime import datetime as _dt, time as _time, date as _date, timedelta as _td
 import pandas as pd
@@ -15,7 +15,7 @@ import random
 import json
 import streamlit as st
 from st_supabase_connection import SupabaseConnection, execute_query
-from collections import Counter, defaultdict   # pull in defaultdict here
+from collections import Counter, defaultdict
 from geopy.geocoders import Nominatim
 from supabase import create_client
 from requests.adapters import HTTPAdapter, Retry
