@@ -20,6 +20,18 @@ from geopy.geocoders import Nominatim
 from supabase import create_client
 from requests.adapters import HTTPAdapter, Retry
 
+# --- Tide policy knobs (you can tweak these) ---
+LAUNCH_PREP_MIN_POWER = 30        # powerboat time before arriving to ramp
+LAUNCH_PREP_MIN_SAIL  = 120       # sailboat time before arriving to ramp
+LAUNCH_RAMP_MIN       = 60        # minutes at ramp during a launch (both types)
+
+HAUL_RAMP_MIN         = 30        # minutes at ramp at the start of a haul
+
+# how much earlier than the window we’ll allow ramp work to begin (prep can happen before)
+LAUNCH_EARLY_ALLOW_POWER_MIN = 30
+LAUNCH_EARLY_ALLOW_SAIL_MIN  = 120
+
+
 # --- IN-MEMORY DATA CACHES & GLOBALS (must be defined before any function uses them) ---
 DEBUG_MESSAGES: list[str] = []
 
@@ -2117,21 +2129,48 @@ def _find_slot_on_day(search_date, boat, service_type, ramp_id, crane_needed, co
 
                 tide_check_passed = False
                 if not is_tide_dependent: tide_check_passed = True
-                elif service_type == "Launch":
-                    tide_critical_moment = slot_start_dt + timedelta(hours=2)
+                # NEW: tide policy based on ramp phases (replaces old "critical +2h" rule)
+                if service_type == "Launch":
+                    # decide prep minutes & early allowance by boat type
+                    boat_type_str = (getattr(boat, "boat_type", "") or "").lower()
+                    is_sail = "sail" in boat_type_str
+                
+                    prep_min = LAUNCH_PREP_MIN_SAIL if is_sail else LAUNCH_PREP_MIN_POWER
+                    early_allow_min = LAUNCH_EARLY_ALLOW_SAIL_MIN if is_sail else LAUNCH_EARLY_ALLOW_POWER_MIN
+                
+                    # ramp phase for a launch is the final 60 min
+                    ramp_start = slot_start_dt + timedelta(minutes=prep_min)
+                    ramp_end   = ramp_start + timedelta(minutes=LAUNCH_RAMP_MIN)
+                
+                    tide_check_passed = False
                     for tide_win in tide_windows_for_day:
                         tide_win_start = dt.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
-                        tide_win_end = dt.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
-                        if tide_win_start <= tide_critical_moment <= tide_win_end: tide_check_passed = True; break
+                        tide_win_end   = dt.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
+                
+                        # allow the ramp phase to begin up to early_allow before the window opens,
+                        # but require the full ramp phase to finish inside the window
+                        if (tide_win_start - timedelta(minutes=early_allow_min)) <= ramp_start and ramp_end <= tide_win_end:
+                            tide_check_passed = True
+                            break
+                
                 elif service_type == "Haul":
-                    tide_critical_start = slot_start_dt
-                    tide_critical_end = slot_start_dt + timedelta(minutes=30)
+                    # haul: the ramp phase is the first 30 minutes and must finish before window closes
+                    ramp_start = slot_start_dt
+                    ramp_end   = slot_start_dt + timedelta(minutes=HAUL_RAMP_MIN)
+                
+                    tide_check_passed = False
                     for tide_win in tide_windows_for_day:
                         tide_win_start = dt.datetime.combine(search_date, tide_win['start_time'], tzinfo=timezone.utc)
-                        tide_win_end = dt.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
-                        if tide_critical_start < tide_win_end and tide_critical_end > tide_win_start: tide_check_passed = True; break
-
-                if not tide_check_passed: continue
+                        tide_win_end   = dt.datetime.combine(search_date, tide_win['end_time'], tzinfo=timezone.utc)
+                
+                        # require the whole ramp phase to lie before window closes
+                        if tide_win_start <= ramp_start and ramp_end <= tide_win_end:
+                            tide_check_passed = True
+                            break
+                
+                # keep the existing guard
+                if not tide_check_passed:
+                    continue
 
                 crane_end_dt = None
                 if crane_needed:
