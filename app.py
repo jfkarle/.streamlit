@@ -1068,7 +1068,7 @@ def show_scheduler_page():
                 
                 slot_dicts, msg, warnings, forced = [], "", [], False
 
-                if st.sidebar.button("Find Best Slot"):
+                if st.sidebar.button("Find Best Slot", key="btn_find_best_slot"):
                     slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
                         customer_id=customer.customer_id,
                         boat_id=boat.boat_id,
