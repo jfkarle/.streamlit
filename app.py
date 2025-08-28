@@ -1000,6 +1000,60 @@ def show_scheduler_page():
                         f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
                     )
 
+# --- SLOT DISPLAY (shows when we have results and nothing is selected yet) ---
+found = st.session_state.get('found_slots', [])
+if found and not st.session_state.get('selected_slot'):
+    # clamp page every render so the slice never goes empty
+    total = len(found)
+    per_page = 3
+    page = min(st.session_state.get('slot_page_index', 0), max(0, (total - 1) // per_page))
+
+    # Section heading (uses the dynamic header you already set)
+    st.subheader(st.session_state.get("slot_search_heading", "Select a Slot"))
+    st.caption(f"Showing {min((page+1)*per_page, total)} of {total} · page {page+1}")
+
+    # Pager controls
+    cols = st.columns([1, 1, 5, 1, 1])
+    cols[0].button("← Prev", on_click=lambda: st.session_state.update(slot_page_index=max(page - 1, 0)))
+    cols[1].button("Next →", on_click=lambda: st.session_state.update(slot_page_index=min(page + 1, (total - 1) // per_page)))
+    if total:
+        cols[3].write(f"{page*per_page+1}–{min((page+1)*per_page, total)} of {total}")
+
+    # Render current page of slots
+    start, end = page * per_page, page * per_page + per_page
+    for slot in found[start:end]:
+        s = slot  # your found list already holds SlotDetail objects
+        with st.container(border=True):
+            c1, c2, c3 = st.columns((2, 3, 2))
+
+            with c1:
+                ramp_display = s.ramp_name + (" (Efficient Slot ⚡️)" if s.get('is_piggyback') else "")
+                st.markdown(f"**⚓ Ramp**<br>{ramp_display}", unsafe_allow_html=True)
+                st.markdown(f"**🗓️ Date & Time**<br>{s.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
+
+            with c2:
+                # draft formatter (works for number or string)
+                def fmt_draft(val):
+                    try: return f"{float(val):.1f}'"
+                    except (TypeError, ValueError): return "N/A"
+                draft_str = fmt_draft(s.raw_data.get('boat_draft'))
+                tide_rule = s.raw_data.get('tide_rule_concise', 'N/A')
+                tide_times = s.raw_data.get('high_tide_times', [])
+                primary = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
+                primary_str = ecm.format_time_for_display(primary) if primary else "N/A"
+
+                st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
+                st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
+                st.markdown(f"**🔑 Key High Tide**<br>{primary_str}", unsafe_allow_html=True)
+
+            with c3:
+                st.markdown(f"**🚚 Truck**<br>{s.truck_name}", unsafe_allow_html=True)
+                crane_needed = "S17 (Required)" if s.raw_data.get('S17_needed') else "Not Required"
+                st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
+                st.button("Select", key=f"sel_{s.slot_id}", use_container_width=True,
+                          on_click=lambda ss=s: st.session_state.__setitem__('selected_slot', ss))
+
+
 def fmt_draft(val):
     try:
         return f"{float(val):.1f}'"
