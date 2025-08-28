@@ -51,6 +51,7 @@ def render_slot_lists():
                         requested_date_str=(ctx.get("requested_date") or "").strftime("%Y-%m-%d") if ctx.get("requested_date") else None,
                         selected_ramp_id=ctx.get("selected_ramp_id"),
                         relax_truck_preference=st.session_state.get("relax_truck_preference", False),
+                        tide_policy=_tide_policy_from_ui(),
                     )
                     # de-dupe against preferred list
                     def _same(a, b):
@@ -1078,6 +1079,7 @@ def show_scheduler_page():
                         selected_ramp_id=selected_ramp_id,
                         num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
                         relax_truck_preference=st.session_state.get("relax_truck_preference", False),
+                        tide_policy=_tide_policy_from_ui(),   # ← NEW
                     )
                 
                     # 2) Store results in session
@@ -1186,15 +1188,22 @@ def show_scheduler_page():
                             st.rerun()
                         else:
                             st.error(message or "Failed to schedule this job.")
-                
-
 
 def fmt_draft(val):
     try:
         return f"{float(val):.1f}'"
     except (TypeError, ValueError):
         return "N/A"
-            
+
+def _tide_policy_from_ui() -> dict:
+    """Return the current tide-tolerance knobs from Settings."""
+    return {
+        'launch_prep_power_min':  int(st.session_state.get('launch_prep_power_min', 30)),
+        'launch_prep_sail_min':   int(st.session_state.get('launch_prep_sail_min', 120)),
+        'launch_water_phase_min': int(st.session_state.get('launch_water_phase_min', 60)),
+        'haul_water_phase_min':   int(st.session_state.get('haul_water_phase_min', 30)),
+    }
+
                 
 def show_reporting_page():
     """
@@ -1426,7 +1435,42 @@ def show_settings_page():
             key='max_job_distance',
             help="Enforces that a truck's next job must be within this many miles of its previous job's location."
         )
-        
+
+            st.markdown("---")
+        st.subheader("Tide Window Tolerances (minutes)")
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+            st.session_state.launch_prep_power_min = st.number_input(
+                "Launch prep before window opens (powerboat)",
+                min_value=0, max_value=240,
+                value=st.session_state.get('launch_prep_power_min', 30),
+                help="Powerboat Launch jobs may BEGIN this many minutes BEFORE the tide window opens."
+            )
+
+            st.session_state.launch_water_phase_min = st.number_input(
+                "Launch water-phase inside window (minutes)",
+                min_value=15, max_value=180,
+                value=st.session_state.get('launch_water_phase_min', 60),
+                help="The LAST N minutes of any Launch must sit inside the ramp's tide window."
+            )
+
+        with c2:
+            st.session_state.launch_prep_sail_min = st.number_input(
+                "Launch prep before window opens (sailboat)",
+                min_value=0, max_value=240,
+                value=st.session_state.get('launch_prep_sail_min', 120),
+                help="Sailboat Launch jobs may BEGIN this many minutes BEFORE the tide window opens."
+            )
+
+            st.session_state.haul_water_phase_min = st.number_input(
+                "Haul water-phase at start inside window (minutes)",
+                min_value=15, max_value=180,
+                value=st.session_state.get('haul_water_phase_min', 30),
+                help="The FIRST N minutes of any Haul must sit inside the ramp's tide window."
+            )
+
 
     # --- TAB 2: Truck Schedules (your heading said "Truck Schedules") ---
     with tab2:
@@ -1611,6 +1655,11 @@ def initialize_session_state():
         'ramp_tide_blackout_enabled': True, # Add this
         'scituate_powerboat_priority_enabled': True,
         'dynamic_duration_enabled': False,
+        # Tide policy (minutes)
+        'launch_prep_power_min': 30,   # powerboat launch: can start this many minutes BEFORE window opens
+        'launch_prep_sail_min': 120,   # sailboat launch: can start this many minutes BEFORE window opens
+        'launch_water_phase_min': 60,  # last N minutes of a Launch must be inside the window
+        'haul_water_phase_min': 30,    # first N minutes of a Haul must be inside the window
         'max_job_distance': 10,'last_seasonal_job': None
     }
     
