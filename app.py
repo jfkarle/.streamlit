@@ -1050,6 +1050,9 @@ def show_scheduler_page():
                 ramp_obj = ecm.ECM_RAMPS.get(boat.preferred_ramp_id)
                 ramp_name = ramp_obj.ramp_name if ramp_obj else "N/A"
                 st.sidebar.markdown(f"- **Preferred Ramp:** {ramp_name}")
+                ecm_tag = "Yes" if getattr(boat, "is_ecm_boat", False) else "No"
+                st.sidebar.markdown(f"- **ECM Boat:** {ecm_tag}")
+
                 # All the following UI elements are now safely inside the `if boat:` block.
                 service_type = st.sidebar.selectbox("Service Type:", ["Launch", "Haul", "Sandblast", "Paint"])
                 req_date = st.sidebar.date_input("Requested Date:", min_value=None)
