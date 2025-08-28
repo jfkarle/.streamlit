@@ -51,7 +51,6 @@ from reportlab.graphics.charts.piecharts import Pie
 st.set_page_config(layout="wide")
 
 # --- Helper Functions for UI ---
-
 def render_slot_lists():
     """
     Renders:
@@ -96,7 +95,7 @@ def render_slot_lists():
 
                     # de-dupe against preferred list
                     def _same(a, b):
-                        if not a or not b: 
+                        if not a or not b:
                             return False
                         def getv(d, k):
                             return d.get(k) if isinstance(d, dict) else getattr(d, k, None)
@@ -113,23 +112,6 @@ def render_slot_lists():
         except Exception:
             # quiet fallback – requested stays None
             pass
-                def _same(a, b):
-                    if not a or not b: return False
-                    def getv(d, k):
-                        if isinstance(d, dict): return d.get(k)
-                        return getattr(d, k, None)
-                    return (
-                        str(getv(a,'date')) == str(getv(b,'date')) and
-                        str(getv(a,'time')) == str(getv(b,'time')) and
-                        str(getv(a,'ramp_id')) == str(getv(b,'ramp_id')) and
-                        str(getv(a,'truck_id')) == str(getv(b,'truck_id'))
-                    )
-                if can_do and not any(_same(can_do, s.raw_data if hasattr(s,"raw_data") else s) for s in preferred):
-                    requested_raw = can_do
-                    st.session_state.requested_slot = can_do
-    except Exception:
-        # quiet fallback – requested stays None
-        pass
 
     # Section header (uses the dynamic banner text you already set)
     st.subheader(st.session_state.get("slot_search_heading", "Select a Slot"))
@@ -204,7 +186,6 @@ def render_slot_lists():
                 st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
                 st.button("Select", key=f"sel_{s.slot_id}", use_container_width=True,
                           on_click=lambda ss=s: st.session_state.__setitem__('selected_slot', ss))
-    
 
 class SlotDetail:
     """A wrapper class to make slot dictionaries easier to use in the UI."""
