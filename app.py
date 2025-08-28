@@ -1069,6 +1069,7 @@ def show_scheduler_page():
                 slot_dicts, msg, warnings, forced = [], "", [], False
 
                 if st.sidebar.button("Find Best Slot", key="btn_find_best_slot"):
+                    # 1) Run the search
                     slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
                         customer_id=customer.customer_id,
                         boat_id=boat.boat_id,
@@ -1079,6 +1080,7 @@ def show_scheduler_page():
                         relax_truck_preference=st.session_state.get("relax_truck_preference", False),
                     )
                 
+                    # 2) Store results in session
                     st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
                     st.session_state.failure_reasons = warnings
                     st.session_state.was_forced_search = forced
@@ -1091,41 +1093,35 @@ def show_scheduler_page():
                     }
                     st.session_state.search_requested_date = req_date
                     st.session_state.info_message = msg
-                    # reset view state for fresh results
-                    st.session_state.pop('selected_slot', None)   # in case a prior selection was set
-                    st.session_state.slot_page_index = 0          # avoid empty slice from old page
-
-                    # Build pieces for the heading
+                    st.session_state.pop('selected_slot', None)   # reset any old selection
+                    st.session_state.slot_page_index = 0
+                
+                    # 3) Compute banner pieces HERE (so they always exist)
                     ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
-                    ramp_name = getattr(ramp_obj, "ramp_name", getattr(ramp_obj, "name", "Selected Ramp"))
+                    ramp_name = getattr(ramp_obj, "ramp_name", None) or getattr(ramp_obj, "name", "Selected Ramp")
                     cust_name = getattr(customer, "customer_name", None) or getattr(customer, "display_name", "Selected Customer")
-                    date_str  = req_date.strftime("%B %d, %Y")
-                    
-                    # -------- Tide lookup (this is the TRY block) --------
+                    date_str  = req_date.strftime("%B %d, %Y") if isinstance(req_date, datetime.date) else "requested date"
+                
                     ht_str = "N/A"
                     try:
-                        # Get tide station for this ramp (fallback to Scituate if none)
                         station_id = ecm._station_for_ramp_or_scituate(str(selected_ramp_id)) if selected_ramp_id else None
                         tides_by_day = ecm.fetch_noaa_tides_for_range(station_id, req_date, req_date) if station_id else {}
                         events = tides_by_day.get(req_date, []) or []
-                    
-                        # Pick the high tide closest to midday
                         highs = [e.get("time") for e in events if e.get("type") == "H" and hasattr(e.get("time"), "hour")]
                         if highs:
-                            primary = sorted(highs, key=lambda t: abs(t.hour - 12))[0]
+                            # “closest to noon” heuristic
+                            primary = min(highs, key=lambda t: abs((t.hour * 60 + t.minute) - 12 * 60))
                             ht_str = ecm.format_time_for_display(primary)
                     except Exception as ex:
                         ecm.DEBUG_MESSAGES.append(f"Header high tide lookup failed: {ex}")
-                    # -------- end TRY block --------
-                    
-   
-                if st.sidebar.button("Find Best Slot"):
-                    # …compute, set session_state, build heading…
+                
                     st.session_state.slot_search_heading = (
                         f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
                     )
-  
+                
+                # Always render if we have results (works on reruns too)
                 render_slot_lists()
+
 
 def fmt_draft(val):
     try:
