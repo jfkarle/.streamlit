@@ -7,6 +7,35 @@ import math
 import os
 import json
 import uuid
+from requests.adapters import HTTPAdapter, Retry
+# === BEGIN: DATA LOADER (top-level, no indentation) ===
+def _load_data():
+    """
+    Find and run your data loader inside ecm_scheduler_logic.
+    Stops the app with a clear message if not found.
+    """
+    import streamlit as st
+    try:
+        import ecm_scheduler_logic as ecm
+    except Exception as e:
+        st.error(f"Import error loading ecm_scheduler_logic: {e}")
+        st.stop()
+
+    for name in ("load_all_data_from_sheets", "load_data_from_sheets", "load_all_data", "load_data"):
+        if hasattr(ecm, name):
+            return getattr(ecm, name)()
+
+    st.error(
+        "Couldn’t find a data-loading function in ecm_scheduler_logic.py.\n"
+        "Expected one of: load_all_data_from_sheets | load_data_from_sheets | load_all_data | load_data"
+    )
+    st.stop()
+
+import streamlit as st
+if not st.session_state.get("data_loaded", False):
+    _load_data()
+    st.session_state["data_loaded"] = True
+# === END: DATA LOADER ===
 from geopy.geocoders import Nominatim
 from datetime import timezone
 from reportlab.lib.pagesizes import letter
@@ -146,23 +175,6 @@ def render_slot_lists():
                 st.button("Select", key=f"sel_{s.slot_id}", use_container_width=True,
                           on_click=lambda ss=s: st.session_state.__setitem__('selected_slot', ss))
     
-    def _load_data():
-        # Try a few common names in case it was renamed
-        for name in ("load_all_data_from_sheets", "load_data_from_sheets", "load_all_data", "load_data"):
-            if hasattr(ecm, name):
-                return getattr(ecm, name)()
-        # Friendly error if nothing found
-        st.error(
-            "Couldn’t find a data-loading function in ecm_scheduler_logic.py. "
-            "Expected one of: load_all_data_from_sheets | load_data_from_sheets | load_all_data | load_data"
-        )
-        st.stop()
-
-if "data_loaded" not in st.session_state:
-    _load_data()
-    st.session_state["data_loaded"] = True
-
-st.sidebar.write(f"🔍 Loaded {len(getattr(ecm, 'LOADED_BOATS', []))} boats from Supabase")
 
 class SlotDetail:
     """A wrapper class to make slot dictionaries easier to use in the UI."""
