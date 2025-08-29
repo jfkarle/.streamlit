@@ -2566,6 +2566,20 @@ def _find_slot_on_day(
 
     # Tide windows for this day (list[(time, time)] in local time)
     windows = tide_window_for_day(ramp, day)
+    # --- SAFE window bounds + job duration (used later) ---
+    _job_minutes = job_duration_minutes(getattr(boat, "boat_type", ""), service_type)
+    job_duration = dt.timedelta(minutes=_job_minutes)
+    
+    if windows:
+        # Compute earliest opening and latest closing across all windows
+        w_open_dt  = min(dt.datetime.combine(day, a) for (a, _) in windows)
+        w_close_dt = max(dt.datetime.combine(day, b) for (_, b) in windows)
+    else:
+        # AnyTide or data hiccup → treat as all-day
+        w_open_dt  = dt.datetime.combine(day, dt.time(0, 0))
+        w_close_dt = dt.datetime.combine(day, dt.time(23, 59))
+
+    
     # Special case: only allow ALL-DAY when (Powerboat < 5' draft) AND (Scituate Harbor)
     is_power = (str(getattr(boat, "boat_type", "")).lower().startswith("power"))
     draft_ft = float(getattr(boat, "draft_ft", getattr(boat, "draft", 0)) or 0)
@@ -2620,9 +2634,9 @@ def _find_slot_on_day(
             earliest_window_start = min(win_starts)
             latest_window_end     = max(win_ends)
 
-    # If our current earliest start would miss the window entirely given job duration, relax it
-    if not is_ecm and first_start > (latest_window_end - job_duration):
-        first_start = earliest_window_start
+        # If our current earliest start would miss the window entirely given job duration, relax it
+        if (not is_ecm) and (first_start > (w_close_dt - job_duration)):
+        first_start = w_open_dt
 
 
         start_dt = first_start
