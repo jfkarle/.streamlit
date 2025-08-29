@@ -51,24 +51,16 @@ from reportlab.graphics.charts.piecharts import Pie
 st.set_page_config(layout="wide")
 
 # --- Helper Functions for UI ---
-def render_slot_lists():
-    """
-    Renders:
-      - Requested date (if feasible): 'CAN DO (not preferred)'
-      - Preferred dates (Ideal Crane Days): paged list of 3
-    Shows nothing if a slot is already selected.
-    """
-
     def _tide_hint(slot):
-    """Return a short explanation of why this start time is valid (tide window logic)."""
+        """Return a short explanation of why this start time is valid (tide window logic)."""
         import datetime as _dt
-    
+
         raw = slot.raw_data if hasattr(slot, "raw_data") else (slot or {})
         rule = (raw or {}).get("tide_rule_concise")  # e.g., "3 hrs +/- HT"
         ht_list = (raw or {}).get("high_tide_times") or []
         if not rule:
             return "No tide restriction for this ramp/boat."
-    
+
         # Parse hours from '3 hrs +/- HT'
         parts = str(rule).lower().split()
         hours = None
@@ -77,7 +69,7 @@ def render_slot_lists():
                 hours = int(p); break
         if hours is None or not ht_list:
             return f"Tide policy: {rule} (no specific HT found)."
-    
+
         # Pick a representative HT (closest to midday)
         day = slot.start_datetime.date()
         noon = _dt.datetime.combine(day, _dt.time(12, 0))
@@ -88,21 +80,21 @@ def render_slot_lists():
         open_t  = (_dt.datetime.combine(day, primary) - _dt.timedelta(hours=hours)).time()
         close_t = (_dt.datetime.combine(day, primary) + _dt.timedelta(hours=hours)).time()
         start_t = slot.start_datetime.time()
-    
+
         def _fmt(t):
             # Use your existing formatter if present
             try:
                 return ecm.format_time_for_display(t)
             except Exception:
                 return _dt.datetime.combine(day, t).strftime("%I:%M %p")
-    
+
         # Handle midnight-crossing windows just in case
         if open_t <= close_t:
             inside = (open_t <= start_t <= close_t)
         else:
             inside = (start_t >= open_t or start_t <= close_t)
 
-    return f"Window: ±{hours}h around HT {_fmt(primary)} ⇒ {_fmt(open_t)}–{_fmt(close_t)}. Start {_fmt(start_t)} is {'inside' if inside else 'outside'}."
+        return f"Window: ±{hours}h around HT {_fmt(primary)} ⇒ {_fmt(open_t)}–{_fmt(close_t)}. Start {_fmt(start_t)} is {'inside' if inside else 'outside'}."
 
     
     # Only show when we have results and no selection yet
