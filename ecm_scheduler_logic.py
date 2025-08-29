@@ -2584,12 +2584,26 @@ def _find_slot_on_day(
         truck_open  = dt.datetime.combine(day, hours[0], tzinfo=timezone.utc)
         truck_close = dt.datetime.combine(day, hours[1], tzinfo=timezone.utc)
 
-        first_start = truck_open
+        # Reserve the first slot of the day for ECM boats
+        # Non-ECM boats cannot start at the truck’s opening time.
+        reserve_first_slot_mins = 90  # adjust if you want a different lock size
+        earliest = truck_open if getattr(boat, "is_ecm_boat", False) else (truck_open + timedelta(minutes=reserve_first_slot_mins))
+        
+        first_start = earliest
         last_start  = truck_close - job_duration
+
 
         start_dt = first_start
         while start_dt <= last_start:
             end_dt = start_dt + job_duration
+
+            # Must start within the ramp’s tide window (e.g., ±3h around high tide)
+            # windows is a list of (time_start, time_end) in LOCAL times.
+            local_start_t = start_dt.time()
+            if windows and not any(w0 <= local_start_t <= w1 for (w0, w1) in windows):
+                start_dt += step
+                continue
+
 
             # Hauler availability
             if not check_truck_availability_optimized(truck.truck_id, start_dt, end_dt, compiled_schedule):
