@@ -70,19 +70,14 @@ def render_slot_lists():
         if not rule:
             return "No tide restriction for this ramp/boat."
 
-        # Parse hours from '3 hrs +/- HT'
         parts = str(rule).lower().split()
         hours = next((int(p) for p in parts if p.isdigit()), None)
         if hours is None or not ht_list:
             return f"Tide policy: {rule} (no specific HT found)."
 
-        # Pick a representative HT (closest to midday)
         day = slot.start_datetime.date()
         noon = _dt.datetime.combine(day, _dt.time(12, 0))
-        primary = sorted(
-            ht_list,
-            key=lambda t: abs((_dt.datetime.combine(day, t) - noon).total_seconds())
-        )[0]
+        primary = sorted(ht_list, key=lambda t: abs((_dt.datetime.combine(day, t) - noon).total_seconds()))[0]
         open_t  = (_dt.datetime.combine(day, primary) - _dt.timedelta(hours=hours)).time()
         close_t = (_dt.datetime.combine(day, primary) + _dt.timedelta(hours=hours)).time()
         start_t = slot.start_datetime.time()
@@ -93,20 +88,19 @@ def render_slot_lists():
             except Exception:
                 return _dt.datetime.combine(day, t).strftime("%I:%M %p")
 
-        # Handle midnight-crossing windows
         inside = ((open_t <= close_t and open_t <= start_t <= close_t) or
                   (open_t > close_t and (start_t >= open_t or start_t <= close_t)))
 
         return f"Window: ±{hours}h around HT {_fmt(primary)} ⇒ {_fmt(open_t)}–{_fmt(close_t)}. Start {_fmt(start_t)} is {'inside' if inside else 'outside'}."
 
-        def _ecm_pill(is_ecm: bool) -> str:
-            if not is_ecm:
-                return ""
-            return (
-                '<div style="display:inline-block; padding:2px 8px; border-radius:9999px; '
-                'background:#3b82f6; color:white; font-weight:600; font-size:12px; '
-                'margin:2px 0 6px 0;">ECM Boat</div>'
-            )
+    def _ecm_pill(is_ecm: bool) -> str:
+        if not is_ecm:
+            return ""
+        return (
+            '<div style="display:inline-block; padding:2px 8px; border-radius:9999px; '
+            'background:#3b82f6; color:white; font-weight:600; font-size:12px; '
+            'margin:2px 0 6px 0;">ECM Boat</div>'
+        )
 
     # Only show when we have results and no selection yet
     if not st.session_state.get('found_slots') or st.session_state.get('selected_slot'):
@@ -239,18 +233,24 @@ def render_slot_lists():
     for slot in preferred[start:end]:
         s = slot  # SlotDetail
         with st.container(border=True):
-        # ECM badge
-        try:
-            st.markdown(_ecm_pill(getattr(ecm.get_boat_details(s.boat_id), "is_ecm_boat", False)), unsafe_allow_html=True)
-        except Exception:
-            pass
+            # ECM badge
+            try:
+                st.markdown(
+                    _ecm_pill(getattr(ecm.get_boat_details(s.boat_id), "is_ecm_boat", False)),
+                    unsafe_allow_html=True
+                )
+            except Exception:
+                pass
+
             col1, col2, col3 = st.columns((2, 3, 2))
             st.caption(_tide_hint(s))
 
             with col1:
                 ramp_display_name = s.ramp_name + (" (Efficient Slot ⚡️)" if s.get('is_piggyback') else "")
                 st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
-                st.markdown(f"**🗓️ Date & Time**<br>{s.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
+                st.markdown(f"**🗓️ Date & Time**<br>{s.start_datetime.strftime('%b %d, %Y at %I:%M %p')}",
+                            unsafe_allow_html=True)
+
             with col2:
                 draft_str = fmt_draft(s.raw_data.get('boat_draft'))
                 tide_rule = s.raw_data.get('tide_rule_concise', 'N/A')
@@ -260,12 +260,17 @@ def render_slot_lists():
                 st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
                 st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
                 st.markdown(f"**🔑 Key High Tide**<br>{primary_str}", unsafe_allow_html=True)
+
             with col3:
                 st.markdown(f"**🚚 Truck**<br>{s.truck_name}", unsafe_allow_html=True)
                 crane_needed = "S17 (Required)" if s.raw_data.get('S17_needed') else "Not Required"
                 st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
-                st.button("Select", key=f"sel_{s.slot_id}", use_container_width=True,
-                          on_click=lambda ss=s: st.session_state.__setitem__('selected_slot', ss))
+                st.button(
+                    "Select",
+                    key=f"sel_{s.slot_id}",
+                    use_container_width=True,
+                    on_click=lambda ss=s: st.session_state.__setitem__('selected_slot', ss)
+                )
 
 class SlotDetail:
     """A wrapper class to make slot dictionaries easier to use in the UI."""
