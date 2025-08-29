@@ -614,44 +614,46 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
        
     return score
 
-
-def tide_window_for_day(ramp, day: date) -> list[tuple[datetime.time, datetime.time]]:
+def tide_window_for_day(ramp, day):
     """
-    Returns a list of (start_time, end_time) ramp windows for the given day.
-    AnyTide ramps => 00:00–23:59. Otherwise we expand +/- pad around each tide “center”.
+    Return list of (start_time, end_time) LOCAL time windows when a job may START.
+
+    Rules:
+    - If ramp has NO tide rule (hours <= 0): return [] (no restriction; not "all-day").
+    - If ramp HAS a tide rule (>0): compute ±hours around EACH high tide.
+      If we cannot fetch a usable high tide time for that day, return [] (no legal start).
     """
-    if not ramp:
-        return [(time(0, 0), time(23, 59))]
+    from datetime import time as dtime
 
-    # Method name field varies in your data; normalize
-    method = getattr(ramp, "tide_method", None) or getattr(ramp, "tide_rule", None) or "AnyTide"
+    hours = getattr(ramp, "tide_rule_hours", None)
+    if not hours or hours <= 0:
+        # No tide restriction -> return empty to signal "no limit"; we will NOT turn this into all-day here.
+        return []
 
-    # AnyTide = whole day permitted
-    if str(method) == "AnyTide":
-        return [(time(0, 0), time(23, 59))]
+    # Tide-restricted → must have a valid morning high tide for this day
+    station_id = getattr(ramp, "noaa_station_id", None) or DEFAULT_NOAA_STATION
+    events_by_day = fetch_noaa_tides_for_range(station_id, day, day) or {}
+    events = events_by_day.get(day, [])
 
-    # Pull NOAA events for this specific day
-    events_by_day = fetch_noaa_tides_for_range(ramp.noaa_station_id, day, day) or {}
-    events = events_by_day.get(day, []) or []
+    highs = [
+        e.get("time") for e in events
+        if isinstance(e, dict) and e.get("type") == "H" and isinstance(e.get("time"), dtime)
+    ]
+    if not highs:
+        # Tide rule exists but no highs → no legal window
+        return []
 
-    # How far either side of the center tide we allow; default 180 mins (your “3 hrs +/-”)
-    pad = getattr(ramp, "window_minutes_each_side", 180)
-
-    use_high = getattr(ramp, "uses_high_tide", True)
-    use_low  = getattr(ramp, "uses_low_tide", False)
-
-    windows: list[tuple[datetime.time, datetime.time]] = []
-    for ev in events:
-        if ev.get("type") == "H" and use_high or ev.get("type") == "L" and use_low:
-            t = ev.get("time")
-            if isinstance(t, datetime.time):
-                center = dt.datetime.combine(day, t)
-                a = (center - dt.timedelta(minutes=pad)).time()
-                b = (center + dt.timedelta(minutes=pad)).time()
-                windows.append((a, b))
-
-    # If no windows found (data hiccup), treat as unrestricted day
-    return windows or [(time(0, 0), time(23, 59))]
+    windows = []
+    for ht in highs:
+        start_dt = (dt.datetime.combine(day, ht) - dt.timedelta(hours=hours)).time()
+        end_dt   = (dt.datetime.combine(day, ht) + dt.timedelta(hours=hours)).time()
+        # If the ± window crosses midnight, split it
+        if start_dt <= end_dt:
+            windows.append((start_dt, end_dt))
+        else:
+            windows.append((dtime(0, 0), end_dt))
+            windows.append((start_dt, dtime(23, 59)))
+    return windows
 
 def time_within_any_window(check_time: dt.time, windows: List[Tuple[dt.time, dt.time]]) -> bool:
     for a,b in windows:
@@ -2562,7 +2564,22 @@ def _find_slot_on_day(
 
     # Tide windows for this day (list[(time, time)] in local time)
     windows = tide_window_for_day(ramp, day)
+    # Special case: only allow ALL-DAY when (Powerboat < 5' draft) AND (Scituate Harbor)
+    is_power = (str(getattr(boat, "boat_type", "")).lower().startswith("power"))
+    draft_ft = float(getattr(boat, "draft_ft", getattr(boat, "draft", 0)) or 0)
+    sid = (getattr(ramp, "noaa_station_id", None) or "").strip()
+    is_scituate = (sid == DEFAULT_NOAA_STATION) or ("scituate" in str(getattr(ramp, "name", "")).lower())
+    
+    if is_power and draft_ft < 5.0 and is_scituate:
+        # Explicitly make it all-day for this one allowed case
+        windows = [(dt.time(0, 0), dt.time(23, 59))]
+    
+    # If this ramp has a tide rule but we couldn't compute a window → skip this day
+    if getattr(ramp, "tide_rule_hours", 0) > 0 and not windows:
+        return None
 
+
+    
     # Tide policy (scan step + tolerances)
     policy = (tide_policy or globals().get("_GLOBAL_TIDE_POLICY") or globals().get("DEFAULT_TIDE_POLICY") or {})
     try:
