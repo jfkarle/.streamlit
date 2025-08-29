@@ -258,6 +258,8 @@ class Job:
 
 ### Helpers
 
+DEFAULT_NOAA_STATION = "8445138"
+
 # ---- TIDE POLICY (default, adjustable later from UI) ----
 DEFAULT_TIDE_POLICY = {
     # Launch: allowed lead *before* the ramp window OPENS
@@ -2567,8 +2569,11 @@ def _find_slot_on_day(
     # Special case: only allow ALL-DAY when (Powerboat < 5' draft) AND (Scituate Harbor)
     is_power = (str(getattr(boat, "boat_type", "")).lower().startswith("power"))
     draft_ft = float(getattr(boat, "draft_ft", getattr(boat, "draft", 0)) or 0)
-    sid = (getattr(ramp, "noaa_station_id", None) or "").strip()
-    is_scituate = (sid == DEFAULT_NOAA_STATION) or ("scituate" in str(getattr(ramp, "name", "")).lower())
+    
+    sid_raw = getattr(ramp, "noaa_station_id", None)
+    sid = str(sid_raw).strip() if sid_raw is not None else ""
+    is_scituate = (sid == str(DEFAULT_NOAA_STATION)) or ("scituate" in str(getattr(ramp, "name", "")).lower())
+
     
     if is_power and draft_ft < 5.0 and is_scituate:
         # Explicitly make it all-day for this one allowed case
