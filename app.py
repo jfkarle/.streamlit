@@ -9,6 +9,7 @@ import json
 import uuid
 from requests.adapters import HTTPAdapter, Retry
 # === BEGIN: DATA LOADER (top-level, no indentation) ===
+
 def _load_data():
     """
     Find and run your data loader inside ecm_scheduler_logic.
@@ -51,6 +52,14 @@ from reportlab.graphics.charts.piecharts import Pie
 st.set_page_config(layout="wide")
 
 # --- Helper Functions for UI ---
+def render_slot_lists():
+    """
+    Renders:
+      - Requested date (if feasible): 'CAN DO (not preferred)'
+      - Preferred dates (Ideal Crane Days): paged list of 3
+    Shows nothing if a slot is already selected.
+    """
+
     def _tide_hint(slot):
         """Return a short explanation of why this start time is valid (tide window logic)."""
         import datetime as _dt
@@ -63,10 +72,7 @@ st.set_page_config(layout="wide")
 
         # Parse hours from '3 hrs +/- HT'
         parts = str(rule).lower().split()
-        hours = None
-        for p in parts:
-            if p.isdigit():
-                hours = int(p); break
+        hours = next((int(p) for p in parts if p.isdigit()), None)
         if hours is None or not ht_list:
             return f"Tide policy: {rule} (no specific HT found)."
 
@@ -82,21 +88,17 @@ st.set_page_config(layout="wide")
         start_t = slot.start_datetime.time()
 
         def _fmt(t):
-            # Use your existing formatter if present
             try:
                 return ecm.format_time_for_display(t)
             except Exception:
                 return _dt.datetime.combine(day, t).strftime("%I:%M %p")
 
-        # Handle midnight-crossing windows just in case
-        if open_t <= close_t:
-            inside = (open_t <= start_t <= close_t)
-        else:
-            inside = (start_t >= open_t or start_t <= close_t)
+        # Handle midnight-crossing windows
+        inside = ((open_t <= close_t and open_t <= start_t <= close_t) or
+                  (open_t > close_t and (start_t >= open_t or start_t <= close_t)))
 
         return f"Window: ±{hours}h around HT {_fmt(primary)} ⇒ {_fmt(open_t)}–{_fmt(close_t)}. Start {_fmt(start_t)} is {'inside' if inside else 'outside'}."
 
-    
     # Only show when we have results and no selection yet
     if not st.session_state.get('found_slots') or st.session_state.get('selected_slot'):
         return
