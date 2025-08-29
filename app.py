@@ -173,7 +173,7 @@ def render_slot_lists():
             "Shown below as **CAN DO (not preferred)**, followed by **Preferred dates** (*Ideal Crane Days*)."
         )
 
-# ---- Requested date (single card) ----
+    # ---- Requested date (single card) ----
     if requested_raw:
         req_slot = requested_raw if isinstance(requested_raw, SlotDetail) else SlotDetail(requested_raw)
         st.markdown("##### Requested date · CAN DO (not preferred)")
@@ -221,7 +221,9 @@ def render_slot_lists():
                     on_click=lambda s=req_slot: st.session_state.__setitem__('selected_slot', s)
                 )
 
-        st.divider()
+    st.divider()
+    
+    
     # ---- Preferred dates (paged) ----
     total = len(preferred)
     per_page = 3
