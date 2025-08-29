@@ -99,6 +99,15 @@ def render_slot_lists():
 
         return f"Window: ±{hours}h around HT {_fmt(primary)} ⇒ {_fmt(open_t)}–{_fmt(close_t)}. Start {_fmt(start_t)} is {'inside' if inside else 'outside'}."
 
+        def _ecm_pill(is_ecm: bool) -> str:
+            if not is_ecm:
+                return ""
+            return (
+                '<div style="display:inline-block; padding:2px 8px; border-radius:9999px; '
+                'background:#3b82f6; color:white; font-weight:600; font-size:12px; '
+                'margin:2px 0 6px 0;">ECM Boat</div>'
+            )
+
     # Only show when we have results and no selection yet
     if not st.session_state.get('found_slots') or st.session_state.get('selected_slot'):
         return
@@ -169,6 +178,11 @@ def render_slot_lists():
         req_slot = requested_raw if isinstance(requested_raw, SlotDetail) else SlotDetail(requested_raw)
         st.markdown("##### Requested date · CAN DO (not preferred)")
         with st.container(border=True):
+        # ECM badge
+        try:
+            st.markdown(_ecm_pill(getattr(ecm.get_boat_details(req_slot.boat_id), "is_ecm_boat", False)), unsafe_allow_html=True)
+        except Exception:
+            pass
             col1, col2, col3 = st.columns((2, 3, 2))
             st.caption(_tide_hint(req_slot))
             with col1:
@@ -208,6 +222,11 @@ def render_slot_lists():
     for slot in preferred[start:end]:
         s = slot  # SlotDetail
         with st.container(border=True):
+        # ECM badge
+        try:
+            st.markdown(_ecm_pill(getattr(ecm.get_boat_details(s.boat_id), "is_ecm_boat", False)), unsafe_allow_html=True)
+        except Exception:
+            pass
             col1, col2, col3 = st.columns((2, 3, 2))
             st.caption(_tide_hint(s))
 
