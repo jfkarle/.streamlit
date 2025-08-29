@@ -58,6 +58,53 @@ def render_slot_lists():
       - Preferred dates (Ideal Crane Days): paged list of 3
     Shows nothing if a slot is already selected.
     """
+
+        def _tide_hint(slot):
+        """Return a short explanation of why this start time is valid (tide window logic)."""
+        import datetime as _dt
+
+        raw = slot.raw_data if hasattr(slot, "raw_data") else (slot or {})
+        rule = (raw or {}).get("tide_rule_concise")  # e.g., "3 hrs +/- HT"
+        ht_list = (raw or {}).get("high_tide_times") or []
+        if not rule:
+            return "No tide restriction for this ramp/boat."
+
+        # Parse hours from '3 hrs +/- HT'
+        parts = str(rule).lower().split()
+        hours = None
+        for p in parts:
+            if p.isdigit():
+                hours = int(p); break
+        if hours is None or not ht_list:
+            return f"Tide policy: {rule} (no specific HT found)."
+
+        # Pick a representative HT (closest to midday)
+        day = slot.start_datetime.date()
+        noon = _dt.datetime.combine(day, _dt.time(12, 0))
+        primary = sorted(
+            ht_list,
+            key=lambda t: abs((_dt.datetime.combine(day, t) - noon).total_seconds())
+        )[0]
+        open_t  = (_dt.datetime.combine(day, primary) - _dt.timedelta(hours=hours)).time()
+        close_t = (_dt.datetime.combine(day, primary) + _dt.timedelta(hours=hours)).time()
+        start_t = slot.start_datetime.time()
+
+        def _fmt(t):
+            # Use your existing formatter if present
+            try:
+                return ecm.format_time_for_display(t)
+            except Exception:
+                return _dt.datetime.combine(day, t).strftime("%I:%M %p")
+
+        # Handle midnight-crossing windows just in case
+        if open_t <= close_t:
+            inside = (open_t <= start_t <= close_t)
+        else:
+            inside = (start_t >= open_t or start_t <= close_t)
+
+        return f"Window: ±{hours}h around HT {_fmt(primary)} ⇒ {_fmt(open_t)}–{_fmt(close_t)}. Start {_fmt(start_t)} is {'inside' if inside else 'outside'}."
+
+    
     # Only show when we have results and no selection yet
     if not st.session_state.get('found_slots') or st.session_state.get('selected_slot'):
         return
@@ -129,6 +176,7 @@ def render_slot_lists():
         st.markdown("##### Requested date · CAN DO (not preferred)")
         with st.container(border=True):
             col1, col2, col3 = st.columns((2, 3, 2))
+            st.caption(_tide_hint(req_slot))
             with col1:
                 ramp_display_name = req_slot.ramp_name + (" (Efficient Slot ⚡️)" if req_slot.get('is_piggyback') else "")
                 st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
@@ -167,6 +215,8 @@ def render_slot_lists():
         s = slot  # SlotDetail
         with st.container(border=True):
             col1, col2, col3 = st.columns((2, 3, 2))
+            st.caption(_tide_hint(s))
+
             with col1:
                 ramp_display_name = s.ramp_name + (" (Efficient Slot ⚡️)" if s.get('is_piggyback') else "")
                 st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
