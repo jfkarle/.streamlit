@@ -178,33 +178,33 @@ def render_slot_lists():
         req_slot = requested_raw if isinstance(requested_raw, SlotDetail) else SlotDetail(requested_raw)
         st.markdown("##### Requested date · CAN DO (not preferred)")
         with st.container(border=True):
-        # ECM badge
-        try:
-            st.markdown(_ecm_pill(getattr(ecm.get_boat_details(req_slot.boat_id), "is_ecm_boat", False)), unsafe_allow_html=True)
-        except Exception:
-            pass
-            col1, col2, col3 = st.columns((2, 3, 2))
-            st.caption(_tide_hint(req_slot))
-            with col1:
-                ramp_display_name = req_slot.ramp_name + (" (Efficient Slot ⚡️)" if req_slot.get('is_piggyback') else "")
-                st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
-                st.markdown(f"**🗓️ Date & Time**<br>{req_slot.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
-            with col2:
-                draft_str = fmt_draft(req_slot.raw_data.get('boat_draft'))
-                tide_rule = req_slot.raw_data.get('tide_rule_concise', 'N/A')
-                tide_times = req_slot.raw_data.get('high_tide_times', [])
-                primary = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
-                primary_str = ecm.format_time_for_display(primary) if primary else "N/A"
-                st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
-                st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
-                st.markdown(f"**🔑 Key High Tide**<br>{primary_str}", unsafe_allow_html=True)
-            with col3:
-                st.markdown(f"**🚚 Truck**<br>{req_slot.truck_name}", unsafe_allow_html=True)
-                crane_needed = "S17 (Required)" if req_slot.raw_data.get('S17_needed') else "Not Required"
-                st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
-                st.button("Select", key=f"sel_req_{req_slot.slot_id}", use_container_width=True,
-                          on_click=lambda s=req_slot: st.session_state.__setitem__('selected_slot', s))
-        st.divider()
+            # ECM badge
+            try:
+                st.markdown(_ecm_pill(getattr(ecm.get_boat_details(req_slot.boat_id), "is_ecm_boat", False)), unsafe_allow_html=True)
+            except Exception:
+                pass
+                col1, col2, col3 = st.columns((2, 3, 2))
+                st.caption(_tide_hint(req_slot))
+                with col1:
+                    ramp_display_name = req_slot.ramp_name + (" (Efficient Slot ⚡️)" if req_slot.get('is_piggyback') else "")
+                    st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
+                    st.markdown(f"**🗓️ Date & Time**<br>{req_slot.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
+                with col2:
+                    draft_str = fmt_draft(req_slot.raw_data.get('boat_draft'))
+                    tide_rule = req_slot.raw_data.get('tide_rule_concise', 'N/A')
+                    tide_times = req_slot.raw_data.get('high_tide_times', [])
+                    primary = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
+                    primary_str = ecm.format_time_for_display(primary) if primary else "N/A"
+                    st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
+                    st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
+                    st.markdown(f"**🔑 Key High Tide**<br>{primary_str}", unsafe_allow_html=True)
+                with col3:
+                    st.markdown(f"**🚚 Truck**<br>{req_slot.truck_name}", unsafe_allow_html=True)
+                    crane_needed = "S17 (Required)" if req_slot.raw_data.get('S17_needed') else "Not Required"
+                    st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
+                    st.button("Select", key=f"sel_req_{req_slot.slot_id}", use_container_width=True,
+                              on_click=lambda s=req_slot: st.session_state.__setitem__('selected_slot', s))
+            st.divider()
 
     # ---- Preferred dates (paged) ----
     total = len(preferred)
