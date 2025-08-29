@@ -2606,13 +2606,23 @@ def _find_slot_on_day(
         truck_open  = dt.datetime.combine(day, hours[0], tzinfo=timezone.utc)
         truck_close = dt.datetime.combine(day, hours[1], tzinfo=timezone.utc)
 
-        # Reserve the first slot of the day for ECM boats
-        # Non-ECM boats cannot start at the truck’s opening time.
-        reserve_first_slot_mins = 90  # adjust if you want a different lock size
-        earliest = truck_open if getattr(boat, "is_ecm_boat", False) else (truck_open + timedelta(minutes=reserve_first_slot_mins))
-        
+        # Reserve the first slot of the day for ECM boats (shorter hold)
+        reserve_first_slot_mins = 60
+        is_ecm = getattr(boat, "is_ecm_boat", False)
+        earliest = truck_open if is_ecm else (truck_open + timedelta(minutes=reserve_first_slot_mins))
         first_start = earliest
         last_start  = truck_close - job_duration
+        
+        # If non-ECM hold pushes us past all tide windows, relax to the earliest window start
+        if windows:
+            win_starts = [dt.datetime.combine(day, w0) for (w0, w1) in windows]
+            win_ends   = [dt.datetime.combine(day, w1) for (w0, w1) in windows]
+            earliest_window_start = min(win_starts)
+            latest_window_end     = max(win_ends)
+
+    # If our current earliest start would miss the window entirely given job duration, relax it
+    if not is_ecm and first_start > (latest_window_end - job_duration):
+        first_start = earliest_window_start
 
 
         start_dt = first_start
