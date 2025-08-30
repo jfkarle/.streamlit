@@ -1281,6 +1281,23 @@ def _abbreviate_town(address):
         if town in address_lower: return abbr
     return address.title().split(',')[0][:3]
 
+def _calculate_target_date_score(slot_date, target_date):
+    """
+    Calculates a score based on how close the slot_date is to the target_date.
+    A score of 100 is given for the exact date, with the score decreasing for
+    each day further away.
+    """
+    if target_date is None:
+        return 0 # No score if no target date is provided
+
+    days_difference = abs((slot_date - target_date).days)
+    
+    # Give a high score for the target date and a decreasing score for surrounding days
+    # This formula gives 100 for the target date, 90 for +/- 1 day, 80 for +/- 2 days, etc.
+    score = max(0, 100 - (days_difference * 10))
+    return score
+    
+
 def _calculate_distance_miles(coords1, coords2):
     """Calculates the Haversine distance between two lat/lon points in miles."""
     import math
@@ -1779,7 +1796,7 @@ def _total_jobs_from_compiled_schedule(compiled_schedule):
     except Exception:
         return 0
 
-def _select_best_slots(all_found_slots, compiled_schedule, daily_last_locations, k=3):
+def _select_best_slots(all_found_slots, compiled_schedule, daily_last_locations, requested_date, k=3):
     """
     Rank slots using the 4-arg _score_candidate(...) and return top-k.
     Activates the packing nudge after total scheduled jobs >= 25.
@@ -1799,6 +1816,10 @@ def _select_best_slots(all_found_slots, compiled_schedule, daily_last_locations,
     for s in (all_found_slots or []):
         try:
             sc = _score_candidate(s, compiled_schedule, daily_last_locations, after_threshold=after_threshold)
+            
+            # --- THIS IS THE KEY FIX: Add the date proximity score ---
+            sc += _calculate_target_date_score(s.get("date"), requested_date)
+
         except Exception:
             sc = float("-inf")
 
@@ -1831,6 +1852,10 @@ def _select_best_slots(all_found_slots, compiled_schedule, daily_last_locations,
 
     if not scored:
         return []
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    k = max(1, int(k or 1))
+    return [s for _, s in scored[:k]]
 
     scored.sort(key=lambda x: x[0], reverse=True)
     k = max(1, int(k or 1))
@@ -1995,7 +2020,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     opp_days = order_dates_with_low_tide_bias(requested_date, opp_days, prime_days)
     fb_days = order_dates_with_low_tide_bias(requested_date, fb_days, prime_days)
 
-    def _run_search(trucks_to_search, search_message_type):
+    def _run_search(trucks_to_search, search_message_type, requested_date):
         found = []
         POOL_CAP = max(20, num_suggestions_to_find * 20)
 
@@ -2022,7 +2047,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
                     found.append(slot)
 
         if found:
-            best = _select_best_slots(found, compiled_schedule, daily_last_locations, k=num_suggestions_to_find)
+            best = _select_best_slots(found, compiled_schedule, daily_last_locations, requested_date, k=num_suggestions_to_find)
             msg = f"Found {len(best)} slot(s) using {search_message_type} truck."
             return (best, msg)
         return ([], None)
@@ -2032,10 +2057,10 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     if trucks_to_try:
         search_type = "preferred" if boat.preferred_truck_id else "any suitable"
-        found_slots, message = _run_search(trucks_to_try, search_type)
+        found_slots, message = _run_search(trucks_to_try, search_type, requested_date)
 
     if (not found_slots) and relax_truck_preference and other_trucks:
-        found_slots, message = _run_search(other_trucks, "other")
+        found_slots, message = _run_search(other_trucks, "other", requested_date)
 
     if found_slots:
         return (found_slots, message, [], False)
