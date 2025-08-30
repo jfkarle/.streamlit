@@ -70,14 +70,19 @@ def render_slot_lists():
         if not rule:
             return "No tide restriction for this ramp/boat."
 
+        # Parse hours from '3 hrs +/- HT'
         parts = str(rule).lower().split()
         hours = next((int(p) for p in parts if p.isdigit()), None)
         if hours is None or not ht_list:
             return f"Tide policy: {rule} (no specific HT found)."
 
+        # Pick a representative HT (closest to midday)
         day = slot.start_datetime.date()
         noon = _dt.datetime.combine(day, _dt.time(12, 0))
-        primary = sorted(ht_list, key=lambda t: abs((_dt.datetime.combine(day, t) - noon).total_seconds()))[0]
+        primary = sorted(
+            ht_list,
+            key=lambda t: abs((_dt.datetime.combine(day, t) - noon).total_seconds())
+        )[0]
         open_t  = (_dt.datetime.combine(day, primary) - _dt.timedelta(hours=hours)).time()
         close_t = (_dt.datetime.combine(day, primary) + _dt.timedelta(hours=hours)).time()
         start_t = slot.start_datetime.time()
@@ -88,19 +93,11 @@ def render_slot_lists():
             except Exception:
                 return _dt.datetime.combine(day, t).strftime("%I:%M %p")
 
+        # Handle midnight-crossing windows
         inside = ((open_t <= close_t and open_t <= start_t <= close_t) or
                   (open_t > close_t and (start_t >= open_t or start_t <= close_t)))
 
         return f"Window: ±{hours}h around HT {_fmt(primary)} ⇒ {_fmt(open_t)}–{_fmt(close_t)}. Start {_fmt(start_t)} is {'inside' if inside else 'outside'}."
-
-    def _ecm_pill(is_ecm: bool) -> str:
-        if not is_ecm:
-            return ""
-        return (
-            '<div style="display:inline-block; padding:2px 8px; border-radius:9999px; '
-            'background:#3b82f6; color:white; font-weight:600; font-size:12px; '
-            'margin:2px 0 6px 0;">ECM Boat</div>'
-        )
 
     # Only show when we have results and no selection yet
     if not st.session_state.get('found_slots') or st.session_state.get('selected_slot'):
@@ -167,54 +164,32 @@ def render_slot_lists():
             "Shown below as **CAN DO (not preferred)**, followed by **Preferred dates** (*Ideal Crane Days*)."
         )
 
-        # ---- Requested date (single card) ----
+    # ---- Requested date (single card) ----
     if requested_raw:
         req_slot = requested_raw if isinstance(requested_raw, SlotDetail) else SlotDetail(requested_raw)
         st.markdown("##### Requested date · CAN DO (not preferred)")
-
         with st.container(border=True):
-            # ECM badge
-            try:
-                st.markdown(
-                    _ecm_pill(getattr(ecm.get_boat_details(req_slot.boat_id), "is_ecm_boat", False)),
-                    unsafe_allow_html=True
-                )
-            except Exception:
-                pass
-
             col1, col2, col3 = st.columns((2, 3, 2))
             st.caption(_tide_hint(req_slot))
-
             with col1:
-                ramp_display_name = req_slot.ramp_name + (" (Efficient Slot ⚡)" if req_slot.get('is_piggyback') else "")
+                ramp_display_name = req_slot.ramp_name + (" (Efficient Slot ⚡️)" if req_slot.get('is_piggyback') else "")
                 st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
-                st.markdown(
-                    f"**📅 Date & Time**<br>{req_slot.start_datetime.strftime('%b %d, %Y at %I:%M %p')}",
-                    unsafe_allow_html=True
-                )
-
+                st.markdown(f"**🗓️ Date & Time**<br>{req_slot.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
             with col2:
-                draft_str  = fmt_draft(req_slot.raw_data.get('boat_draft'))
-                tide_rule  = req_slot.raw_data.get('tide_rule_concise', 'N/A')
+                draft_str = fmt_draft(req_slot.raw_data.get('boat_draft'))
+                tide_rule = req_slot.raw_data.get('tide_rule_concise', 'N/A')
                 tide_times = req_slot.raw_data.get('high_tide_times', [])
-                primary    = sorted(tide_times, key=lambda t: abs((t.hour - 12))) [0] if tide_times else None
+                primary = sorted(tide_times, key=lambda t: abs(t.hour - 12))[0] if tide_times else None
                 primary_str = ecm.format_time_for_display(primary) if primary else "N/A"
-
-                st.markdown(f"**🪝 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
+                st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
                 st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
                 st.markdown(f"**🔑 Key High Tide**<br>{primary_str}", unsafe_allow_html=True)
-
             with col3:
                 st.markdown(f"**🚚 Truck**<br>{req_slot.truck_name}", unsafe_allow_html=True)
-                crane_needed = "S17 (Required)" if req_slot.raw_data.get('s17_needed') else "Not Required"
+                crane_needed = "S17 (Required)" if req_slot.raw_data.get('S17_needed') else "Not Required"
                 st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
-                st.button(
-                    "Select",
-                    key=f"sel_req_{req_slot.slot_id}",
-                    use_container_width=True,
-                    on_click=lambda s=req_slot: st.session_state.__setitem__('selected_slot', s)
-                )
-
+                st.button("Select", key=f"sel_req_{req_slot.slot_id}", use_container_width=True,
+                          on_click=lambda s=req_slot: st.session_state.__setitem__('selected_slot', s))
         st.divider()
 
     # ---- Preferred dates (paged) ----
@@ -233,24 +208,13 @@ def render_slot_lists():
     for slot in preferred[start:end]:
         s = slot  # SlotDetail
         with st.container(border=True):
-            # ECM badge
-            try:
-                st.markdown(
-                    _ecm_pill(getattr(ecm.get_boat_details(s.boat_id), "is_ecm_boat", False)),
-                    unsafe_allow_html=True
-                )
-            except Exception:
-                pass
-
             col1, col2, col3 = st.columns((2, 3, 2))
             st.caption(_tide_hint(s))
 
             with col1:
                 ramp_display_name = s.ramp_name + (" (Efficient Slot ⚡️)" if s.get('is_piggyback') else "")
                 st.markdown(f"**⚓ Ramp**<br>{ramp_display_name}", unsafe_allow_html=True)
-                st.markdown(f"**🗓️ Date & Time**<br>{s.start_datetime.strftime('%b %d, %Y at %I:%M %p')}",
-                            unsafe_allow_html=True)
-
+                st.markdown(f"**🗓️ Date & Time**<br>{s.start_datetime.strftime('%b %d, %Y at %I:%M %p')}", unsafe_allow_html=True)
             with col2:
                 draft_str = fmt_draft(s.raw_data.get('boat_draft'))
                 tide_rule = s.raw_data.get('tide_rule_concise', 'N/A')
@@ -260,17 +224,12 @@ def render_slot_lists():
                 st.markdown(f"**📏 Boat Draft**<br>{draft_str}", unsafe_allow_html=True)
                 st.markdown(f"**🌊 Ramp Tide Rule**<br>{tide_rule}", unsafe_allow_html=True)
                 st.markdown(f"**🔑 Key High Tide**<br>{primary_str}", unsafe_allow_html=True)
-
             with col3:
                 st.markdown(f"**🚚 Truck**<br>{s.truck_name}", unsafe_allow_html=True)
                 crane_needed = "S17 (Required)" if s.raw_data.get('S17_needed') else "Not Required"
                 st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
-                st.button(
-                    "Select",
-                    key=f"sel_{s.slot_id}",
-                    use_container_width=True,
-                    on_click=lambda ss=s: st.session_state.__setitem__('selected_slot', ss)
-                )
+                st.button("Select", key=f"sel_{s.slot_id}", use_container_width=True,
+                          on_click=lambda ss=s: st.session_state.__setitem__('selected_slot', ss))
 
 class SlotDetail:
     """A wrapper class to make slot dictionaries easier to use in the UI."""
@@ -1157,77 +1116,68 @@ def show_scheduler_page():
                 selected_ramp_id = st.sidebar.selectbox("Ramp:", options=available_ramp_ids, index=default_ramp_index, format_func=lambda ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name)
                 slot_dicts, msg, warnings, forced = [], "", [], False
 
-                # ---- Sidebar: one-click scheduler form (REPLACES the old button block) ----
-                with st.sidebar.form("find_slot_form", clear_on_submit=False):
-                    service_type = st.selectbox("Service Type", ["Launch", "Haul"], index=0, key="svc_type")
-                    req_date = st.date_input("Requested Date", value=req_date, key="req_date_form")   # reuse your existing req_date default
-                    ignore_conflict = st.checkbox("Ignore Scheduling Conflict?", key="ignore_conflict_form")
-                    selected_ramp_id = st.selectbox("Ramp", options=available_ramp_ids, index=default_ramp_index, key="ramp_id_form")
-                
-                    submitted = st.form_submit_button("Find Best Slot", use_container_width=True)
-                
-                if submitted:
-                    # 1) Run the search immediately, using the values *from the form* above
-                    slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
-                        customer_id=customer.customer_id,
-                        boat_id=boat.boat_id,
-                        service_type=service_type,
-                        requested_date_str=req_date.strftime("%Y-%m-%d"),
-                        selected_ramp_id=selected_ramp_id,
-                        num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
-                        relax_truck_preference=st.session_state.get("relax_truck_preference", False),
-                        tide_policy=_tide_policy_from_ui(),   # keep your helper
-                    )
-                    # 2) Store results + clear any prior selection
-                    st.session_state['selected_slot'] = None
-                    st.session_state['found_slots'] = [SlotDetail(s) for s in slot_dicts]
-                    st.session_state['search_message'] = msg
-                    st.session_state['search_warnings'] = warnings
-                
-                    # 3) Refresh so the results render in the same pass
-                    st.rerun()
-                # ---- end replacement ----
 
-                
-                    # 3) Refresh so the results render in the same pass
-                    st.rerun()
-                # ---- end replacement ----
-                    # optional: force immediate refresh if your page defers rendering
-                    # st.rerun()
+# === One-click search: use callback so a single click runs the search in this pass ===
+def _run_slot_search_cb():
+    # 1) Run the search
+    slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
+        customer_id=customer.customer_id,
+        boat_id=boat.boat_id,
+        service_type=service_type,
+        requested_date_str=req_date.strftime("%Y-%m-%d"),
+        selected_ramp_id=selected_ramp_id,
+        num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
+        relax_truck_preference=st.session_state.get("relax_truck_preference", False),
+        tide_policy=_tide_policy_from_ui(),
+    )
+    # 2) Store results in session
+    st.session_state['found_slots'] = [SlotDetail(s) for s in slot_dicts]
+    st.session_state['failure_reasons'] = warnings
+    st.session_state['was_forced_search'] = forced
+    st.session_state['current_job_request'] = {
+        "customer_id": customer.customer_id,
+        "boat_id": boat.boat_id,
+        "service_type": service_type,
+        "requested_date": req_date,
+        "selected_ramp_id": selected_ramp_id,
+    }
+    st.session_state['search_requested_date'] = req_date
+    st.session_state['info_message'] = msg
+    st.session_state.pop('selected_slot', None)   # reset any old selection
+    st.session_state['slot_page_index'] = 0
 
-                    st.session_state.was_forced_search = forced
-                    st.session_state.current_job_request = {
-                        "customer_id": customer.customer_id,
-                        "boat_id": boat.boat_id,
-                        "service_type": service_type,
-                        "requested_date": req_date,
-                        "selected_ramp_id": selected_ramp_id,
-                    }
-                    st.session_state.search_requested_date = req_date
-                    st.session_state.info_message = msg
-                    st.session_state.pop('selected_slot', None)   # reset any old selection
-                    st.session_state.slot_page_index = 0
-                    # 3) Compute banner pieces HERE (so they always exist)
-                    ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
-                    ramp_name = getattr(ramp_obj, "ramp_name", None) or getattr(ramp_obj, "name", "Selected Ramp")
-                    cust_name = getattr(customer, "customer_name", None) or getattr(customer, "display_name", "Selected Customer")
-                    date_str  = req_date.strftime("%B %d, %Y") if isinstance(req_date, datetime.date) else "requested date"
-                    ht_str = "N/A"
-                    try:
-                        station_id = ecm._station_for_ramp_or_scituate(str(selected_ramp_id)) if selected_ramp_id else None
-                        tides_by_day = ecm.fetch_noaa_tides_for_range(station_id, req_date, req_date) if station_id else {}
-                        events = tides_by_day.get(req_date, []) or []
-                        highs = [e.get("time") for e in events if e.get("type") == "H" and hasattr(e.get("time"), "hour")]
-                        if highs:
-                            # “closest to noon” heuristic
-                            primary = min(highs, key=lambda t: abs((t.hour * 60 + t.minute) - 12 * 60))
-                            ht_str = ecm.format_time_for_display(primary)
-                    except Exception as ex:
-                        ecm.DEBUG_MESSAGES.append(f"Header high tide lookup failed: {ex}")
-                    st.session_state.slot_search_heading = (
-                        f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
-                    )
-                # Always render if we have results (works on reruns too)
+    # 3) Compute banner pieces
+    ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
+    ramp_name = getattr(ramp_obj, "ramp_name", None) or getattr(ramp_obj, "name", "Selected Ramp")
+    cust_name = getattr(customer, "customer_name", None) or getattr(customer, "display_name", "Selected Customer")
+    date_str  = req_date.strftime("%B %d, %Y") if isinstance(req_date, datetime.date) else "requested date"
+
+    ht_str = "N/A"
+    try:
+        sid = getattr(ecm, "_station_for_ramp_or_scituate", None)
+        station_id = sid(str(selected_ramp_id)) if (sid and selected_ramp_id) else None
+        tides_by_day = ecm.fetch_noaa_tides_for_range(station_id, req_date, req_date) if station_id else {}
+        events = tides_by_day.get(req_date, []) or []
+        highs = [e.get("time") for e in events if e.get("type") == "H" and hasattr(e.get("time"), "hour")]
+        if highs:
+            primary = min(highs, key=lambda t: abs((t.hour * 60 + t.minute) - 12 * 60))
+            if hasattr(ecm, "format_time_for_display"):
+                ht_str = ecm.format_time_for_display(primary)
+            else:
+                ht_str = primary.strftime("%I:%M %p").lstrip("0")
+    except Exception as ex:
+        try:
+            ecm.DEBUG_MESSAGES.append(f"Header high tide lookup failed: {ex}")
+        except Exception:
+            pass
+
+    st.session_state['slot_search_heading'] = (
+        f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
+    )
+    st.rerun()
+
+st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
+
                 render_slot_lists()
 
                 # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
