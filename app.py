@@ -808,7 +808,7 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
             
         bc = VerticalBarChart()
         bc.x = 50; bc.y = 50; bc.height = 150; bc.width = 380
-        bc.data = data; bc.groupSpacing = 10; bc.barSpacing = 2.5; bc.style = 'stacked'
+        bc.data = data; bc.groupSpacing = 10; bc.barSpacing = 2.5; bc.categoryAxis.style = 'stacked'
         bc.categoryAxis.categoryNames = truck_names; bc.categoryAxis.labels.boxAngle = 30
         bc.valueAxis.valueMin = 0; bc.valueAxis.labels.fontName = 'Helvetica'
         bc.bars[0].fillColor = colors.HexColor('#FF7F7F'); bc.bars[1].fillColor = colors.HexColor('#FFD700')
