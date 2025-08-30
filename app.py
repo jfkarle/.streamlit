@@ -1177,9 +1177,9 @@ def _run_slot_search_cb():
     st.rerun()
 
 st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
-
-        render_slot_lists()
     
+    render_slot_lists()
+
         # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
         if st.session_state.get('selected_slot'):
             slot = st.session_state.selected_slot
