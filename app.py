@@ -798,8 +798,11 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     story.append(bucket_tbl)
     story.append(Spacer(1, 12))
 
+    # --- NEW: Stacked Bar Chart for Job-Day Distribution ---
     if truck_names:
         drawing = Drawing(450, 220)
+        
+        # Data for the chart
         bucket_order = ["1 job", "2 jobs", "3 jobs", "4+ jobs"]
         data = []
         for bucket_name in bucket_order:
@@ -807,19 +810,44 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
             data.append(tuple(series))
             
         bc = VerticalBarChart()
-        bc.x = 50; bc.y = 50; bc.height = 150; bc.width = 380
-        bc.data = data; bc.groupSpacing = 10; bc.barSpacing = 2.5; bc.categoryAxis.style = 'stacked'
-        bc.categoryAxis.categoryNames = truck_names; bc.categoryAxis.labels.label_boxAngle = 30
-        bc.valueAxis.valueMin = 0; bc.valueAxis.labels.fontName = 'Helvetica'
-        bc.bars[0].fillColor = colors.HexColor('#FF7F7F'); bc.bars[1].fillColor = colors.HexColor('#FFD700')
-        bc.bars[2].fillColor = colors.HexColor('#90EE90'); bc.bars[3].fillColor = colors.HexColor('#2E8B57')
+        bc.x = 50
+        bc.y = 50
+        bc.height = 150
+        bc.width = 380
+        bc.data = data
+        bc.groupSpacing = 10
         
-        legend = Legend(); legend.alignment = 'right'; legend.x = 450; legend.y = 180
+        # --- THIS SECTION IS CORRECTED ---
+        # 1. To make the chart stacked, set the style on the 'bars' attribute group
+        bc.bars.style = 'stacked'
+        
+        # 2. To rotate the labels, set the 'angle' property of the labels
+        bc.categoryAxis.labels.angle = 45
+        bc.categoryAxis.labels.dy = -10 # Adjust position for rotated text
+        # --- END CORRECTION ---
+
+        bc.categoryAxis.categoryNames = truck_names
+        bc.valueAxis.valueMin = 0
+        bc.valueAxis.labels.fontName = 'Helvetica'
+        bc.bars[0].fillColor = colors.HexColor('#FF7F7F') # 1 job (reddish)
+        bc.bars[1].fillColor = colors.HexColor('#FFD700') # 2 jobs (yellow)
+        bc.bars[2].fillColor = colors.HexColor('#90EE90') # 3 jobs (light green)
+        bc.bars[3].fillColor = colors.HexColor('#2E8B57') # 4+ jobs (dark green)
+        
+        legend = Legend()
+        legend.alignment = 'right'
+        legend.x = 450
+        legend.y = 180
         legend.colorNamePairs = [
-            (colors.HexColor('#FF7F7F'), '1-Job Days'), (colors.HexColor('#FFD700'), '2-Job Days'),
-            (colors.HexColor('#90EE90'), '3-Job Days'), (colors.HexColor('#2E8B57'), '4+ Job Days')]
+            (colors.HexColor('#FF7F7F'), '1-Job Days'),
+            (colors.HexColor('#FFD700'), '2-Job Days'),
+            (colors.HexColor('#90EE90'), '3-Job Days'),
+            (colors.HexColor('#2E8B57'), '4+ Job Days')
+        ]
         
-        drawing.add(bc); drawing.add(legend); story.append(drawing)
+        drawing.add(bc)
+        drawing.add(legend)
+        story.append(drawing)
 
     # --- Page 5+: Detailed Boat Status (Restored) ---
     story.append(PageBreak())
