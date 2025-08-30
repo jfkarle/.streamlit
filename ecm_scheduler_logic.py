@@ -848,12 +848,11 @@ def load_all_data_from_sheets():
     try:
         conn = get_db_connection()
 
-        # Safety guards (in case someone refactors import order later)
+        # Safety guards
         if SCHEDULED_JOBS is None: SCHEDULED_JOBS = []
         if PARKED_JOBS is None: PARKED_JOBS = {}
     
         # --- Jobs ---
-        # MODIFIED: Explicitly list all columns in the select query to bypass any potential schema caching issues.
         query_columns = (
             "job_id, customer_id, boat_id, service_type, "
             "scheduled_start_datetime, scheduled_end_datetime, "
@@ -863,14 +862,8 @@ def load_all_data_from_sheets():
             "pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude"
         )
         jobs_resp = execute_query(conn.table("jobs").select(query_columns), ttl=0)
-
-        if isinstance(jobs_resp.data, list):
-            # Load all jobs that have a start date
-            all_jobs = [Job(**row) for row in jobs_resp.data if row.get('scheduled_start_datetime')]
-        else:
-            print(f"WARNING: jobs_resp.data was not a list: {jobs_resp.data}")
-            all_jobs = []
-
+        all_jobs = [Job(**row) for row in jobs_resp.data if row.get('scheduled_start_datetime')] if isinstance(jobs_resp.data, list) else []
+        
         SCHEDULED_JOBS.clear() 
         SCHEDULED_JOBS.extend([job for job in all_jobs if job.job_status == "Scheduled"])
         PARKED_JOBS.clear()
@@ -879,83 +872,64 @@ def load_all_data_from_sheets():
         # --- Trucks ---
         trucks_resp = execute_query(conn.table("trucks").select("*"), ttl=0)
         ECM_TRUCKS.clear()
-        for row in trucks_resp.data:
-            t = Truck(
-                t_id    = row["truck_id"],
-                name    = row.get("truck_name"),
-                max_len = row.get("max_boat_length")
-            )
-            ECM_TRUCKS[t.truck_id] = t
-
+        ECM_TRUCKS.update({row["truck_id"]: Truck(t_id=row["truck_id"], name=row.get("truck_name"), max_len=row.get("max_boat_length")) for row in trucks_resp.data})
         name_to_id = {t.truck_name: t.truck_id for t in ECM_TRUCKS.values()}
 
-        # --- Ramps ---
+        # --- Ramps (Corrected Type Handling) ---
         ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
         ECM_RAMPS.clear()
-        ECM_RAMPS.update({
-            # V-- THIS IS THE FIX --V
-            str(row["ramp_id"]): Ramp(
-                r_id        = row["ramp_id"],
-                name        = row.get("ramp_name"),
-                station     = row.get("noaa_station_id"),
-                tide_method = row.get("tide_calculation_method"),
-                offset      = row.get("tide_offset_hours"),
-                boats       = row.get("allowed_boat_types"),
-                latitude    = row.get("latitude"),
-                longitude   = row.get("longitude")
-            )
-            for row in ramps_resp.data
-        })
+        for row in ramps_resp.data:
+            try:
+                # --- FIX: Ensure ramp_id is treated as an integer before converting to a string ---
+                ramp_id_str = str(int(row["ramp_id"]))
+                ECM_RAMPS[ramp_id_str] = Ramp(
+                    r_id=row["ramp_id"], name=row.get("ramp_name"), station=row.get("noaa_station_id"),
+                    tide_method=row.get("tide_calculation_method"), offset=row.get("tide_offset_hours"),
+                    boats=row.get("allowed_boat_types"), latitude=row.get("latitude"), longitude=row.get("longitude")
+                )
+            except (ValueError, TypeError):
+                _log_debug(f"Skipping ramp with invalid ID: {row.get('ramp_id')}")
 
         # --- Customers ---
         cust_resp = execute_query(conn.table("customers").select("*"), ttl=0)
         LOADED_CUSTOMERS.clear()
-        LOADED_CUSTOMERS.update({
-            int(row["customer_id"]): Customer(
-                c_id = row["customer_id"],
-                name = row.get("Customer", "")
-            )
-            for row in cust_resp.data
-            if row.get("customer_id")
-        })
+        LOADED_CUSTOMERS.update({int(r["customer_id"]): Customer(c_id=r["customer_id"], name=r.get("Customer", "")) for r in cust_resp.data if r.get("customer_id")})
 
-              # --- Boats ---
+        # --- Boats (Corrected Type Handling) ---
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
         LOADED_BOATS.clear()
-        LOADED_BOATS.update({
-            int(row["boat_id"]): Boat(
-                b_id               = row["boat_id"],
-                c_id               = row["customer_id"],
-                b_type             = row.get("boat_type"),
-                b_len              = row.get("boat_length"),
-                draft              = row.get("boat_draft") or row.get("draft_ft"),
-                storage_addr       = row.get("storage_address", ""),
-                pref_ramp          = str(row.get("preferred_ramp") or ""),
-                pref_truck         = row.get("preferred_truck", ""),
-                is_ecm             = str(row.get("is_ecm_boat", "no")).lower() == 'yes',
-                storage_latitude   = row.get("storage_latitude"),
-                storage_longitude  = row.get("storage_longitude")
-            )
-            for row in boat_resp.data
-            if row.get("boat_id")
-        })
+        for row in boat_resp.data:
+            if not row.get("boat_id"): continue
+            try:
+                # --- FIX: Handle preferred_ramp as an integer before converting to a string ---
+                pref_ramp_val = row.get("preferred_ramp")
+                pref_ramp_str = str(int(pref_ramp_val)) if pref_ramp_val is not None else ""
+                
+                LOADED_BOATS[int(row["boat_id"])] = Boat(
+                    b_id=row["boat_id"], c_id=row["customer_id"], b_type=row.get("boat_type"),
+                    b_len=row.get("boat_length"), draft=row.get("boat_draft") or row.get("draft_ft"),
+                    storage_addr=row.get("storage_address", ""), pref_ramp=pref_ramp_str,
+                    pref_truck=row.get("preferred_truck", ""), is_ecm=str(row.get("is_ecm_boat", "no")).lower() == 'yes',
+                    storage_latitude=row.get("storage_latitude"), storage_longitude=row.get("storage_longitude")
+                )
+            except (ValueError, TypeError):
+                _log_debug(f"Skipping boat with invalid data: {row.get('boat_id')}")
 
-        # --- Truck Schedules (corrected) ---
+        # --- Truck Schedules ---
         schedules_resp = execute_query(conn.table("truck_schedules").select("*"), ttl=0)
         processed_schedules = {}
         for row in schedules_resp.data:
-            truck_name = row["truck_name"]
-            truck_id   = name_to_id.get(truck_name)
-            if truck_id is None:
-                continue
-            day        = row["day_of_week"]
+            truck_id = name_to_id.get(row["truck_name"])
+            if truck_id is None: continue
+            day = row["day_of_week"]
             start_time = dt.datetime.strptime(row["start_time"], '%H:%M:%S').time()
-            end_time   = dt.datetime.strptime(row["end_time"],   '%H:%M:%S').time()
+            end_time = dt.datetime.strptime(row["end_time"], '%H:%M:%S').time()
             processed_schedules.setdefault(truck_id, {})[day] = (start_time, end_time)
-
+        
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
-        # Populate the candidate crane days for the report calendar
+        
+        # Populate candidate crane days and ideal days
         CANDIDATE_CRANE_DAYS.clear()
         CANDIDATE_CRANE_DAYS.update(generate_crane_day_candidates())
         precalculate_ideal_crane_days()
@@ -964,7 +938,7 @@ def load_all_data_from_sheets():
         st.error(f"Error loading data: {e}")
         raise
 
-    # Build tide-protected windows now that ramps are loaded
+    # Build protected tide windows
     try:
         start = dt.date.today()
         _build_protected_windows(start, start + dt.timedelta(days=90))
