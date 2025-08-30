@@ -325,14 +325,14 @@ def tide_policy_ok(
 
     Powerboats: 90 min job. First 30 min is load/drive. Can START 30 min BEFORE window OPENS.
     Sailboats:  180 min job. First 120 min is truck+crane prep. Can START 120 min BEFORE window OPENS.
-    Hauls (both): may START 30 min BEFORE window CLOSES (so first on-ramp work is inside).
+    Hauls (both): The first 30 min of on-ramp work must be completed BEFORE window CLOSES.
     """
     policy = (policy or _GLOBAL_TIDE_POLICY or DEFAULT_TIDE_POLICY)
 
     is_sail = "Sail" in (getattr(boat, "boat_type", "") or "")
     if service_type == "Launch":
         # Critical in-water moment occurs after the “prep lead”
-        lead = policy["launch_open_lead_sail_mins"] if is_sail else policy["launch_open_lead_power_mins"]
+        lead = policy.get("launch_open_lead_sail_mins", 120) if is_sail else policy.get("launch_open_lead_power_mins", 30)
         critical = start_dt + dt.timedelta(minutes=lead)
 
         # Valid if that *critical* moment falls inside any window
@@ -343,15 +343,17 @@ def tide_policy_ok(
                 return True
         return False
 
-    # Haul: first act happens on ramp, so we require that to be inside the window.
-    # Your rule says job may START 30 min before the window CLOSES.
+    # --- THIS SECTION IS NOW CORRECTED ---
     if service_type == "Haul":
-        grace = dt.timedelta(minutes=policy["haul_close_lead_all_mins"])
+        # The duration of the critical on-ramp work.
+        on_ramp_duration = dt.timedelta(minutes=policy.get("haul_close_lead_all_mins", 30))
         for a, b in windows:
             ws = dt.datetime.combine(start_dt.date(), a, tzinfo=start_dt.tzinfo)
             we = dt.datetime.combine(start_dt.date(), b, tzinfo=start_dt.tzinfo)
-            # Start must be no earlier than (window close - grace) AND not after window close
-            if (we - grace) <= start_dt <= we:
+            
+            # The job must start within the window (ws <= start_dt)
+            # AND it must start early enough that the on-ramp part finishes by the window's end.
+            if ws <= start_dt and (start_dt + on_ramp_duration) <= we:
                 return True
         return False
 
