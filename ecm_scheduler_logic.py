@@ -955,6 +955,9 @@ def load_all_data_from_sheets():
 
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
+        # Populate the candidate crane days for the report calendar
+        CANDIDATE_CRANE_DAYS.clear()
+        CANDIDATE_CRANE_DAYS.update(generate_crane_day_candidates())
         precalculate_ideal_crane_days()
         
     except Exception as e:
