@@ -1055,7 +1055,7 @@ def show_scheduler_page():
                 st.sidebar.markdown(f"- **ECM Boat:** {ecm_tag}")
 
                 # All the following UI elements are now safely inside the `if boat:` block.
-                service_type = st.sidebar.selectbox("Service Type:", ["Launch", "Haul", "Sandblast", "Paint"])
+                service_type = st.sidebar.selectbox("Service Type:", ["Launch", "Haul"])
                 req_date = st.sidebar.date_input("Requested Date:", min_value=None)
                 override = st.sidebar.checkbox("Ignore Scheduling Conflict?", False)
                 # This function is now guaranteed to receive a valid 'boat' object.
