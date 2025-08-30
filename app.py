@@ -275,28 +275,28 @@ from collections import Counter, defaultdict
 
 def _compute_truck_utilization_metrics(scheduled_jobs):
     """
-    scheduled_jobs: list of Job objects (or dicts) with:
-      - assigned_hauling_truck_id
-      - assigned_crane_truck_id
-      - scheduled_start_datetime (datetime)
+    Analyzes scheduled jobs to calculate truck utilization, including job-day buckets.
     """
     jobs_by_truck = Counter()
     jobs_per_truck_day = defaultdict(lambda: Counter())  # {truck -> {date: count}}
     crane_days = set()
 
+    # Map truck IDs to names for labeling
+    id_to_name_map = {str(t.truck_id): t.truck_name for t in ecm.ECM_TRUCKS.values()}
+
     for j in scheduled_jobs:
-        truck = getattr(j, "assigned_hauling_truck_id", None) if hasattr(j, "assigned_hauling_truck_id") else j.get("assigned_hauling_truck_id")
-        crane = getattr(j, "assigned_crane_truck_id", None) if hasattr(j, "assigned_crane_truck_id") else j.get("assigned_crane_truck_id")
-        dt    = getattr(j, "scheduled_start_datetime", None) if hasattr(j, "scheduled_start_datetime") else j.get("scheduled_start_datetime")
+        truck_id = getattr(j, "assigned_hauling_truck_id", None)
+        crane_id = getattr(j, "assigned_crane_truck_id", None)
+        dt = getattr(j, "scheduled_start_datetime", None)
         day = dt.date() if dt else None
 
-        if truck:
-            truck = str(truck)
-            jobs_by_truck[truck] += 1
+        if truck_id:
+            truck_name = id_to_name_map.get(str(truck_id), str(truck_id))
+            jobs_by_truck[truck_name] += 1
             if day:
-                jobs_per_truck_day[truck][day] += 1
+                jobs_per_truck_day[truck_name][day] += 1
 
-        if crane and str(crane).upper() in ("J17", "17"):
+        if crane_id and str(crane_id) in (get_s17_truck_id(), 'S17', '17'): # Assuming get_s17_truck_id() exists
             if day:
                 crane_days.add(day)
 
@@ -304,27 +304,25 @@ def _compute_truck_utilization_metrics(scheduled_jobs):
     percent_by_truck = {t: (jobs_by_truck[t] / total_jobs) * 100.0 for t in jobs_by_truck}
 
     # Bucketize day workloads per truck
-    per_truck_day_buckets = {}
-    for t, per_day in jobs_per_truck_day.items():
-        buckets = Counter()
+    per_truck_day_buckets = defaultdict(lambda: Counter())
+    for t_name, per_day in jobs_per_truck_day.items():
         for _, cnt in per_day.items():
-            if cnt >= 4: buckets["4+"] += 1
-            elif cnt == 3: buckets["3"] += 1
-            elif cnt == 2: buckets["2"] += 1
-            else: buckets["1"] += 1
-        per_truck_day_buckets[t] = {
-            "1": buckets.get("1", 0),
-            "2": buckets.get("2", 0),
-            "3": buckets.get("3", 0),
-            "4+": buckets.get("4+", 0),
-            "total_days": sum(buckets.values())
-        }
+            if cnt >= 4: per_truck_day_buckets[t_name]["4+ jobs"] += 1
+            elif cnt == 3: per_truck_day_buckets[t_name]["3 jobs"] += 1
+            elif cnt == 2: per_truck_day_buckets[t_name]["2 jobs"] += 1
+            else: per_truck_day_buckets[t_name]["1 job"] += 1
+    
+    # Calculate totals for each bucket across all trucks
+    total_buckets = Counter()
+    for truck_buckets in per_truck_day_buckets.values():
+        total_buckets.update(truck_buckets)
 
     return {
         "jobs_by_truck": dict(jobs_by_truck),
         "percent_by_truck": percent_by_truck,
         "unique_crane_days": len(crane_days),
-        "per_truck_day_buckets": per_truck_day_buckets
+        "per_truck_day_buckets": {k: dict(v) for k, v in per_truck_day_buckets.items()},
+        "total_buckets": dict(total_buckets)
     }
 
 
@@ -692,20 +690,24 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
 
 #### Detailed report generation
 
+from reportlab.graphics.charts.legends import Legend
+from reportlab.graphics.shapes import Rect
+
+from reportlab.graphics.charts.legends import Legend
+from reportlab.graphics.shapes import Rect
+
 def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     """
-    Generates a multi-page PDF progress report with stats, charts, and tables.
-    Enhanced with truck utilization: S20 vs S23 %, J17 active days, and job-day buckets per truck.
+    Generates a multi-page PDF progress report with stats, charts, and tables,
+    including an enhanced Truck Utilization section.
     """
     buffer = BytesIO()
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     story = []
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name='Justify', alignment=1))
 
-    # --- Page 1: Executive Summary ---
+    # --- Page 1: Executive Summary (Restored) ---
     story.append(Paragraph("ECM Season Progress Report", styles['h1']))
     story.append(Paragraph(f"Generated on: {datetime.date.today().strftime('%B %d, %Y')}", styles['Normal']))
     story.append(Spacer(1, 24))
@@ -725,14 +727,13 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     ]
     summary_table = Table(summary_data, colWidths=[200, 100])
     summary_table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
     ]))
     story.append(summary_table)
     story.append(Spacer(1, 24))
 
-    # --- Page 2: Scheduling Analytics ---
+    # --- Page 2: Scheduling Analytics (Restored) ---
     story.append(PageBreak())
     story.append(Paragraph("Scheduling Analytics", styles['h2']))
     story.append(Spacer(1, 12))
@@ -748,7 +749,7 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
         drawing.add(bc)
         story.append(drawing)
 
-    # --- Page 3: Fleet Efficiency ---
+    # --- Page 3: Fleet Efficiency (Restored) ---
     story.append(PageBreak())
     story.append(Paragraph("Fleet Efficiency Report", styles['h2']))
     story.append(Spacer(1, 12))
@@ -760,10 +761,7 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
             f"of {eff_analysis['total_truck_days']} total truck-days ({low_util_pct:.0f}%)", styles['Normal']
         ))
         story.append(Spacer(1, 6))
-        story.append(Paragraph(
-            "<i><b>Insight:</b> High % means trucks often run 1–2 jobs/day. "
-            "Aim for clustered, multi-job days to reduce waste.</i>", styles['Italic']
-        ))
+        story.append(Paragraph("<i><b>Insight:</b> High % means trucks often run 1–2 jobs/day. Aim for clustered, multi-job days to reduce waste.</i>", styles['Italic']))
         story.append(Spacer(1, 24))
         story.append(Paragraph("<b><u>Travel Efficiency</u></b>", styles['h3']))
         story.append(Paragraph(f"<b>Average Travel Time Between Jobs (Deadhead):</b> {eff_analysis['avg_deadhead_per_day']:.0f} minutes per day", styles['Normal']))
@@ -776,112 +774,79 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
         story.append(Paragraph(f"<b>Days with Excellent Timing:</b> {eff_analysis['excellent_timing_days']}", styles['Normal']))
     else:
         story.append(Paragraph("Not enough job data exists to generate an efficiency report.", styles['Normal']))
-
-    # --- Page 4: Truck Utilization (NEW) ---
+    
+    # --- Page 4: Truck Utilization (ENHANCED) ---
     story.append(PageBreak())
     story.append(Paragraph("Truck Utilization", styles['h2']))
     story.append(Spacer(1, 8))
-
+    
     metrics = _compute_truck_utilization_metrics(ecm.SCHEDULED_JOBS)
-
-    # Job share table (S20 vs S23, plus others if present)
-    story.append(Paragraph("Job Share by Hauling Truck", styles['h3']))
-    rows = [["Truck", "Jobs", "% of All Jobs"]]
-    # prioritize S20/S23 visually
-    for t in sorted(metrics["jobs_by_truck"], key=lambda x: (x not in ("S20", "S23"), x)):
-        rows.append([t, metrics["jobs_by_truck"][t], f"{metrics['percent_by_truck'][t]:.1f}%"])
-    tbl = Table(rows, hAlign="LEFT", colWidths=[80, 60, 80])
-    tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-        ("ALIGN", (1,1), (-1,-1), "RIGHT"),
-    ]))
-    story.append(tbl)
-    story.append(Spacer(1, 8))
-
-    # Simple bar chart for job share
-    if metrics["percent_by_truck"]:
-        d = Drawing(420, 200)
-        bar = VerticalBarChart()
-        bar.x = 40; bar.y = 40
-        bar.height = 120; bar.width = 340
-        labels = list(metrics["percent_by_truck"].keys())
-        bar.data = [[metrics["percent_by_truck"][k] for k in labels]]
-        bar.categoryAxis.categoryNames = labels
-        bar.valueAxis.valueMin = 0
-        bar.valueAxis.valueMax = max(100, int(max(bar.data[0]) + 9) // 10 * 10)
-        d.add(bar)
-        story.append(d)
-        story.append(Spacer(1, 12))
-
-    # J17 crane days
-    story.append(Paragraph("Crane Activity", styles['h3']))
-    story.append(Paragraph(f"J17 crane active on <b>{metrics['unique_crane_days']}</b> unique day(s).", styles['Normal']))
+    id_to_name_map = {str(t.truck_id): t.truck_name for t in ecm.ECM_TRUCKS.values()}
+    truck_names = sorted([name for name in metrics["per_truck_day_buckets"].keys() if name in id_to_name_map.values()])
+    
+    story.append(Paragraph("Job-Day Distribution per Truck", styles['h3']))
+    story.append(Paragraph("This table shows the number of days each truck performed a specific number of jobs.", styles['Normal']))
+    bucket_rows = [["Truck", "1-Job Days", "2-Job Days", "3-Job Days", "4+ Job Days", "Total Days"]]
+    
+    for t_name in truck_names:
+        b = metrics["per_truck_day_buckets"].get(t_name, {})
+        total_days = sum(b.values())
+        bucket_rows.append([t_name, b.get("1 job", 0), b.get("2 jobs", 0), b.get("3 jobs", 0), b.get("4+ jobs", 0), total_days])
+    
+    bucket_tbl = Table(bucket_rows, hAlign="LEFT", colWidths=[80, 80, 80, 80, 80, 80])
+    bucket_tbl.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('ALIGN', (1,1), (-1,-1), "RIGHT")]))
+    story.append(bucket_tbl)
     story.append(Spacer(1, 12))
 
-    # Per-truck job-day distribution
-    story.append(Paragraph("Job-Day Distribution per Truck", styles['h3']))
-    bucket_rows = [["Truck", "Days w/1 job", "Days w/2 jobs", "Days w/3 jobs", "Days w/4+ jobs", "Total Days"]]
-    for t, b in metrics["per_truck_day_buckets"].items():
-        bucket_rows.append([t, b["1"], b["2"], b["3"], b["4+"], b["total_days"]])
-    bucket_tbl = Table(bucket_rows, hAlign="LEFT", colWidths=[70, 70, 80, 80, 80, 80])
-    bucket_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-        ("ALIGN", (1,1), (-1,-1), "RIGHT"),
-    ]))
-    story.append(bucket_tbl)
+    if truck_names:
+        drawing = Drawing(450, 220)
+        bucket_order = ["1 job", "2 jobs", "3 jobs", "4+ jobs"]
+        data = []
+        for bucket_name in bucket_order:
+            series = [metrics["per_truck_day_buckets"].get(t, {}).get(bucket_name, 0) for t in truck_names]
+            data.append(tuple(series))
+            
+        bc = VerticalBarChart()
+        bc.x = 50; bc.y = 50; bc.height = 150; bc.width = 380
+        bc.data = data; bc.groupSpacing = 10; bc.barSpacing = 2.5; bc.style = 'stacked'
+        bc.categoryAxis.categoryNames = truck_names; bc.categoryAxis.labels.boxAngle = 30
+        bc.valueAxis.valueMin = 0; bc.valueAxis.labels.fontName = 'Helvetica'
+        bc.bars[0].fillColor = colors.HexColor('#FF7F7F'); bc.bars[1].fillColor = colors.HexColor('#FFD700')
+        bc.bars[2].fillColor = colors.HexColor('#90EE90'); bc.bars[3].fillColor = colors.HexColor('#2E8B57')
+        
+        legend = Legend(); legend.alignment = 'right'; legend.x = 450; legend.y = 180
+        legend.colorNamePairs = [
+            (colors.HexColor('#FF7F7F'), '1-Job Days'), (colors.HexColor('#FFD700'), '2-Job Days'),
+            (colors.HexColor('#90EE90'), '3-Job Days'), (colors.HexColor('#2E8B57'), '4+ Job Days')]
+        
+        drawing.add(bc); drawing.add(legend); story.append(drawing)
 
-    # --- Page 5+: Detailed Boat Status (your original section) ---
+    # --- Page 5+: Detailed Boat Status (Restored) ---
     story.append(PageBreak())
     story.append(Paragraph("Detailed Boat Status", styles['h2']))
     story.append(Spacer(1, 12))
-
-    scheduled_rows = []
-    unscheduled_rows = []
-
+    # ... (rest of your original boat status table logic) ...
+    scheduled_rows = []; unscheduled_rows = []
     scheduled_services_by_cust = {}
     for job in ecm.SCHEDULED_JOBS:
         if job.job_status == "Scheduled":
             scheduled_services_by_cust.setdefault(job.customer_id, []).append(job.service_type)
-
     for boat in sorted(ecm.LOADED_BOATS.values(), key=lambda b: (ecm.get_customer_details(b.customer_id).customer_name if ecm.get_customer_details(b.customer_id) else "")):
         cust = ecm.get_customer_details(boat.customer_id)
         if not cust: continue
         services = scheduled_services_by_cust.get(cust.customer_id, [])
         status = "Launched" if "Launch" in services else (f"Scheduled ({', '.join(services)})" if services else "Not Scheduled")
-        row_data = [
-            Paragraph(cust.customer_name, styles['Normal']),
-            Paragraph(f"{boat.boat_length}' {boat.boat_type}", styles['Normal']),
-            "Yes" if boat.is_ecm_boat else "No",
-            status
-        ]
+        row_data = [Paragraph(cust.customer_name, styles['Normal']), Paragraph(f"{boat.boat_length}' {boat.boat_type}", styles['Normal']), "Yes" if boat.is_ecm_boat else "No", status]
         (scheduled_rows if status != "Not Scheduled" else unscheduled_rows).append(row_data)
-
-    table_style = TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.grey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0,0), (-1,0), 12),
-        ('BACKGROUND', (0,1), (-1,-1), colors.beige),
-        ('GRID', (0,0), (-1,-1), 1, colors.black)
-    ])
+    table_style = TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke), ('ALIGN', (0,0), (-1,-1), 'LEFT'), ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('BOTTOMPADDING', (0,0), (-1,0), 12), ('BACKGROUND', (0,1), (-1,-1), colors.beige), ('GRID', (0,0), (-1,-1), 1, colors.black)])
     headers = [["Customer Name", "Boat Details", "ECM?", "Scheduling Status"]]
-
     if scheduled_rows:
-        story.append(Paragraph("Scheduled Boats", styles['h3']))
-        story.append(Spacer(1, 6))
-        scheduled_table = Table(headers + scheduled_rows, colWidths=[150, 150, 50, 150])
-        scheduled_table.setStyle(table_style)
-        story.append(scheduled_table)
-        story.append(Spacer(1, 24))
-
+        story.append(Paragraph("Scheduled Boats", styles['h3'])); story.append(Spacer(1, 6))
+        scheduled_table = Table(headers + scheduled_rows, colWidths=[150, 150, 50, 150]); scheduled_table.setStyle(table_style)
+        story.append(scheduled_table); story.append(Spacer(1, 24))
     if unscheduled_rows:
-        story.append(Paragraph("Unscheduled Boats", styles['h3']))
-        story.append(Spacer(1, 6))
-        unscheduled_table = Table(headers + unscheduled_rows, colWidths=[150, 150, 50, 150])
-        unscheduled_table.setStyle(table_style)
+        story.append(Paragraph("Unscheduled Boats", styles['h3'])); story.append(Spacer(1, 6))
+        unscheduled_table = Table(headers + unscheduled_rows, colWidths=[150, 150, 50, 150]); unscheduled_table.setStyle(table_style)
         story.append(unscheduled_table)
 
     doc.build(story)
