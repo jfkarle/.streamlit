@@ -1157,11 +1157,17 @@ def show_scheduler_page():
                 selected_ramp_id = st.sidebar.selectbox("Ramp:", options=available_ramp_ids, index=default_ramp_index, format_func=lambda ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name)
                 slot_dicts, msg, warnings, forced = [], "", [], False
 
+                # ---- Sidebar: one-click scheduler form (REPLACES the old button block) ----
                 with st.sidebar.form("find_slot_form", clear_on_submit=False):
+                    service_type = st.selectbox("Service Type", ["Launch", "Haul"], index=0, key="svc_type")
+                    req_date = st.date_input("Requested Date", value=req_date, key="req_date_form")   # reuse your existing req_date default
+                    ignore_conflict = st.checkbox("Ignore Scheduling Conflict?", key="ignore_conflict_form")
+                    selected_ramp_id = st.selectbox("Ramp", options=available_ramp_ids, index=default_ramp_index, key="ramp_id_form")
+                
                     submitted = st.form_submit_button("Find Best Slot", use_container_width=True)
                 
                 if submitted:
-                    # 1) Run the search
+                    # 1) Run the search immediately, using the values *from the form* above
                     slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
                         customer_id=customer.customer_id,
                         boat_id=boat.boat_id,
@@ -1170,13 +1176,17 @@ def show_scheduler_page():
                         selected_ramp_id=selected_ramp_id,
                         num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
                         relax_truck_preference=st.session_state.get("relax_truck_preference", False),
-                        tide_policy=_tide_policy_from_ui(),   # ← NEW
+                        tide_policy=_tide_policy_from_ui(),   # keep your helper
                     )
-                    # 2) Store results in session (and clear any previous pick)
+                    # 2) Store results + clear any prior selection
                     st.session_state['selected_slot'] = None
                     st.session_state['found_slots'] = [SlotDetail(s) for s in slot_dicts]
                     st.session_state['search_message'] = msg
                     st.session_state['search_warnings'] = warnings
+                
+                    # 3) Refresh so the results render in the same pass
+                    st.rerun()
+                # ---- end replacement ----
                     # optional: force immediate refresh if your page defers rendering
                     # st.rerun()
 
