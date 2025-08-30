@@ -314,10 +314,10 @@ def _windows_dt_for_day(windows_time_list, day: dt.date):
 
 def tide_policy_ok(
     service_type: str,
-    boat,                                  # Boat object
+    boat,
     start_dt: dt.datetime,
     end_dt:   dt.datetime,
-    windows: list[tuple[datetime.time, datetime.time]],
+    windows: list[tuple[dt.time, dt.time]],
     policy: dict | None = None,
 ) -> bool:
     """
@@ -331,11 +331,9 @@ def tide_policy_ok(
 
     is_sail = "Sail" in (getattr(boat, "boat_type", "") or "")
     if service_type == "Launch":
-        # Critical in-water moment occurs after the “prep lead”
         lead = policy.get("launch_open_lead_sail_mins", 120) if is_sail else policy.get("launch_open_lead_power_mins", 30)
         critical = start_dt + dt.timedelta(minutes=lead)
 
-        # Valid if that *critical* moment falls inside any window
         for a, b in windows:
             ws = dt.datetime.combine(start_dt.date(), a, tzinfo=start_dt.tzinfo)
             we = dt.datetime.combine(start_dt.date(), b, tzinfo=start_dt.tzinfo)
@@ -345,7 +343,6 @@ def tide_policy_ok(
 
     # --- THIS SECTION IS NOW CORRECTED ---
     if service_type == "Haul":
-        # The duration of the critical on-ramp work.
         on_ramp_duration = dt.timedelta(minutes=policy.get("haul_close_lead_all_mins", 30))
         for a, b in windows:
             ws = dt.datetime.combine(start_dt.date(), a, tzinfo=start_dt.tzinfo)
@@ -357,7 +354,7 @@ def tide_policy_ok(
                 return True
         return False
 
-    # Other services: be conservative — require the start to actually be in a window
+    # Other services: require the start to actually be in a window
     for a, b in windows:
         ws = dt.datetime.combine(start_dt.date(), a, tzinfo=start_dt.tzinfo)
         we = dt.datetime.combine(start_dt.date(), b, tzinfo=start_dt.tzinfo)
