@@ -1157,7 +1157,10 @@ def show_scheduler_page():
                 selected_ramp_id = st.sidebar.selectbox("Ramp:", options=available_ramp_ids, index=default_ramp_index, format_func=lambda ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name)
                 slot_dicts, msg, warnings, forced = [], "", [], False
 
-                if st.sidebar.button("Find Best Slot", key="btn_find_best_slot"):
+                with st.sidebar.form("find_slot_form", clear_on_submit=False):
+                    submitted = st.form_submit_button("Find Best Slot", use_container_width=True)
+                
+                if submitted:
                     # 1) Run the search
                     slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
                         customer_id=customer.customer_id,
@@ -1169,9 +1172,14 @@ def show_scheduler_page():
                         relax_truck_preference=st.session_state.get("relax_truck_preference", False),
                         tide_policy=_tide_policy_from_ui(),   # ← NEW
                     )
-                    # 2) Store results in session
-                    st.session_state.found_slots = [SlotDetail(s) for s in slot_dicts]
-                    st.session_state.failure_reasons = warnings
+                    # 2) Store results in session (and clear any previous pick)
+                    st.session_state['selected_slot'] = None
+                    st.session_state['found_slots'] = [SlotDetail(s) for s in slot_dicts]
+                    st.session_state['search_message'] = msg
+                    st.session_state['search_warnings'] = warnings
+                    # optional: force immediate refresh if your page defers rendering
+                    # st.rerun()
+
                     st.session_state.was_forced_search = forced
                     st.session_state.current_job_request = {
                         "customer_id": customer.customer_id,
