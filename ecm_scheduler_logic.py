@@ -590,7 +590,7 @@ def tide_window_for_day(ramp, day):
     """
     from datetime import time as dtime
 
-    hours = getattr(ramp, "tide_rule_hours", None)
+    hours = getattr(ramp, "tide_offset_hours1", None)
     if not hours or hours <= 0:
         return []
 
@@ -1283,23 +1283,6 @@ def _round_time_to_nearest_quarter_hour(ts):
     rounded = ts + dt.timedelta(minutes=minutes_to_add)
     return rounded.replace(second=0, microsecond=0)
 
-def _calculate_target_date_score(slot_date, target_date):
-    """
-    Calculates a score based on how close the slot_date is to the target_date.
-    A score of 100 is given for the exact date, with the score decreasing for
-    each day further away.
-    """
-    if target_date is None:
-        return 0 # No score if no target date is provided
-
-    days_difference = abs((slot_date - target_date).days)
-    
-    # Give a high score for the target date and a decreasing score for surrounding days
-    # This formula gives 100 for the target date, 90 for +/- 1 day, 80 for +/- 2 days, etc.
-    score = max(0, 100 - (days_difference * 10))
-    return score
-    
-
 def format_time_for_display(time_obj):
     return time_obj.strftime('%I:%M %p').lstrip('0') if isinstance(time_obj, dt.time) else "InvalidTime"
 
@@ -1780,12 +1763,7 @@ def _select_best_slots(all_found_slots, compiled_schedule, daily_last_locations,
 
 def check_truck_availability_optimized(truck_id, start_dt, end_dt, compiled_schedule):
     for busy_start, busy_end in compiled_schedule.get(str(truck_id), []):
-        # ADD THIS PRINT STATEMENT
-        print(f"DEBUG: Comparing start_dt (type: {type(start_dt)}, value: {start_dt}) "
-              f"with busy_end (type: {type(busy_end)}, value: {busy_end})")
-        print(f"DEBUG: Comparing end_dt (type: {type(end_dt)}, value: {end_dt}) "
-              f"with busy_start (type: {type(busy_start)}, value: {busy_start})")
-
+        
         if start_dt < busy_end and end_dt > busy_start: return False
     return True
 
@@ -1829,28 +1807,6 @@ def precalculate_ideal_crane_days(year=2025):
 
 # --- NEW HELPER: Finds a slot on a specific day using the new efficiency rules ---
 # Replace your old function with this CORRECTED version
-
-def score_slot(slot, boat, ramp, tide_window, crane_truck_needed, high_tide_times, low_tide_times):
-    score = 10  # Base score
-    start_time = slot['start_time']
-
-    # BONUS: Crane efficiency — center on high tide for sailboats
-    if crane_truck_needed and high_tide_times:
-        for ht in high_tide_times:
-            delta = abs((datetime.combine(datetime.today(), ht) - datetime.combine(datetime.today(), start_time)).total_seconds()) / 60
-            if delta <= 90:
-                score += 2
-
-    # PENALTY: Sailboat on low tide prime day (11AM–1PM) and >5′ draft
-    low_prime = any(11 <= lt.hour <= 13 for lt in low_tide_times)
-    if crane_truck_needed and low_prime:
-        if boat.draft > 5:
-            return -1  # REJECT this slot
-        elif ramp.ramp_id != 'ScituateHarborJericho':
-            score -= 4  # apply minor penalty to sailboats elsewhere
-
-    return score
-
 
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, tide_policy=None, **kwargs):
     """
