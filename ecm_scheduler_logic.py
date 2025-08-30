@@ -2483,6 +2483,25 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     # ... (rest of the fallback logic as it was)
     return ([], f"No slots found after extensive search.", DEBUG_MESSAGES, True)
 
+def find_available_ramps_for_boat(boat, all_ramps):
+    """
+    Finds a list of ramp IDs suitable for a given boat by checking the boat's type
+    against a ramp's allowed boat types.
+    """
+    matching_ramp_ids = []
+    for ramp_id, ramp in all_ramps.items():
+        # This check ensures both objects have the attributes we need, preventing crashes.
+        if hasattr(boat, 'boat_type') and hasattr(ramp, 'allowed_boat_types'):
+            # The 'in' operator checks if the boat's type is in the ramp's list of allowed types
+            if boat.boat_type in ramp.allowed_boat_types:
+                matching_ramp_ids.append(ramp_id)
+    
+    # If no specific ramps match (e.g., for a rare boat type),
+    # return all ramps to allow for a manual override in the UI.
+    if not matching_ramp_ids:
+        return list(all_ramps.keys())
+
+    return matching_ramp_ids
 
 def get_S17_crane_grouping_slot(boat, customer, ramp_obj, requested_date, trucks, duration, S17_duration, service_type):
     """
