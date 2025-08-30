@@ -52,8 +52,8 @@ from reportlab.graphics.charts.piecharts import Pie
 st.set_page_config(layout="wide")
 
 # --- Helper Functions for UI ---
-st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
-    render_slot_lists()
+
+def render_slot_lists():
     """
     Renders:
       - Requested date (if feasible): 'CAN DO (not preferred)'
@@ -1115,130 +1115,129 @@ def show_scheduler_page():
                     default_ramp_index = available_ramp_ids.index(boat.preferred_ramp_id)
 
                 selected_ramp_id = st.sidebar.selectbox("Ramp:", options=available_ramp_ids, index=default_ramp_index, format_func=lambda ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name)
-                slot_dicts, msg, warnings, forced = [], "", [], False
+
+                # === One-click search: use callback so a single click runs the search in this pass ===
+                def _run_slot_search_cb():
+                    # 1) Run the search
+                    slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
+                        customer_id=customer.customer_id,
+                        boat_id=boat.boat_id,
+                        service_type=service_type,
+                        requested_date_str=req_date.strftime("%Y-%m-%d"),
+                        selected_ramp_id=selected_ramp_id,
+                        num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
+                        relax_truck_preference=st.session_state.get("relax_truck_preference", False),
+                        tide_policy=_tide_policy_from_ui(),
+                    )
+                    # 2) Store results in session
+                    st.session_state['found_slots'] = [SlotDetail(s) for s in slot_dicts]
+                    st.session_state['failure_reasons'] = warnings
+                    st.session_state['was_forced_search'] = forced
+                    st.session_state['current_job_request'] = {
+                        "customer_id": customer.customer_id,
+                        "boat_id": boat.boat_id,
+                        "service_type": service_type,
+                        "requested_date": req_date,
+                        "selected_ramp_id": selected_ramp_id,
+                    }
+                    st.session_state['search_requested_date'] = req_date
+                    st.session_state['info_message'] = msg
+                    st.session_state.pop('selected_slot', None)   # reset any old selection
+                    st.session_state['slot_page_index'] = 0
+
+                    # 3) Compute banner pieces
+                    ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
+                    ramp_name = getattr(ramp_obj, "ramp_name", None) or getattr(ramp_obj, "name", "Selected Ramp")
+                    cust_name = getattr(customer, "customer_name", None) or getattr(customer, "display_name", "Selected Customer")
+                    date_str  = req_date.strftime("%B %d, %Y") if isinstance(req_date, datetime.date) else "requested date"
+
+                    ht_str = "N/A"
+                    try:
+                        sid = getattr(ecm, "_station_for_ramp_or_scituate", None)
+                        station_id = sid(str(selected_ramp_id)) if (sid and selected_ramp_id) else None
+                        tides_by_day = ecm.fetch_noaa_tides_for_range(station_id, req_date, req_date) if station_id else {}
+                        events = tides_by_day.get(req_date, []) or []
+                        highs = [e.get("time") for e in events if e.get("type") == "H" and hasattr(e.get("time"), "hour")]
+                        if highs:
+                            primary = min(highs, key=lambda t: abs((t.hour * 60 + t.minute) - 12 * 60))
+                            if hasattr(ecm, "format_time_for_display"):
+                                ht_str = ecm.format_time_for_display(primary)
+                            else:
+                                ht_str = primary.strftime("%I:%M %p").lstrip("0")
+                    except Exception as ex:
+                        try:
+                            ecm.DEBUG_MESSAGES.append(f"Header high tide lookup failed: {ex}")
+                        except Exception:
+                            pass
+
+                    st.session_state['slot_search_heading'] = (
+                        f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
+                    )
+                    st.rerun()
+
+                st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
 
 
-# === One-click search: use callback so a single click runs the search in this pass ===
-def _run_slot_search_cb():
-    # 1) Run the search
-    slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
-        customer_id=customer.customer_id,
-        boat_id=boat.boat_id,
-        service_type=service_type,
-        requested_date_str=req_date.strftime("%Y-%m-%d"),
-        selected_ramp_id=selected_ramp_id,
-        num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
-        relax_truck_preference=st.session_state.get("relax_truck_preference", False),
-        tide_policy=_tide_policy_from_ui(),
-    )
-    # 2) Store results in session
-    st.session_state['found_slots'] = [SlotDetail(s) for s in slot_dicts]
-    st.session_state['failure_reasons'] = warnings
-    st.session_state['was_forced_search'] = forced
-    st.session_state['current_job_request'] = {
-        "customer_id": customer.customer_id,
-        "boat_id": boat.boat_id,
-        "service_type": service_type,
-        "requested_date": req_date,
-        "selected_ramp_id": selected_ramp_id,
-    }
-    st.session_state['search_requested_date'] = req_date
-    st.session_state['info_message'] = msg
-    st.session_state.pop('selected_slot', None)   # reset any old selection
-    st.session_state['slot_page_index'] = 0
-
-    # 3) Compute banner pieces
-    ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
-    ramp_name = getattr(ramp_obj, "ramp_name", None) or getattr(ramp_obj, "name", "Selected Ramp")
-    cust_name = getattr(customer, "customer_name", None) or getattr(customer, "display_name", "Selected Customer")
-    date_str  = req_date.strftime("%B %d, %Y") if isinstance(req_date, datetime.date) else "requested date"
-
-    ht_str = "N/A"
-    try:
-        sid = getattr(ecm, "_station_for_ramp_or_scituate", None)
-        station_id = sid(str(selected_ramp_id)) if (sid and selected_ramp_id) else None
-        tides_by_day = ecm.fetch_noaa_tides_for_range(station_id, req_date, req_date) if station_id else {}
-        events = tides_by_day.get(req_date, []) or []
-        highs = [e.get("time") for e in events if e.get("type") == "H" and hasattr(e.get("time"), "hour")]
-        if highs:
-            primary = min(highs, key=lambda t: abs((t.hour * 60 + t.minute) - 12 * 60))
-            if hasattr(ecm, "format_time_for_display"):
-                ht_str = ecm.format_time_for_display(primary)
-            else:
-                ht_str = primary.strftime("%I:%M %p").lstrip("0")
-    except Exception as ex:
-        try:
-            ecm.DEBUG_MESSAGES.append(f"Header high tide lookup failed: {ex}")
-        except Exception:
-            pass
-
-    st.session_state['slot_search_heading'] = (
-        f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
-    )
-    st.rerun()
-
-st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
-
-st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
+    # --- RENDER RESULTS & CONFIRMATION ---
     render_slot_lists()
 
-                # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
-                if st.session_state.get('selected_slot'):
-                    slot = st.session_state.selected_slot
-                    st.subheader("Preview & Confirm Job")
-                    st.success(slot.confirmation_text)
-                    if st.button("CONFIRM THIS JOB"):
-                        parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
-                        if st.session_state.get("debug_mode"):
-                            st.info(f"[debug] confirming job for: {slot}")
-                        new_id, message = ecm.confirm_and_schedule_job(
-                            slot.raw_data,
-                            parked_job_to_remove=parked_to_remove
-                        )
-                        if new_id:
-                            st.session_state.confirmation_message = message
-                            # --- robust context (works even if current_job_request is absent) ---
-                            # --- robust context (works even if current_job_request is absent or not a dict) ---
-                            ctx = st.session_state.get('current_job_request')
-                            if not isinstance(ctx, dict):
-                                ctx = {}
-                            def pick(*vals):
-                                for v in vals:
-                                    if v not in (None, "", "N/A"):
-                                        return v
-                                return None
-                            svc = pick(
-                                ctx.get('service_type'),
-                                getattr(slot, "service_type", None),
-                                getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("service_type")
-                            )
-                            cust_id = pick(
-                                ctx.get('customer_id'),
-                                getattr(slot, "customer_id", None),
-                                getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("customer_id")
-                            )
-                            boat_id = pick(
-                                ctx.get('boat_id'),
-                                getattr(slot, "boat_id", None),
-                                getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("boat_id")
-                            )
-                            # Seasonal follow-up prompt (Launch/Haul only)
-                            if svc in ["Launch", "Haul"] and cust_id and boat_id:
-                                st.session_state.last_seasonal_job = {
-                                    'customer_id': cust_id,
-                                    'boat_id': boat_id,
-                                    'original_service': svc
-                                }
-                            # Clear one-time state
-                            for key in [
-                                'found_slots', 'selected_slot', 'current_job_request',
-                                'search_requested_date', 'rebooking_details',
-                                'failure_reasons', 'was_forced_search'
-                            ]:
-                                st.session_state.pop(key, None)
-                            st.rerun()
-                        else:
-                            st.error(message or "Failed to schedule this job.")
+    # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
+    if st.session_state.get('selected_slot'):
+        slot = st.session_state.selected_slot
+        st.subheader("Preview & Confirm Job")
+        st.success(slot.confirmation_text)
+        if st.button("CONFIRM THIS JOB"):
+            parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
+            if st.session_state.get("debug_mode"):
+                st.info(f"[debug] confirming job for: {slot}")
+            new_id, message = ecm.confirm_and_schedule_job(
+                slot.raw_data,
+                parked_job_to_remove=parked_to_remove
+            )
+            if new_id:
+                st.session_state.confirmation_message = message
+                # --- robust context (works even if current_job_request is absent) ---
+                # --- robust context (works even if current_job_request is absent or not a dict) ---
+                ctx = st.session_state.get('current_job_request')
+                if not isinstance(ctx, dict):
+                    ctx = {}
+                def pick(*vals):
+                    for v in vals:
+                        if v not in (None, "", "N/A"):
+                            return v
+                    return None
+                svc = pick(
+                    ctx.get('service_type'),
+                    getattr(slot, "service_type", None),
+                    getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("service_type")
+                )
+                cust_id = pick(
+                    ctx.get('customer_id'),
+                    getattr(slot, "customer_id", None),
+                    getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("customer_id")
+                )
+                boat_id = pick(
+                    ctx.get('boat_id'),
+                    getattr(slot, "boat_id", None),
+                    getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("boat_id")
+                )
+                # Seasonal follow-up prompt (Launch/Haul only)
+                if svc in ["Launch", "Haul"] and cust_id and boat_id:
+                    st.session_state.last_seasonal_job = {
+                        'customer_id': cust_id,
+                        'boat_id': boat_id,
+                        'original_service': svc
+                    }
+                # Clear one-time state
+                for key in [
+                    'found_slots', 'selected_slot', 'current_job_request',
+                    'search_requested_date', 'rebooking_details',
+                    'failure_reasons', 'was_forced_search'
+                ]:
+                    st.session_state.pop(key, None)
+                st.rerun()
+            else:
+                st.error(message or "Failed to schedule this job.")
 
 def fmt_draft(val):
     try:
@@ -1767,4 +1766,3 @@ elif app_mode == "Reporting":
 elif app_mode == "Settings":
     # Just call the function. That's it.
     show_settings_page()
-    
