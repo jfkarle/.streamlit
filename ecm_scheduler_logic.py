@@ -335,7 +335,7 @@ def tide_policy_ok(
 
     is_sail = "Sail" in (getattr(boat, "boat_type", "") or "")
     if service_type == "Launch":
-        lead = policy.get("launch_open_lead_sail_mins", 120) if is_sail else policy.get("launch_open_lead_power_mins", 30)
+        lead = policy.get("launch_prep_sail_min", 120) if is_sail else policy.get("launch_prep_power_min", 30)
         critical = start_dt + dt.timedelta(minutes=lead)
 
         for a, b in windows:
