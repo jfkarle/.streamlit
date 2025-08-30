@@ -52,7 +52,6 @@ from reportlab.graphics.charts.piecharts import Pie
 st.set_page_config(layout="wide")
 
 # --- Helper Functions for UI ---
-st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
 def render_slot_lists():
     """
     Renders:
@@ -1119,7 +1118,65 @@ def show_scheduler_page():
 
 
 # === One-click search: use callback so a single click runs the search in this pass ===
+
 def _run_slot_search_cb():
+    # 1) Run the search
+    slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
+        customer_id=customer.customer_id,
+        boat_id=boat.boat_id,
+        service_type=service_type,
+        requested_date_str=req_date.strftime("%Y-%m-%d"),
+        selected_ramp_id=selected_ramp_id,
+        num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
+        relax_truck_preference=st.session_state.get("relax_truck_preference", False),
+        tide_policy=_tide_policy_from_ui(),
+    )
+    # 2) Store results in session
+    st.session_state['found_slots'] = [SlotDetail(s) for s in slot_dicts]
+    st.session_state['failure_reasons'] = warnings
+    st.session_state['was_forced_search'] = forced
+    st.session_state['current_job_request'] = {
+        "customer_id": customer.customer_id,
+        "boat_id": boat.boat_id,
+        "service_type": service_type,
+        "requested_date": req_date,
+        "selected_ramp_id": selected_ramp_id,
+    }
+    st.session_state['search_requested_date'] = req_date
+    st.session_state['info_message'] = msg
+    st.session_state.pop('selected_slot', None)   # reset any old selection
+    st.session_state['slot_page_index'] = 0
+
+    # 3) Compute banner pieces
+    ramp_obj  = ecm.get_ramp_details(selected_ramp_id) if selected_ramp_id else None
+    ramp_name = getattr(ramp_obj, "ramp_name", None) or getattr(ramp_obj, "name", "Selected Ramp")
+    cust_name = getattr(customer, "customer_name", None) or getattr(customer, "display_name", "Selected Customer")
+    date_str  = req_date.strftime("%B %d, %Y") if isinstance(req_date, datetime.date) else "requested date"
+
+    ht_str = "N/A"
+    try:
+        sid = getattr(ecm, "_station_for_ramp_or_scituate", None)
+        station_id = sid(str(selected_ramp_id)) if (sid and selected_ramp_id) else None
+        tides_by_day = ecm.fetch_noaa_tides_for_range(station_id, req_date, req_date) if station_id else {}
+        events = tides_by_day.get(req_date, []) or []
+        highs = [e.get("time") for e in events if e.get("type") == "H" and hasattr(e.get("time"), "hour")]
+        if highs:
+            primary = min(highs, key=lambda t: abs((t.hour * 60 + t.minute) - 12 * 60))
+            if hasattr(ecm, "format_time_for_display"):
+                ht_str = ecm.format_time_for_display(primary)
+            else:
+                ht_str = primary.strftime("%I:%M %p").lstrip("0")
+    except Exception as ex:
+        try:
+            ecm.DEBUG_MESSAGES.append(f"Header high tide lookup failed: {ex}")
+        except Exception:
+            pass
+
+    st.session_state['slot_search_heading'] = (
+        f"Finding a slot for {cust_name} on {date_str} with {ht_str} high tide at {ramp_name}"
+    )
+    st.rerun()
+
     # 1) Run the search
     slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
         customer_id=customer.customer_id,
@@ -1180,7 +1237,6 @@ def _run_slot_search_cb():
 st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
 
 # Call to render slot lists after the button click
-st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
 render_slot_lists()
 
 # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
