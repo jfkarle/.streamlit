@@ -158,11 +158,15 @@ class Truck:
         self.truck_id, self.truck_name, self.max_boat_length, self.is_crane = t_id, name, max_len, "Crane" in name
 
 class Ramp:
-    def __init__(self, r_id, name, station, tide_method="AnyTide", offset=None, boats=None, latitude=None, longitude=None): # <--- ADD latitude, longitude
-        self.ramp_id, self.ramp_name, self.noaa_station_id, self.tide_calculation_method = r_id, name, station, tide_method
-        self.tide_offset_hours1, self.allowed_boat_types = offset, boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
-        self.latitude = float(latitude) if latitude is not None else None # Convert to float
-        self.longitude = float(longitude) if longitude is not None else None # Convert to float
+    def __init__(self, r_id, name, station, tide_method="AnyTide", offset=None, boats=None, latitude=None, longitude=None):
+        self.ramp_id = r_id
+        self.ramp_name = name
+        self.noaa_station_id = station
+        self.tide_calculation_method = tide_method
+        self.tide_offset_hours1 = offset
+        self.allowed_boat_types = boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
+        self.latitude = float(latitude) if latitude is not None else None
+        self.longitude = float(longitude) if longitude is not None else None
 
 class Customer:
     def __init__(self, c_id, name):
