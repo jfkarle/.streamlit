@@ -1187,6 +1187,11 @@ def show_scheduler_page():
                     # 3) Refresh so the results render in the same pass
                     st.rerun()
                 # ---- end replacement ----
+
+                
+                    # 3) Refresh so the results render in the same pass
+                    st.rerun()
+                # ---- end replacement ----
                     # optional: force immediate refresh if your page defers rendering
                     # st.rerun()
 
