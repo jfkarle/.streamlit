@@ -1541,37 +1541,38 @@ def show_settings_page():
             st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
 
         # --- THIS ENTIRE BLOCK IS REVISED ---
+        # --- THIS ENTIRE BLOCK IS REVISED ---
         st.markdown("---")
         st.subheader("Seasonal Batch Generator")
         st.info("Generate and schedule a batch of random jobs within a season or a specific date range to test scheduling efficiency.")
 
-        use_date_range = st.checkbox("Use specific date range instead of season", value=True)
+        # 1. Select Service Type (always visible)
+        service_type = st.radio("Service Type:", ["Launch", "Haul"], index=1, horizontal=True)
 
-        # Initialize dates
-        start_date, end_date, season_key = None, None, None
+        # 2. Choose date selection method
+        use_date_range = st.checkbox("Use specific date range instead of full season", value=True)
+        
+        start_date, end_date, season_key, year = None, None, None, 2025
 
         if use_date_range:
             d_col1, d_col2 = st.columns(2)
-            # Default to a 2-week period in September
-            start_date = d_col1.date_input("Start Date", value=dt.date(2025, 9, 2))
-            end_date = d_col2.date_input("End Date", value=dt.date(2025, 9, 16))
+            default_start = dt.date(2025, 9, 15) if service_type == "Haul" else dt.date(2025, 5, 15)
+            default_end = dt.date(2025, 10, 15) if service_type == "Haul" else dt.date(2025, 6, 15)
+            start_date = d_col1.date_input("Start Date", value=default_start)
+            end_date = d_col2.date_input("End Date", value=default_end)
         else:
-            season = st.radio(
-                "Season",
-                options=["Spring (May–June, Launches)", "Fall (Sep–Oct, Hauls)"],
-                index=1, horizontal=True
-            )
-            season_key = "spring" if season.startswith("Spring") else "fall"
+            season = "Fall (Sep–Oct, Hauls)" if service_type == "Haul" else "Spring (May–June, Launches)"
+            season_key = "fall" if service_type == "Haul" else "spring"
+            year = st.number_input("Year", min_value=2024, max_value=2030, value=2025, step=1)
         
         jobs_to_make = st.number_input("How many jobs to generate", min_value=1, max_value=200, value=50, step=1)
-        year = st.number_input("Year", min_value=2024, max_value=2030, value=2025, step=1, disabled=use_date_range)
         seed = st.number_input("Random Seed (optional)", min_value=0, max_value=10_000, value=42, step=1)
 
         if st.button(f"Generate and Schedule {jobs_to_make} Jobs"):
-            with st.spinner(f"Generating and scheduling {jobs_to_make} jobs..."):
-                # Pass the correct parameters based on the user's choice
+            with st.spinner(f"Generating and scheduling {jobs_to_make} {service_type} jobs..."):
                 sim_args = {
                     "total_jobs_to_gen": int(jobs_to_make),
+                    "service_type": service_type,
                     "year": int(year),
                     "seed": int(seed),
                 }
@@ -1581,9 +1582,24 @@ def show_settings_page():
                 else:
                     sim_args["season"] = season_key
 
-                msg = ecm.simulate_job_requests(**sim_args)
-            st.success(msg)
-            st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
+                msg, failures = ecm.simulate_job_requests(**sim_args)
+                st.session_state.last_sim_summary = msg
+                st.session_state.last_sim_failures = failures
+        
+        # Display the results from the last run
+        if 'last_sim_summary' in st.session_state:
+            st.success(st.session_state.last_sim_summary)
+        
+        if 'last_sim_failures' in st.session_state and st.session_state.last_sim_failures:
+            with st.expander(f"⚠️ View the {len(st.session_state.last_sim_failures)} Failed Requests"):
+                # Convert to a DataFrame for better display
+                failure_df = pd.DataFrame(st.session_state.last_sim_failures)
+                # Add boat details for context
+                def get_boat_info(boat_id):
+                    boat = ecm.get_boat_details(boat_id)
+                    return f"{boat.boat_length}' {boat.boat_type}" if boat else "Unknown"
+                failure_df['boat_details'] = failure_df['boat_id'].apply(get_boat_info)
+                st.dataframe(failure_df[['boat_id', 'boat_details', 'requested_date', 'ramp_name', 'reason']])
             
     # --- TAB 5: Tide Charts (Scituate) ---
     with tab5:
