@@ -1359,7 +1359,11 @@ def show_reporting_page():
     with tab2:
         st.subheader("Crane Day Candidate Calendar")
         st.info("This calendar shows potential days with ideal tides for crane operations.")
-        ramp_options = {ramp_id: ramp.ramp_name for ramp_id, ramp in ecm.CANDIDATE_CRANE_DAYS.items() if ecm.CANDIDATE_CRANE_DAYS.get(ramp_id)}
+        ramp_options = {
+            ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name
+            for ramp_id, candidate_days in ecm.CANDIDATE_CRANE_DAYS.items()
+            if candidate_days
+        }
         if ramp_options:
             ramp_id = st.selectbox("Select a ramp:", ramp_options.keys(), format_func=lambda x: ramp_options[x], key="cal_ramp_sel")
             if ramp_id and ecm.CANDIDATE_CRANE_DAYS.get(ramp_id):
