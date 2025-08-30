@@ -296,7 +296,7 @@ def _compute_truck_utilization_metrics(scheduled_jobs):
             if day:
                 jobs_per_truck_day[truck_name][day] += 1
 
-        if crane_id and str(crane_id) in (get_s17_truck_id(), 'S17', '17'): # Assuming get_s17_truck_id() exists
+        if crane_id and str(crane_id) in (ecm.get_s17_truck_id(), 'S17', '17'):
             if day:
                 crane_days.add(day)
 
