@@ -53,7 +53,7 @@ st.set_page_config(layout="wide")
 
 # --- Helper Functions for UI ---
 st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
-def render_slot_lists():
+    render_slot_lists()
     """
     Renders:
       - Requested date (if feasible): 'CAN DO (not preferred)'
@@ -1180,7 +1180,7 @@ def _run_slot_search_cb():
 st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
 
 st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
-                render_slot_lists()
+    render_slot_lists()
 
                 # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
                 if st.session_state.get('selected_slot'):
@@ -1767,3 +1767,4 @@ elif app_mode == "Reporting":
 elif app_mode == "Settings":
     # Just call the function. That's it.
     show_settings_page()
+    
