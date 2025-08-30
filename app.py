@@ -52,6 +52,7 @@ from reportlab.graphics.charts.piecharts import Pie
 st.set_page_config(layout="wide")
 
 # --- Helper Functions for UI ---
+st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
 def render_slot_lists():
     """
     Renders:
@@ -1179,6 +1180,7 @@ def _run_slot_search_cb():
 st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
 
 # Call to render slot lists after the button click
+st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
 render_slot_lists()
 
 # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
