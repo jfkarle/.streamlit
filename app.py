@@ -817,13 +817,10 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
         bc.data = data
         bc.groupSpacing = 10
         
-        # --- THIS SECTION IS CORRECTED ---
-        # 1. To make the chart stacked, set the style on the 'bars' attribute group
-        bc.bars.style = 'stacked'
-        
-        # 2. To rotate the labels, set the 'angle' property of the labels
+        # --- THIS SECTION IS NOW CORRECTED ---
+        bc.categoryAxis.style = 'stacked'
         bc.categoryAxis.labels.angle = 45
-        bc.categoryAxis.labels.dy = -10 # Adjust position for rotated text
+        bc.categoryAxis.labels.dy = -10
         # --- END CORRECTION ---
 
         bc.categoryAxis.categoryNames = truck_names
