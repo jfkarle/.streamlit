@@ -2559,6 +2559,7 @@ def _find_slot_on_day(
     is_opportunistic_search: bool = False,
     tide_policy: dict | None = None,
 ):
+    """Single-day scanner that only iterates inside allowed tide windows."""
     ramp = get_ramp_details(str(ramp_id))
     if not ramp:
         return None
@@ -2568,8 +2569,10 @@ def _find_slot_on_day(
     duration_mins = 180 if service_type in ("Launch", "Haul") and is_sail else 90
     job_duration = timedelta(minutes=duration_mins)
 
+    # Build tide windows for this ramp/day
     windows = tide_window_for_day(ramp, day)
 
+    # Special all-day exception: Powerboat <5' at Scituate
     is_power = boat_type.startswith("power")
     try:
         draft_ft = float(getattr(boat, "draft_ft", getattr(boat, "draft", 0)) or 0.0)
@@ -2582,12 +2585,12 @@ def _find_slot_on_day(
         from datetime import time as _dtime
         windows = [(_dtime(0, 0), _dtime(23, 59))]
 
+    # If the ramp has a tide rule but we failed to build a window, bail early.
     if getattr(ramp, "tide_rule_hours", 0) > 0 and not windows:
         return None
 
     policy = (tide_policy or globals().get("_GLOBAL_TIDE_POLICY") or globals().get("DEFAULT_TIDE_POLICY") or {})
-    step_mins = int(policy.get("scan_step_mins", 15)) if isinstance(policy.get("scan_step_mins", None), (int, float, str)) else 15
-    step = timedelta(minutes=int(step_mins))
+    step = timedelta(minutes=int(policy.get("scan_step_mins", 15)))
 
     rules_map = globals().get("BOOKING_RULES", {}) or {}
     rules = rules_map.get(getattr(boat, "boat_type", None), {}) or {}
@@ -2600,59 +2603,68 @@ def _find_slot_on_day(
         truck_open  = dt.datetime.combine(day, hours[0], tzinfo=timezone.utc)
         truck_close = dt.datetime.combine(day, hours[1], tzinfo=timezone.utc)
 
-        reserve_first_slot_mins = 90
-        earliest = truck_open if getattr(boat, "is_ecm_boat", False) else (truck_open + timedelta(minutes=reserve_first_slot_mins))
+        # Reserve first 90 minutes for ECM boats only
+        reserve_first_slot = timedelta(minutes=90)
+        earliest = truck_open if getattr(boat, "is_ecm_boat", False) else (truck_open + reserve_first_slot)
+        latest_start = truck_close - job_duration
+        if earliest > latest_start:
+            continue
 
-        first_start = earliest
-        last_start  = truck_close - job_duration
+        # Build candidate ranges: only scan INSIDE windows (or whole day if none)
+        candidate_ranges = []
+        if windows:
+            for (w0, w1) in windows:
+                w_start = max(earliest, dt.datetime.combine(day, w0, tzinfo=timezone.utc))
+                w_end   = min(latest_start, dt.datetime.combine(day, w1, tzinfo=timezone.utc))
+                if w_start <= w_end:
+                    candidate_ranges.append((w_start, w_end))
+        else:
+            candidate_ranges.append((earliest, latest_start))
 
-        start_dt = first_start
-        while start_dt <= last_start:
-            end_dt = start_dt + job_duration
+        for (range_start, range_end) in candidate_ranges:
+            start_dt = range_start
+            while start_dt <= range_end:
+                end_dt = start_dt + job_duration
 
-            local_start_t = start_dt.time()
-            if windows and not any(w0 <= local_start_t <= w1 for (w0, w1) in windows):
-                start_dt += step
-                continue
-
-            if not check_truck_availability_optimized(truck.truck_id, start_dt, end_dt, compiled_schedule):
-                start_dt += step
-                continue
-
-            if not tide_policy_ok(service_type, boat, start_dt, end_dt, windows, policy):
-                start_dt += step
-                continue
-
-            crane_end_dt = None
-            if crane_needed and crane_minutes > 0:
-                s17_id = get_s17_truck_id()
-                crane_end_dt = start_dt + timedelta(minutes=crane_minutes)
-                if not check_truck_availability_optimized(s17_id, start_dt, crane_end_dt, compiled_schedule):
+                if not check_truck_availability_optimized(truck.truck_id, start_dt, end_dt, compiled_schedule):
                     start_dt += step
                     continue
 
-            try:
-                tides_today = fetch_noaa_tides_for_range(sid or DEFAULT_NOAA_STATION, day, day) or {}
-                highs = [t["time"] for t in tides_today.get(day, []) if t.get("type") == "H" and isinstance(t.get("time"), dt.time)]
-            except Exception:
-                highs = []
+                if not tide_policy_ok(service_type, boat, start_dt, end_dt, windows, policy):
+                    start_dt += step
+                    continue
 
-            return {
-                "is_piggyback": is_opportunistic_search,
-                "boat_id": boat.boat_id,
-                "customer_id": customer_id,
-                "date": day,
-                "time": start_dt.time(),
-                "truck_id": truck.truck_id,
-                "ramp_id": ramp_id,
-                "service_type": service_type,
-                "S17_needed": bool(crane_needed),
-                "scheduled_end_datetime": end_dt,
-                "S17_busy_end_datetime": crane_end_dt,
-                "tide_rule_concise": get_concise_tide_rule(ramp, boat),
-                "high_tide_times": highs,
-                "boat_draft": getattr(boat, "draft_ft", None),
-            }
+                crane_end_dt = None
+                if crane_needed and crane_minutes > 0:
+                    s17_id = get_s17_truck_id()
+                    crane_end_dt = start_dt + timedelta(minutes=crane_minutes)
+                    if not check_truck_availability_optimized(s17_id, start_dt, crane_end_dt, compiled_schedule):
+                        start_dt += step
+                        continue
 
-            start_dt += step
+                try:
+                    tides_today = fetch_noaa_tides_for_range(sid or DEFAULT_NOAA_STATION, day, day) or {}
+                    highs = [t["time"] for t in tides_today.get(day, []) if t.get("type") == "H" and isinstance(t.get("time"), dt.time)]
+                except Exception:
+                    highs = []
+
+                return {
+                    "is_piggyback": is_opportunistic_search,
+                    "boat_id": boat.boat_id,
+                    "customer_id": customer_id,
+                    "date": day,
+                    "time": start_dt.time(),
+                    "truck_id": truck.truck_id,
+                    "ramp_id": ramp_id,
+                    "service_type": service_type,
+                    "S17_needed": bool(crane_needed),
+                    "scheduled_end_datetime": end_dt,
+                    "S17_busy_end_datetime": crane_end_dt,
+                    "tide_rule_concise": get_concise_tide_rule(ramp, boat),
+                    "high_tide_times": highs,
+                    "boat_draft": getattr(boat, "draft_ft", None),
+                }
+
+                start_dt += step
+
     return None
