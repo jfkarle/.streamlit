@@ -1539,29 +1539,51 @@ def show_settings_page():
             st.success(summary)
             st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
 
-        # Seasonal batch generator (Spring/Fall)
+        # --- THIS ENTIRE BLOCK IS REVISED ---
         st.markdown("---")
         st.subheader("Seasonal Batch Generator")
-        season = st.radio(
-            "Season",
-            options=["Spring (May–June, Launches)", "Fall (Sep–Oct, Hauls)"],
-            index=0, horizontal=True
-        )
-        season_key = "spring" if season.startswith("Spring") else "fall"
-        jobs_to_make = st.number_input("How many jobs to generate", min_value=1, max_value=100, value=50, step=1)
-        year = st.number_input("Year", min_value=2024, max_value=2030, value=2025, step=1)
+        st.info("Generate and schedule a batch of random jobs within a season or a specific date range to test scheduling efficiency.")
+
+        use_date_range = st.checkbox("Use specific date range instead of season", value=True)
+
+        # Initialize dates
+        start_date, end_date, season_key = None, None, None
+
+        if use_date_range:
+            d_col1, d_col2 = st.columns(2)
+            # Default to a 2-week period in September
+            start_date = d_col1.date_input("Start Date", value=dt.date(2025, 9, 2))
+            end_date = d_col2.date_input("End Date", value=dt.date(2025, 9, 16))
+        else:
+            season = st.radio(
+                "Season",
+                options=["Spring (May–June, Launches)", "Fall (Sep–Oct, Hauls)"],
+                index=1, horizontal=True
+            )
+            season_key = "spring" if season.startswith("Spring") else "fall"
+        
+        jobs_to_make = st.number_input("How many jobs to generate", min_value=1, max_value=200, value=50, step=1)
+        year = st.number_input("Year", min_value=2024, max_value=2030, value=2025, step=1, disabled=use_date_range)
         seed = st.number_input("Random Seed (optional)", min_value=0, max_value=10_000, value=42, step=1)
 
-        if st.button(f"Generate {jobs_to_make} {season_key.title()} Jobs"):
-            with st.spinner(f"Generating {jobs_to_make} {season_key} jobs..."):
-                msg = ecm.simulate_job_requests(
-                    total_jobs_to_gen=int(jobs_to_make),
-                    season=season_key,
-                    year=int(year),
-                    seed=int(seed),
-                )
+        if st.button(f"Generate and Schedule {jobs_to_make} Jobs"):
+            with st.spinner(f"Generating and scheduling {jobs_to_make} jobs..."):
+                # Pass the correct parameters based on the user's choice
+                sim_args = {
+                    "total_jobs_to_gen": int(jobs_to_make),
+                    "year": int(year),
+                    "seed": int(seed),
+                }
+                if use_date_range and start_date and end_date:
+                    sim_args["start_date_str"] = start_date.strftime("%Y-%m-%d")
+                    sim_args["end_date_str"] = end_date.strftime("%Y-%m-%d")
+                else:
+                    sim_args["season"] = season_key
+
+                msg = ecm.simulate_job_requests(**sim_args)
             st.success(msg)
-            st.info("Re-run as needed; if fewer boats remain than requested, it will schedule only what's available.")
+            st.info("Navigate to the 'Reporting' page to see the newly generated jobs.")
+            
     # --- TAB 5: Tide Charts (Scituate) ---
     with tab5:
         st.subheader("Monthly Tide Chart for Scituate Harbor")
