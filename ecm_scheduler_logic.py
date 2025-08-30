@@ -2164,14 +2164,14 @@ def simulate_job_requests(
 ):
     """
     Generates up to 'total_jobs_to_gen' jobs for the chosen season and immediately tries to schedule them.
-    - Spring  => Launches in May–June
-    - Fall    => Hauls   in Sep–Oct
-    - Dates are assigned SEQUENTIALLY across the 2-month window (not random).
+    - MODIFIED: Randomly selects boats and assigns them random, overlapping dates within the season
+      to create a true stress-test simulation.
     - No Sundays; Saturdays allowed only in May & September (per your rules).
     - If fewer unscheduled boats remain than requested, schedules only what's available.
     Returns a short summary string.
     """
-    import datetime, random as _rnd
+    import datetime as dt
+    import random as _rnd
 
     if seed is not None:
         _rnd.seed(seed)
@@ -2188,7 +2188,7 @@ def simulate_job_requests(
         months = (9, 10)  # September, October
         req_type = "Haul"
 
-    # Build sequential valid dates across the 2-month window
+    # Build a list of all valid working dates across the 2-month window
     def _month_last_day(y, m):
         if m == 12:
             return dt.date(y, 12, 31)
@@ -2202,7 +2202,6 @@ def simulate_job_requests(
             wd = d.weekday()  # Mon=0 ... Sun=6
             is_sun = (wd == 6)
             is_sat = (wd == 5)
-            # No Sundays ever; Saturdays allowed only in May & September
             if not is_sun and (not is_sat or m in (5, 9)):
                 valid_dates.append(d)
             d += dt.timedelta(days=1)
@@ -2218,20 +2217,20 @@ def simulate_job_requests(
     if not remaining_boats:
         return f"No remaining boats to schedule for {season.title()}."
 
-    # Cap requested jobs to what's actually available
-    take = min(total_jobs_to_gen, len(remaining_boats))
-
-    # Assign dates sequentially across the window; if we run out of days, wrap around
-    # (Slot finder will enforce capacity; this just seeds requests.)
+    # --- MODIFICATION: Randomly sample boats instead of taking them sequentially ---
+    num_to_schedule = min(total_jobs_to_gen, len(remaining_boats))
+    boats_to_schedule = _rnd.sample(remaining_boats, k=num_to_schedule)
+    
+    # Create the job requests with random dates
     requests = []
-    for i in range(take):
-        boat = remaining_boats[i]
-        d = valid_dates[i % len(valid_dates)]
+    for boat in boats_to_schedule:
+        # --- MODIFICATION: Assign a random valid date to each boat ---
+        random_date = _rnd.choice(valid_dates)
         requests.append({
             "customer_id": getattr(boat, "customer_id", None),
             "boat_id": boat.boat_id,
             "service_type": req_type,
-            "requested_date_str": d.strftime("%Y-%m-%d"),
+            "requested_date_str": random_date.strftime("%Y-%m-%d"),
             "selected_ramp_id": getattr(boat, "preferred_ramp_id", None),
             "relax_truck_preference": True,
         })
@@ -2241,11 +2240,12 @@ def simulate_job_requests(
     for req in requests:
         slots, _, _, _ = find_available_job_slots(**req)
         if slots:
+            # The slot finder returns the best available slot for the request
             confirm_and_schedule_job(slots[0])
             successful += 1
 
     summary = (
-        f"{season.title()} batch requested: {total_jobs_to_gen}. "
+        f"{season.title()} batch requested: {num_to_schedule}. "
         f"Remaining boats available: {len(remaining_boats)}. "
         f"Scheduled now: {successful}."
     )
