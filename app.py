@@ -1461,7 +1461,7 @@ def show_settings_page():
         )
         st.markdown("---")
         st.subheader("Geographic Rules")
-        st.session_state['max_job_distance'] = st.number_input(
+        st.session_state(
             "Max Distance Between Jobs (miles)",
             min_value=5,
             max_value=180,
