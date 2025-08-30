@@ -2103,27 +2103,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
 
 # --- Seasonal batch generator (Spring/Fall), sequential dates, safe if fewer boats remain ---
-Excellent points. You're right on all counts. The tool should be more flexible, and the 18/50 result isn't an acceptable real-world outcome, which means we need better diagnostics.
-
-Let's address each of your points.
-
-1. Fixing the UI (Launch/Haul Selection)
-You are correct. You should be able to specify the service type when using a date range. The current UI hides that option. We can fix this by separating the "Service Type" selection from the date-picking method.
-
-2. Understanding the 18/50 Result
-This is not a bug, but rather a realistic result of the simulation you designed. By asking for 50 jobs in a tight 30-day window, you created a high-density scenario where competition for slots is fierce.
-
-The 32 failures are random requests where the scheduler, following all its rules (tides, truck availability, existing jobs), could not find a valid slot on or near the randomly requested date. This perfectly highlights your third point: to understand why those 32 jobs failed, you need better feedback.
-
-3. Adding a Failure Report
-Your idea for a report of the failed requests is the best way to analyze the results. I have modified the code to do exactly that. The simulator will now return a list of every job it was unable to schedule, so you can see the exact boat, ramp, and date that failed.
-
-The following code updates will implement both the UI fix and the new failure report feature.
-
-Step 1: Update the Simulator Logic
-Please replace the entire simulate_job_requests function in your ecm_scheduler_logic.py file with this new version. It now tracks and returns a list of failed requests.
-
-Python
 
 def simulate_job_requests(
     total_jobs_to_gen: int = 50,
