@@ -879,12 +879,24 @@ def load_all_data_from_sheets():
         ECM_RAMPS.clear()
         for row in ramps_resp.data:
             try:
-                # --- FIX: Ensure ramp_id is treated as an integer before converting to a string ---
                 ramp_id_str = str(int(row["ramp_id"]))
+                
+                # --- THIS IS THE FIX: Robustly parse the allowed_boat_types column ---
+                allowed_boats_raw = row.get("allowed_boat_types")
+                allowed_boats_list = []
+                if isinstance(allowed_boats_raw, str):
+                    # Handle string format like '{"Powerboat","Sailboat"}'
+                    allowed_boats_list = allowed_boats_raw.strip('{}').split(',')
+                elif isinstance(allowed_boats_raw, list):
+                    # Already a list, just use it
+                    allowed_boats_list = allowed_boats_raw
+                # --- END FIX ---
+
                 ECM_RAMPS[ramp_id_str] = Ramp(
                     r_id=row["ramp_id"], name=row.get("ramp_name"), station=row.get("noaa_station_id"),
                     tide_method=row.get("tide_calculation_method"), offset=row.get("tide_offset_hours"),
-                    boats=row.get("allowed_boat_types"), latitude=row.get("latitude"), longitude=row.get("longitude")
+                    boats=allowed_boats_list, # Pass the correctly parsed list
+                    latitude=row.get("latitude"), longitude=row.get("longitude")
                 )
             except (ValueError, TypeError):
                 _log_debug(f"Skipping ramp with invalid ID: {row.get('ramp_id')}")
@@ -900,7 +912,6 @@ def load_all_data_from_sheets():
         for row in boat_resp.data:
             if not row.get("boat_id"): continue
             try:
-                # --- FIX: Handle preferred_ramp as an integer before converting to a string ---
                 pref_ramp_val = row.get("preferred_ramp")
                 pref_ramp_str = str(int(pref_ramp_val)) if pref_ramp_val is not None else ""
                 
@@ -922,7 +933,7 @@ def load_all_data_from_sheets():
             if truck_id is None: continue
             day = row["day_of_week"]
             start_time = dt.datetime.strptime(row["start_time"], '%H:%M:%S').time()
-            end_time = dt.datetime.strptime(row["end_time"], '%H:%M:%S').time()
+            end_time = dt.datetime.strptime(row["end_time"],   '%H:%M:%S').time()
             processed_schedules.setdefault(truck_id, {})[day] = (start_time, end_time)
         
         TRUCK_OPERATING_HOURS.clear()
