@@ -82,6 +82,8 @@ ANYTIDE_LOW_TIDE_WINDOWS = {}  # {(ramp_id:str, date:date): [(start_time, end_ti
 # (must exist before any functions use them)
 # ================================
 YARD_ADDRESS = "43 Mattakeesett St, Pembroke, MA 02359"
+DEFAULT_NOAA_STATION = "8445138"  # Scituate Harbor, MA
+
 
 # Pre-initialize global caches and registries
 DEBUG_MESSAGES: list[str] = []
@@ -257,8 +259,6 @@ class Job:
         return self.scheduled_end_datetime
 
 ### Helpers
-
-DEFAULT_NOAA_STATION = "8445138"
 
 # ---- TIDE POLICY (default, adjustable later from UI) ----
 DEFAULT_TIDE_POLICY = {
@@ -615,13 +615,12 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
                 score -= 4.0
        
     return score
-
 def tide_window_for_day(ramp, day):
     """
     Return list of (start_time, end_time) LOCAL time windows when a job may START.
 
     Rules:
-    - If ramp has NO tide rule (hours <= 0): return [] (no restriction; not "all-day").
+    - If ramp has NO tide rule (hours <= 0): return [] (no explicit restriction here).
     - If ramp HAS a tide rule (>0): compute ±hours around EACH high tide.
       If we cannot fetch a usable high tide time for that day, return [] (no legal start).
     """
@@ -629,10 +628,10 @@ def tide_window_for_day(ramp, day):
 
     hours = getattr(ramp, "tide_rule_hours", None)
     if not hours or hours <= 0:
-        # No tide restriction -> return empty to signal "no limit"; we will NOT turn this into all-day here.
+        # No tide restriction -> leave empty; caller will treat empty as "no limit" (not forced all-day).
         return []
 
-    # Tide-restricted → must have a valid morning high tide for this day
+    # Tide-restricted → must have a valid morning/any high tide for this day
     station_id = getattr(ramp, "noaa_station_id", None) or DEFAULT_NOAA_STATION
     events_by_day = fetch_noaa_tides_for_range(station_id, day, day) or {}
     events = events_by_day.get(day, [])
@@ -2566,39 +2565,24 @@ def _find_slot_on_day(
 
     # Tide windows for this day (list[(time, time)] in local time)
     windows = tide_window_for_day(ramp, day)
-    # --- SAFE window bounds + job duration (used later) ---
-    _job_minutes = job_duration_minutes(getattr(boat, "boat_type", ""), service_type)
-    job_duration = dt.timedelta(minutes=_job_minutes)
-    
-    if windows:
-        # Compute earliest opening and latest closing across all windows
-        w_open_dt  = min(dt.datetime.combine(day, a) for (a, _) in windows)
-        w_close_dt = max(dt.datetime.combine(day, b) for (_, b) in windows)
-    else:
-        # AnyTide or data hiccup → treat as all-day
-        w_open_dt  = dt.datetime.combine(day, dt.time(0, 0))
-        w_close_dt = dt.datetime.combine(day, dt.time(23, 59))
 
-    
     # Special case: only allow ALL-DAY when (Powerboat < 5' draft) AND (Scituate Harbor)
-    is_power = (str(getattr(boat, "boat_type", "")).lower().startswith("power"))
-    draft_ft = float(getattr(boat, "draft_ft", getattr(boat, "draft", 0)) or 0)
-    
+    is_power = boat_type.startswith("power")
+    try:
+        draft_ft = float(getattr(boat, "draft_ft", getattr(boat, "draft", 0)) or 0.0)
+    except Exception:
+        draft_ft = 0.0
     sid_raw = getattr(ramp, "noaa_station_id", None)
     sid = str(sid_raw).strip() if sid_raw is not None else ""
     is_scituate = (sid == str(DEFAULT_NOAA_STATION)) or ("scituate" in str(getattr(ramp, "name", "")).lower())
-
-    
     if is_power and draft_ft < 5.0 and is_scituate:
-        # Explicitly make it all-day for this one allowed case
-        windows = [(dt.time(0, 0), dt.time(23, 59))]
-    
-    # If this ramp has a tide rule but we couldn't compute a window → skip this day
+        from datetime import time as _dtime
+        windows = [(_dtime(0, 0), _dtime(23, 59))]
+
+    # If this ramp has a tide rule but we couldn't compute a window → skip the day
     if getattr(ramp, "tide_rule_hours", 0) > 0 and not windows:
         return None
 
-
-    
     # Tide policy (scan step + tolerances)
     policy = (tide_policy or globals().get("_GLOBAL_TIDE_POLICY") or globals().get("DEFAULT_TIDE_POLICY") or {})
     try:
@@ -2620,43 +2604,29 @@ def _find_slot_on_day(
         truck_open  = dt.datetime.combine(day, hours[0], tzinfo=timezone.utc)
         truck_close = dt.datetime.combine(day, hours[1], tzinfo=timezone.utc)
 
-        # Reserve the first slot of the day for ECM boats (shorter hold)
-        reserve_first_slot_mins = 60
-        is_ecm = getattr(boat, "is_ecm_boat", False)
-        earliest = truck_open if is_ecm else (truck_open + timedelta(minutes=reserve_first_slot_mins))
+        # Reserve the first slot of the day for ECM boats
+        reserve_first_slot_mins = 90  # adjust if needed
+        earliest = truck_open if getattr(boat, "is_ecm_boat", False) else (truck_open + timedelta(minutes=reserve_first_slot_mins))
+
         first_start = earliest
         last_start  = truck_close - job_duration
-        
-        # If non-ECM hold pushes us past all tide windows, relax to the earliest window start
-        if windows:
-            win_starts = [dt.datetime.combine(day, w0) for (w0, w1) in windows]
-            win_ends   = [dt.datetime.combine(day, w1) for (w0, w1) in windows]
-            earliest_window_start = min(win_starts)
-            latest_window_end     = max(win_ends)
-
-        # If our current earliest start would miss the window entirely given job duration, relax it
-        if (not is_ecm) and (first_start > (w_close_dt - job_duration)):
-        first_start = w_open_dt
-
 
         start_dt = first_start
         while start_dt <= last_start:
             end_dt = start_dt + job_duration
 
-            # Must start within the ramp’s tide window (e.g., ±3h around high tide)
-            # windows is a list of (time_start, time_end) in LOCAL times.
+            # Must start within tide window (if any windows given)
             local_start_t = start_dt.time()
             if windows and not any(w0 <= local_start_t <= w1 for (w0, w1) in windows):
                 start_dt += step
                 continue
-
 
             # Hauler availability
             if not check_truck_availability_optimized(truck.truck_id, start_dt, end_dt, compiled_schedule):
                 start_dt += step
                 continue
 
-            # Tide rule check
+            # Extra tide-policy check
             if not tide_policy_ok(service_type, boat, start_dt, end_dt, windows, policy):
                 start_dt += step
                 continue
@@ -2670,9 +2640,9 @@ def _find_slot_on_day(
                     start_dt += step
                     continue
 
-            # Success → return slot dict
+            # Success → return slot
             try:
-                tides_today = fetch_noaa_tides_for_range(ramp.noaa_station_id, day, day) or {}
+                tides_today = fetch_noaa_tides_for_range(sid or DEFAULT_NOAA_STATION, day, day) or {}
                 highs = [t["time"] for t in tides_today.get(day, []) if t.get("type") == "H"]
             except Exception:
                 highs = []
@@ -2693,4 +2663,6 @@ def _find_slot_on_day(
                 "high_tide_times": highs,
                 "boat_draft": getattr(boat, "draft_ft", None),
             }
+
+            start_dt += step
     return None
