@@ -1178,65 +1178,65 @@ def _run_slot_search_cb():
 
 st.sidebar.button("Find Best Slot", key="btn_find_best_slot", use_container_width=True, on_click=_run_slot_search_cb)
 
-    render_slot_lists()
-
-    # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
-    if st.session_state.get('selected_slot'):
-        slot = st.session_state.selected_slot
-        st.subheader("Preview & Confirm Job")
-        st.success(slot.confirmation_text)
-        if st.button("CONFIRM THIS JOB"):
-            parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
-            if st.session_state.get("debug_mode"):
-                st.info(f"[debug] confirming job for: {slot}")
-            new_id, message = ecm.confirm_and_schedule_job(
-                slot.raw_data,
-                parked_job_to_remove=parked_to_remove
-            )
-            if new_id:
-                st.session_state.confirmation_message = message
-                # --- robust context (works even if current_job_request is absent) ---
-                # --- robust context (works even if current_job_request is absent or not a dict) ---
-                ctx = st.session_state.get('current_job_request')
-                if not isinstance(ctx, dict):
-                    ctx = {}
-                def pick(*vals):
-                    for v in vals:
-                        if v not in (None, "", "N/A"):
-                            return v
-                    return None
-                svc = pick(
-                    ctx.get('service_type'),
-                    getattr(slot, "service_type", None),
-                    getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("service_type")
+        render_slot_lists()
+    
+        # --- PREVIEW & CONFIRM SELECTION (remains unchanged) ---
+        if st.session_state.get('selected_slot'):
+            slot = st.session_state.selected_slot
+            st.subheader("Preview & Confirm Job")
+            st.success(slot.confirmation_text)
+            if st.button("CONFIRM THIS JOB"):
+                parked_to_remove = st.session_state.get('rebooking_details', {}).get('parked_job_id')
+                if st.session_state.get("debug_mode"):
+                    st.info(f"[debug] confirming job for: {slot}")
+                new_id, message = ecm.confirm_and_schedule_job(
+                    slot.raw_data,
+                    parked_job_to_remove=parked_to_remove
                 )
-                cust_id = pick(
-                    ctx.get('customer_id'),
-                    getattr(slot, "customer_id", None),
-                    getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("customer_id")
-                )
-                boat_id = pick(
-                    ctx.get('boat_id'),
-                    getattr(slot, "boat_id", None),
-                    getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("boat_id")
-                )
-                # Seasonal follow-up prompt (Launch/Haul only)
-                if svc in ["Launch", "Haul"] and cust_id and boat_id:
-                    st.session_state.last_seasonal_job = {
-                        'customer_id': cust_id,
-                        'boat_id': boat_id,
-                        'original_service': svc
-                    }
-                # Clear one-time state
-                for key in [
-                    'found_slots', 'selected_slot', 'current_job_request',
-                    'search_requested_date', 'rebooking_details',
-                    'failure_reasons', 'was_forced_search'
-                ]:
-                    st.session_state.pop(key, None)
-                st.rerun()
-            else:
-                st.error(message or "Failed to schedule this job.")
+                if new_id:
+                    st.session_state.confirmation_message = message
+                    # --- robust context (works even if current_job_request is absent) ---
+                    # --- robust context (works even if current_job_request is absent or not a dict) ---
+                    ctx = st.session_state.get('current_job_request')
+                    if not isinstance(ctx, dict):
+                        ctx = {}
+                    def pick(*vals):
+                        for v in vals:
+                            if v not in (None, "", "N/A"):
+                                return v
+                        return None
+                    svc = pick(
+                        ctx.get('service_type'),
+                        getattr(slot, "service_type", None),
+                        getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("service_type")
+                    )
+                    cust_id = pick(
+                        ctx.get('customer_id'),
+                        getattr(slot, "customer_id", None),
+                        getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("customer_id")
+                    )
+                    boat_id = pick(
+                        ctx.get('boat_id'),
+                        getattr(slot, "boat_id", None),
+                        getattr(getattr(slot, "raw_data", {}), "get", lambda *_: None)("boat_id")
+                    )
+                    # Seasonal follow-up prompt (Launch/Haul only)
+                    if svc in ["Launch", "Haul"] and cust_id and boat_id:
+                        st.session_state.last_seasonal_job = {
+                            'customer_id': cust_id,
+                            'boat_id': boat_id,
+                            'original_service': svc
+                        }
+                    # Clear one-time state
+                    for key in [
+                        'found_slots', 'selected_slot', 'current_job_request',
+                        'search_requested_date', 'rebooking_details',
+                        'failure_reasons', 'was_forced_search'
+                    ]:
+                        st.session_state.pop(key, None)
+                    st.rerun()
+                else:
+                    st.error(message or "Failed to schedule this job.")
 
 def fmt_draft(val):
     try:
