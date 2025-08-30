@@ -2113,7 +2113,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
 
     used_radius = min(radius, FALLBACK_MAX_RADIUS)
     if pool:
-        best = _select_best_slots(pool, compiled_schedule, daily_last_locations, k=k)
+        best = _select_best_slots(pool, compiled_schedule, daily_last_locations, requested_date, k=k)
         _log_debug(f"Guaranteed fallback finished after ±{used_radius} days with {len(best)} slot(s).")
         return (
             best,
