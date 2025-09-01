@@ -2572,24 +2572,59 @@ def _find_slot_on_day(
     duration_mins = 180 if service_type in ("Launch", "Haul") and is_sail else 90
     job_duration = timedelta(minutes=duration_mins)
 
-    # Build tide windows for this ramp/day
-    windows = tide_window_for_day(ramp, day)
+    # --- BEGIN: Robust Tide Window Calculation ---
+    # This block dynamically calculates the valid tide windows based on the rules
+    # for the specific ramp, as defined in the database.
 
-    # Special all-day exception: Powerboat <5' at Scituate
-    is_power = boat_type.startswith("power")
+    from datetime import time as _dtime
+    windows = []
+    
+    # Get the specific rules and boat info
+    method = getattr(ramp, "tide_calculation_method", "AnyTide")
+    # Note: The Ramp object uses 'tide_offset_hours1' as the attribute name
+    offset_hours = float(getattr(ramp, "tide_offset_hours1", 0.0) or 0.0)
     try:
-        draft_ft = float(getattr(boat, "draft_ft", getattr(boat, "draft", 0)) or 0.0)
-    except Exception:
+        draft_ft = float(getattr(boat, "draft_ft", 0.0) or 0.0)
+    except (ValueError, TypeError):
         draft_ft = 0.0
-    sid_raw = getattr(ramp, "noaa_station_id", None)
-    sid = str(sid_raw).strip() if sid_raw is not None else ""
-    is_scituate = (sid == str(DEFAULT_NOAA_STATION)) or ("scituate" in str(getattr(ramp, "name", "")).lower())
-    if is_power and draft_ft < 5.0 and is_scituate:
-        from datetime import time as _dtime
+
+    # Determine if the boat qualifies for shallow draft exceptions
+    is_shallow_draft = draft_ft <= 5.0
+
+    # Get high tides for the day to build windows if needed
+    tides_today = fetch_noaa_tides_for_range(ramp.noaa_station_id, day, day) or {}
+    highs = [t["time"] for t in tides_today.get(day, []) if t.get("type") == "H" and isinstance(t.get("time"), dt.time)]
+
+    # Apply rules based on the ramp's method
+    if method in ("AnyTide", "AnyTideWithDraftRule") and is_shallow_draft:
+        # Rule: AnyTide or a draft-based rule with a shallow boat means the ramp is open all day.
         windows = [(_dtime(0, 0), _dtime(23, 59))]
+    
+    elif method == 'HoursAroundHighTide_WithDraftRule':
+        # Rule: A conditional window. Shallow boats get all day, deep boats get a restricted window.
+        if is_shallow_draft:
+            windows = [(_dtime(0, 0), _dtime(23, 59))]
+        else: # Boat has a deep draft (> 5ft)
+            if highs and offset_hours > 0:
+                for ht in highs:
+                    start_dt = (dt.datetime.combine(day, ht) - dt.timedelta(hours=offset_hours)).time()
+                    end_dt = (dt.datetime.combine(day, ht) + dt.timedelta(hours=offset_hours)).time()
+                    windows.append((start_dt, end_dt))
+    
+    elif method == 'HoursAroundHighTide':
+        # Rule: All boats must adhere to the tide window.
+        if highs and offset_hours > 0:
+            for ht in highs:
+                start_dt = (dt.datetime.combine(day, ht) - dt.timedelta(hours=offset_hours)).time()
+                end_dt = (dt.datetime.combine(day, ht) + dt.timedelta(hours=offset_hours)).time()
+                windows.append((start_dt, end_dt))
+
+    # If the ramp has a tide rule but we couldn't find a high tide, the ramp is effectively closed.
+    # The 'windows' list will remain empty, and the function will correctly find no slots.
+    # --- END: Robust Tide Window Calculation ---
 
     # If the ramp has a tide rule but we failed to build a window, bail early.
-    if getattr(ramp, "tide_rule_hours", 0) > 0 and not windows:
+    if method != "AnyTide" and not windows:
         return None
 
     policy = (tide_policy or globals().get("_GLOBAL_TIDE_POLICY") or globals().get("DEFAULT_TIDE_POLICY") or {})
@@ -2644,13 +2679,8 @@ def _find_slot_on_day(
                     if not check_truck_availability_optimized(s17_id, start_dt, crane_end_dt, compiled_schedule):
                         start_dt += step
                         continue
-
-                try:
-                    tides_today = fetch_noaa_tides_for_range(sid or DEFAULT_NOAA_STATION, day, day) or {}
-                    highs = [t["time"] for t in tides_today.get(day, []) if t.get("type") == "H" and isinstance(t.get("time"), dt.time)]
-                except Exception:
-                    highs = []
-
+                
+                # The 'highs' variable was defined in the new block above
                 return {
                     "is_piggyback": is_opportunistic_search,
                     "boat_id": boat.boat_id,
