@@ -677,7 +677,10 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name='Justify', alignment=1))
 
-    # --- Page 1: Executive Summary (Restored) ---
+    # --- NEW: Call the travel distance analysis function ---
+    travel_analysis = ecm.analyze_travel_distances(ecm.SCHEDULED_JOBS)
+
+    # --- Page 1: Executive Summary (Unchanged) ---
     story.append(Paragraph("ECM Season Progress Report", styles['h1']))
     story.append(Paragraph(f"Generated on: {datetime.date.today().strftime('%B %d, %Y')}", styles['Normal']))
     story.append(Spacer(1, 24))
@@ -703,7 +706,7 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     story.append(summary_table)
     story.append(Spacer(1, 24))
 
-    # --- Page 2: Scheduling Analytics (Restored) ---
+    # --- Page 2: Scheduling Analytics (Unchanged) ---
     story.append(PageBreak())
     story.append(Paragraph("Scheduling Analytics", styles['h2']))
     story.append(Spacer(1, 12))
@@ -719,7 +722,7 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
         drawing.add(bc)
         story.append(drawing)
 
-    # --- Page 3: Fleet Efficiency (Restored) ---
+    # --- Page 3: Fleet Efficiency (MODIFIED) ---
     story.append(PageBreak())
     story.append(Paragraph("Fleet Efficiency Report", styles['h2']))
     story.append(Spacer(1, 12))
@@ -732,11 +735,32 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
         ))
         story.append(Spacer(1, 6))
         story.append(Paragraph("<i><b>Insight:</b> High % means trucks often run 1–2 jobs/day. Aim for clustered, multi-job days to reduce waste.</i>", styles['Italic']))
+        
         story.append(Spacer(1, 24))
         story.append(Paragraph("<b><u>Travel Efficiency</u></b>", styles['h3']))
         story.append(Paragraph(f"<b>Average Travel Time Between Jobs (Deadhead):</b> {eff_analysis['avg_deadhead_per_day']:.0f} minutes per day", styles['Normal']))
         story.append(Spacer(1, 6))
-        story.append(Paragraph("<i>Lower by routing geographically (e.g., Scituate → Marshfield).</i>", styles['Italic']))
+
+        # --- NEW: Travel Distance Analysis Table ---
+        story.append(Paragraph("<b>Travel Distance Analysis</b>", styles['Normal']))
+        travel_data = [
+            ['Metric', 'Value'],
+            ['Average Distance Between Jobs', f"{travel_analysis.get('avg_distance', 0):.1f} mi"],
+            ['Farthest Distance Recorded', f"{travel_analysis.get('max_distance', 0):.1f} mi"],
+            ['Trips Exceeding 12 Miles', str(travel_analysis.get('over_12_miles_count', 0))]
+        ]
+        travel_table = Table(travel_data, colWidths=[200, 100])
+        travel_table.setStyle(TableStyle([
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), 
+            ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('BACKGROUND', (0,1), (-1,-1), colors.whitesmoke)
+        ]))
+        story.append(travel_table)
+        story.append(Spacer(1, 6))
+        # --- END NEW SECTION ---
+
+        story.append(Paragraph("<i>Lower by routing geographically and using the 'Max Distance' setting.</i>", styles['Italic']))
         story.append(Spacer(1, 24))
         story.append(Paragraph("<b><u>Productivity and Timing</u></b>", styles['h3']))
         story.append(Paragraph(f"<b>Overall Driver Efficiency:</b> {eff_analysis['efficiency_percent']:.1f}%", styles['Normal']))
@@ -745,82 +769,47 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     else:
         story.append(Paragraph("Not enough job data exists to generate an efficiency report.", styles['Normal']))
     
-    # --- Page 4: Truck Utilization (ENHANCED) ---
+    # --- Remaining Pages (Unchanged) ---
     story.append(PageBreak())
     story.append(Paragraph("Truck Utilization", styles['h2']))
     story.append(Spacer(1, 8))
-    
     metrics = _compute_truck_utilization_metrics(ecm.SCHEDULED_JOBS)
     id_to_name_map = {str(t.truck_id): t.truck_name for t in ecm.ECM_TRUCKS.values()}
     truck_names = sorted([name for name in metrics["per_truck_day_buckets"].keys() if name in id_to_name_map.values()])
-    
     story.append(Paragraph("Job-Day Distribution per Truck", styles['h3']))
     story.append(Paragraph("This table shows the number of days each truck performed a specific number of jobs.", styles['Normal']))
     bucket_rows = [["Truck", "1-Job Days", "2-Job Days", "3-Job Days", "4+ Job Days", "Total Days"]]
-    
     for t_name in truck_names:
         b = metrics["per_truck_day_buckets"].get(t_name, {})
         total_days = sum(b.values())
         bucket_rows.append([t_name, b.get("1 job", 0), b.get("2 jobs", 0), b.get("3 jobs", 0), b.get("4+ jobs", 0), total_days])
-    
     bucket_tbl = Table(bucket_rows, hAlign="LEFT", colWidths=[80, 80, 80, 80, 80, 80])
     bucket_tbl.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('ALIGN', (1,1), (-1,-1), "RIGHT")]))
     story.append(bucket_tbl)
     story.append(Spacer(1, 12))
-
-    # --- NEW: Stacked Bar Chart for Job-Day Distribution ---
     if truck_names:
         drawing = Drawing(450, 220)
-        
-        # Data for the chart
         bucket_order = ["1 job", "2 jobs", "3 jobs", "4+ jobs"]
         data = []
         for bucket_name in bucket_order:
             series = [metrics["per_truck_day_buckets"].get(t, {}).get(bucket_name, 0) for t in truck_names]
             data.append(tuple(series))
-            
         bc = VerticalBarChart()
-        bc.x = 50
-        bc.y = 50
-        bc.height = 150
-        bc.width = 380
-        bc.data = data
-        bc.groupSpacing = 10
-        
-        # --- THIS SECTION IS NOW CORRECTED ---
-        bc.categoryAxis.style = 'stacked'
-        bc.categoryAxis.labels.angle = 45
-        bc.categoryAxis.labels.dy = -10
-        # --- END CORRECTION ---
-
-        bc.categoryAxis.categoryNames = truck_names
-        bc.valueAxis.valueMin = 0
-        bc.valueAxis.labels.fontName = 'Helvetica'
-        bc.bars[0].fillColor = colors.HexColor('#FF7F7F') # 1 job (reddish)
-        bc.bars[1].fillColor = colors.HexColor('#FFD700') # 2 jobs (yellow)
-        bc.bars[2].fillColor = colors.HexColor('#90EE90') # 3 jobs (light green)
-        bc.bars[3].fillColor = colors.HexColor('#2E8B57') # 4+ jobs (dark green)
-        
+        bc.x = 50; bc.y = 50; bc.height = 150; bc.width = 380; bc.data = data
+        bc.groupSpacing = 10; bc.categoryAxis.style = 'stacked'; bc.categoryAxis.labels.angle = 45
+        bc.categoryAxis.labels.dy = -10; bc.categoryAxis.categoryNames = truck_names
+        bc.valueAxis.valueMin = 0; bc.valueAxis.labels.fontName = 'Helvetica'
+        bc.bars[0].fillColor = colors.HexColor('#FF7F7F'); bc.bars[1].fillColor = colors.HexColor('#FFD700')
+        bc.bars[2].fillColor = colors.HexColor('#90EE90'); bc.bars[3].fillColor = colors.HexColor('#2E8B57')
         legend = Legend()
-        legend.alignment = 'right'
-        legend.x = 450
-        legend.y = 180
+        legend.alignment = 'right'; legend.x = 450; legend.y = 180
         legend.colorNamePairs = [
-            (colors.HexColor('#FF7F7F'), '1-Job Days'),
-            (colors.HexColor('#FFD700'), '2-Job Days'),
-            (colors.HexColor('#90EE90'), '3-Job Days'),
-            (colors.HexColor('#2E8B57'), '4+ Job Days')
-        ]
-        
-        drawing.add(bc)
-        drawing.add(legend)
-        story.append(drawing)
-
-    # --- Page 5+: Detailed Boat Status (Restored) ---
+            (colors.HexColor('#FF7F7F'), '1-Job Days'), (colors.HexColor('#FFD700'), '2-Job Days'),
+            (colors.HexColor('#90EE90'), '3-Job Days'), (colors.HexColor('#2E8B57'), '4+ Job Days')]
+        drawing.add(bc); drawing.add(legend); story.append(drawing)
     story.append(PageBreak())
     story.append(Paragraph("Detailed Boat Status", styles['h2']))
     story.append(Spacer(1, 12))
-    # ... (rest of your original boat status table logic) ...
     scheduled_rows = []; unscheduled_rows = []
     scheduled_services_by_cust = {}
     for job in ecm.SCHEDULED_JOBS:
@@ -847,7 +836,6 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     doc.build(story)
     buffer.seek(0)
     return buffer
-
 
 def show_scheduler_page():
     """
