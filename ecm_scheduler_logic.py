@@ -1894,7 +1894,55 @@ def precalculate_ideal_crane_days(year=2025):
 # --- NEW HELPER: Finds a slot on a specific day using the new efficiency rules ---
 # Replace your old function with this CORRECTED version
 
-def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, tide_policy=None, max_distance_miles=None, **kwargs):
+from collections import defaultdict
+from typing import List, Dict
+
+# (Ensure this is placed with your other functions in ecm_scheduler_logic.py)
+
+def analyze_travel_distances(scheduled_jobs: List[Job]) -> Dict:
+    """
+    Analyzes the travel distances between sequential jobs for each truck, including
+    the initial trip from the yard.
+    """
+    if not scheduled_jobs:
+        return {'avg_distance': 0, 'max_distance': 0, 'over_12_miles_count': 0}
+
+    jobs_by_truck = defaultdict(list)
+    for job in scheduled_jobs:
+        if job.assigned_hauling_truck_id and job.scheduled_start_datetime:
+            jobs_by_truck[job.assigned_hauling_truck_id].append(job)
+
+    all_distances = []
+    yard_coords = get_location_coords(address=YARD_ADDRESS)
+
+    for truck_id, jobs in jobs_by_truck.items():
+        # Sort this truck's jobs chronologically to calculate sequential travel
+        sorted_jobs = sorted(jobs, key=lambda j: j.scheduled_start_datetime)
+        
+        # The first trip of the day is from the yard
+        last_coords = yard_coords
+        
+        for job in sorted_jobs:
+            # Get pickup location for the current job
+            pickup_coords = get_location_coords(address=job.pickup_street_address, ramp_id=job.pickup_ramp_id, boat_id=job.boat_id)
+            
+            if last_coords and pickup_coords:
+                distance = _calculate_distance_miles(last_coords, pickup_coords)
+                all_distances.append(distance)
+            
+            # This job's dropoff becomes the starting point for the next one
+            last_coords = get_location_coords(address=job.dropoff_street_address, ramp_id=job.dropoff_ramp_id, boat_id=job.boat_id)
+
+    if not all_distances:
+        return {'avg_distance': 0, 'max_distance': 0, 'over_12_miles_count': 0}
+
+    return {
+        'avg_distance': sum(all_distances) / len(all_distances),
+        'max_distance': max(all_distances),
+        'over_12_miles_count': sum(1 for d in all_distances if d > 12)
+    }
+    
+    def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, tide_policy=None, max_distance_miles=None, **kwargs):
     """
     Finds available slots, now with an added filter for max_distance_miles between jobs.
     """
