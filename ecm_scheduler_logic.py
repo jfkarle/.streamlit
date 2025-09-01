@@ -126,7 +126,7 @@ RAMP_ABBREVIATIONS = {
     "Duxbury Harbor": "Dux Ramp",
     "Ferry Street  (Marshfield Yacht  Club)": "Ferry Ramp",
     "Green Harbor  (Taylors)": "Green H Taylors",
-    "Hingham Harbor": "GH Tayors",
+    "Hingham Harbor": "Hing Ramp",
     "Hull (A St, Sunset, Steamboat -": "Hull A St",
     "Hull (X Y Z v st)": "Hull XYZ",
     "Plymouth Harbor": "Plym Ramp",
