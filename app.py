@@ -1365,13 +1365,13 @@ def show_settings_page():
         st.markdown("---")
         st.subheader("Geographic Rules")
         # Corrected Code
-        st.number_input(
+        st.session_state.max_job_distance = st.number_input(
             "Max Distance Between Jobs (miles)",
             min_value=5,
             max_value=180,
-            # The 'value' parameter has been removed.
+            value=st.session_state.get('max_job_distance', 10), # Put value back
             step=1,
-            key='max_job_distance',
+            # The 'key' parameter is removed
             help="Enforces that a truck's next job must be within this many miles of its previous job's location."
         )
 
