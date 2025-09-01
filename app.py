@@ -688,15 +688,25 @@ def get_location_abbr(job, direction):
 
 def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     from PyPDF2 import PdfMerger
+    from io import BytesIO
+    import datetime
+
     merger = PdfMerger()
     for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
         jobs_for_day = [j for j in jobs if j.scheduled_start_datetime and j.scheduled_start_datetime.date() == single_date]
         if jobs_for_day:
             daily_pdf_buffer = generate_daily_planner_pdf(single_date, jobs_for_day)
-            merger.append(daily_pdf_buffer)
+            
+            # FIX: Check if the generated buffer has content before appending it.
+            # A buffer's size can be checked by seeking to the end and telling the position.
+            if daily_pdf_buffer.getbuffer().nbytes > 0:
+                merger.append(daily_pdf_buffer)
+
     output = BytesIO()
+    # This check is also important: it prevents writing an empty PDF if no days had jobs.
     if len(merger.pages) > 0:
         merger.write(output)
+        
     merger.close()
     output.seek(0)
     return output
