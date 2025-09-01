@@ -588,6 +588,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     
     # --- HELPER FUNCTION TO GET CORRECT LOCATION DISPLAY NAME ---
 
+# --- HELPER FUNCTION TO GET CORRECT LOCATION DISPLAY NAME ---
 def get_location_abbr(job, direction):
     # Handle ORIGIN
     if direction == "origin":
@@ -596,6 +597,7 @@ def get_location_abbr(job, direction):
             return ecm._abbreviate_town(job.pickup_street_address)
         # If it's a ramp, use the NEW abbreviation function
         elif job.pickup_ramp_id:
+            # THESE TWO LINES WERE MISSING
             ramp = ecm.get_ramp_details(str(job.pickup_ramp_id))
             return ecm.get_ramp_display_name(ramp.ramp_name) if ramp else "Unknown Ramp"
 
