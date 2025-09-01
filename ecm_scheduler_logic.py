@@ -2114,9 +2114,19 @@ def simulate_job_requests(
                 'reason': 'No slot found in search window'
             })
 
-    summary = (f"Batch requested: {num_to_schedule}. Remaining boats: {len(remaining_boats) - successful}. Scheduled now: {successful}.")
+    # --- NEW: Calculate final statistics for the new summary message ---
+    total_scheduled_boats = len(SCHEDULED_JOBS)
+    total_boats_in_system = len(LOADED_BOATS)
+    total_remaining_boats = total_boats_in_system - total_scheduled_boats
+    
+    summary = (
+        f"Batch Requested: {num_to_schedule}, "
+        f"Boats Scheduled (this batch): {successful}, "
+        f"Total Boats Remaining: {total_remaining_boats}, "
+        f"Total Boats Scheduled: {total_scheduled_boats}"
+    )
+    
     return summary, failed_requests
-
 
 def analyze_job_distribution(scheduled_jobs, all_boats, all_ramps):
     """
