@@ -590,7 +590,9 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         duration_m = max(0, _mins_between(start_time, end_time))
         lw = JOB_DURATION_W_THIN if duration_m in (90, 180) else JOB_DURATION_W_STD
 
-        y0, y_end = get_y_for_time(start_time)
+        # FIX: Call the function separately for the start and end times.
+        y0 = get_y_for_time(start_time)
+        y_end = get_y_for_time(end_time)
         # FIX: Add a fourth line for distance and adjust Y coordinates
         line1_y, line2_y, line3_y, line4_y = y0 - 15, y0 - 25, y0 - 35, y0 - 45
         customer = ecm.get_customer_details(job.customer_id)
