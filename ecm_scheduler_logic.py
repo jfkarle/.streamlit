@@ -34,6 +34,7 @@ LAUNCH_EARLY_ALLOW_SAIL_MIN  = 120
 
 # --- IN-MEMORY DATA CACHES & GLOBALS (must be defined before any function uses them) ---
 DEBUG_MESSAGES: list[str] = []
+TRAVEL_TIME_MATRIX: dict = {}
 
 IDEAL_CRANE_DAYS: set[tuple[str, dt.date]] = set()
 CANDIDATE_CRANE_DAYS: dict[str, list[dict]] = {
@@ -548,15 +549,15 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
 
     score = 0.0
     truck_id = str(slot.get("truck_id"))
-    date     = slot.get("date")
-    start_t  = slot.get("time")
-    ramp_id  = str(slot.get("ramp_id"))
-    
+    date = slot.get("date")
+    ramp_id = str(slot.get("ramp_id"))
+    boat = get_boat_details(slot.get("boat_id"))
+
     # Get number of jobs already on this truck for this day
     todays = [iv for iv in compiled_schedule.get(truck_id, []) if iv and hasattr(iv[0], "date") and iv[0].date() == date]
     n = len(todays)
-    
-    # Scoring for packing days
+
+    # --- Scoring for packing days (existing logic) ---
     if n == 0: score += 2.0
     if n == 1: score += 6.0
     if n == 2: score += 10.0
@@ -565,22 +566,35 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
     if slot.get("is_piggyback"):
         score += 8.0
 
-    # --- REMOVED BROKEN LOGIC and replaced with corrected prime_day scoring ---
+    # --- NEW: Scoring for geographic proximity ---
+    try:
+        ramp_details = get_ramp_details(ramp_id)
+        if boat and ramp_details and hasattr(boat, 'storage_address'):
+            storage_town = _abbreviate_town(boat.storage_address)
+            ramp_name = ramp_details.ramp_name
+
+            # Look up the pre-calculated travel time
+            travel_minutes = TRAVEL_TIME_MATRIX.get(storage_town, {}).get(ramp_name)
+
+            if travel_minutes is not None:
+                # Reward shorter travel times. A 60-min trip gets 0 bonus.
+                # A 10-min trip gets a bonus of 5.
+                proximity_bonus = max(0.0, (60 - travel_minutes) / 10.0)
+                score += proximity_bonus
+    except Exception as e:
+        _log_debug(f"Could not calculate proximity score: {e}")
+
+    # --- Scoring for prime days (existing logic) ---
     if after_threshold and date in prime_days:
-        ramp_obj = ECM_RAMPS.get(ramp_id)
-        boat = get_boat_details(slot.get("boat_id"))
-        tide_method = getattr(ramp_obj, "tide_calculation_method", "AnyTide") if ramp_obj else "AnyTide"
+        tide_method = getattr(ramp_details, "tide_calculation_method", "AnyTide") if ramp_details else "AnyTide"
         boat_type = getattr(boat, "boat_type", "") if boat else ""
 
-        # On a prime day (good for AnyTide powerboats), give a bonus to them
         if "Powerboat" in boat_type and tide_method == "AnyTide":
             score += 6.0
-        # And a penalty to sailboats
         elif "Sailboat" in boat_type:
             score -= 5.0
-            
-    return score
 
+    return score
 def tide_window_for_day(ramp, day):
     """
     Return list of (start_time, end_time) LOCAL time windows when a job may START.
@@ -806,7 +820,38 @@ def job_is_within_date_range(job_row, current_date, days_to_consider=21):
         current_date = current_date.replace(tzinfo=timezone.utc)
 
     return (current_date - timedelta(days=days_to_consider)) <= job_date <= (current_date + timedelta(days=days_to_consider))
-    
+
+def load_travel_time_matrix(filepath: str = "Town_to_Ramp_Matrix.csv"):
+    """Loads the pre-calculated travel time CSV into a nested dictionary for fast lookups."""
+    global TRAVEL_TIME_MATRIX
+    if TRAVEL_TIME_MATRIX: # Avoid reloading if already populated
+        return
+
+    try:
+        # This logic finds the file whether run locally or on Streamlit Cloud
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        full_path = os.path.join(base_path, filepath)
+
+        if not os.path.exists(full_path):
+             # Fallback for Streamlit Cloud if the file is in the root
+             full_path = filepath
+             if not os.path.exists(full_path):
+                 _log_debug(f"ERROR: Travel time matrix file not found at {filepath}.")
+                 return
+
+        with open(full_path, mode='r', encoding='utf-8') as infile:
+            reader = csv.reader(infile)
+            header = next(reader) # Skip header row
+            for row in reader:
+                from_town, to_ramp, minutes = row
+                if from_town not in TRAVEL_TIME_MATRIX:
+                    TRAVEL_TIME_MATRIX[from_town] = {}
+                TRAVEL_TIME_MATRIX[from_town][to_ramp] = int(minutes)
+        _log_debug(f"Successfully loaded travel times for {len(TRAVEL_TIME_MATRIX)} towns.")
+    except Exception as e:
+        _log_debug(f"ERROR: Failed to load or parse travel time matrix: {e}")
+        
+
 def load_all_data_from_sheets():
     """Loads all data from Supabase, now including truck schedules."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS, CANDIDATE_CRANE_DAYS
@@ -909,10 +954,20 @@ def load_all_data_from_sheets():
         CANDIDATE_CRANE_DAYS.clear()
         CANDIDATE_CRANE_DAYS.update(generate_crane_day_candidates())
         precalculate_ideal_crane_days()
-        
+
+    # ... inside load_all_data_from_sheets() ...
+    
+        # Populate candidate crane days and ideal days
+        CANDIDATE_CRANE_DAYS.clear()
+        CANDIDATE_CRANE_DAYS.update(generate_crane_day_candidates())
+        precalculate_ideal_crane_days()
+    
+        # ADD THIS LINE HERE
+        load_travel_time_matrix()
+    
     except Exception as e:
-        st.error(f"Error loading data: {e}")
-        raise
+            st.error(f"Error loading data: {e}")
+            raise
 
     # Build protected tide windows
     try:
