@@ -2099,6 +2099,7 @@ def simulate_job_requests(
             "customer_id": boat.customer_id, "boat_id": boat.boat_id, "service_type": service_type,
             "requested_date_str": random_date.strftime("%Y-%m-%d"),
             "selected_ramp_id": ramp_id_to_use, "relax_truck_preference": True,
+            "max_distance_miles": st.session_state.get('max_job_distance', 10), # Add this line
         }
 
         slots, _, _, _ = find_available_job_slots(**request)
