@@ -118,6 +118,37 @@ BOOKING_RULES = {
     'Sailboat MT':{'truck_mins': 180, 'crane_mins': 90},
 }
 
+# ADD THIS NEW CODE BLOCK
+
+RAMP_ABBREVIATIONS = {
+    "Cohasset Harbor (Parker Ave)": "Coh Ramp",
+    "Cordage Park (Ply)": "Cordage",
+    "Duxbury Harbor": "Dux Ramp",
+    "Ferry Street  (Marshfield Yacht  Club)": "Ferry Ramp",
+    "Green Harbor  (Taylors)": "Green H Taylors",
+    "Hingham Harbor": "GH Tayors",
+    "Hull (A St, Sunset, Steamboat -": "Hull A St",
+    "Hull (X Y Z v st)": "Hull XYZ",
+    "Plymouth Harbor": "Plym Ramp",
+    "Roht (A to Z/ Mary's)": "Roht",
+    "Green harbor (Safe Harbor)": "GH Safe",
+    "Scituate Harbor  (Jericho Road)": "Sci Ramp",
+    "South River Yacht Yard": "SRYY",
+    "Weymouth Harbor": "Wey Ramp",
+    "Scituate Jericho": "Sci Jericho",
+    "Scituate Boat Works": "Sci BW",
+    "Steamboat": "Steamboat",
+    "Port Norfolk Yacht Club": "PNYC",
+    "Bullman Marine": "Bullman",
+    "Savin HIll Yacht Club": "Savin H",
+}
+
+def get_ramp_display_name(full_ramp_name):
+    """Returns the abbreviated ramp name if one exists, otherwise returns the full name."""
+    if full_ramp_name is None:
+        return ""
+    return RAMP_ABBREVIATIONS.get(full_ramp_name, full_ramp_name)
+
 def _log_debug(msg):
     """Adds a timestamped message to the global debug log."""
     # Ensure DEBUG_MESSAGES is treated as a global variable
