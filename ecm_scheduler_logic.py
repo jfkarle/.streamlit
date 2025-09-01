@@ -1942,7 +1942,7 @@ def analyze_travel_distances(scheduled_jobs: List[Job]) -> Dict:
         'over_12_miles_count': sum(1 for d in all_distances if d > 12)
     }
     
-    def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, tide_policy=None, max_distance_miles=None, **kwargs):
+def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, tide_policy=None, max_distance_miles=None, **kwargs):
     """
     Finds available slots, now with an added filter for max_distance_miles between jobs.
     """
