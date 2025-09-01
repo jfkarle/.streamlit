@@ -414,8 +414,7 @@ def display_crane_day_calendar(crane_days_for_ramp):
 
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     """
-    Daily planner PDF with correct structure and all previous fixes.
-    The get_location_abbr helper function is now nested inside to prevent NameErrors.
+    Daily planner PDF with correct font name and all previous fixes.
     """
     from reportlab.pdfgen import canvas
     from reportlab.lib.units import inch
@@ -424,7 +423,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
 
     # --- HELPER FUNCTION (Correctly nested inside) ---
     def get_location_abbr(job, direction):
-        # Handle ORIGIN
         if direction == "origin":
             if job.pickup_street_address:
                 return ecm._abbreviate_town(job.pickup_street_address)
@@ -434,7 +432,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                     return ecm.get_ramp_display_name(ramp.ramp_name)
                 else:
                     return "Unknown Ramp"
-        # Handle DESTINATION
         elif direction == "destination":
             if job.dropoff_street_address:
                 return ecm._abbreviate_town(job.dropoff_street_address)
@@ -444,7 +441,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                     return ecm.get_ramp_display_name(ramp.ramp_name)
                 else:
                     return "Unknown Ramp"
-        return "" # Fallback
+        return ""
 
     # ---- PDF Setup ----
     JOB_OUTLINE_W = 2.0
@@ -470,8 +467,7 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         minutes_into_day = (t.hour * 60 + t.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
         return top_y - ((minutes_into_day / total_minutes) * content_height)
 
-    # ... (Drawing logic for header, grid, etc. remains the same) ...
-    # ---------- Reference ramp tides for gutter shading & header label ----------
+    # --- Header and Grid Drawing ---
     ref_ramp_id = None
     ramp_counts = Counter()
     for j in jobs_for_day:
@@ -600,7 +596,11 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             if prev_loc and pickup_loc:
                 dist_miles = ecm._calculate_distance_miles(prev_loc, pickup_loc)
                 distance_str = f"Travel: {dist_miles:.1f} mi"
-            c.setFont("Helvetica-Italic", 7)
+            
+            # ------------------- THIS IS THE FIX -------------------
+            c.setFont("Helvetica-Oblique", 7)
+            # -------------------------------------------------------
+
             c.drawCentredString(text_x, line4_y, distance_str)
             dropoff_loc = ecm.get_location_coords(address=job.dropoff_street_address, ramp_id=job.dropoff_ramp_id, boat_id=job.boat_id)
             if dropoff_loc:
