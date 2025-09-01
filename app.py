@@ -426,6 +426,34 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     from datetime import time as _time, datetime as _dt, timedelta as _td
     from collections import Counter
 
+    # --- HELPER FUNCTION TO GET CORRECT LOCATION DISPLAY NAME (Now correctly nested) ---
+    def get_location_abbr(job, direction):
+        # Handle ORIGIN
+        if direction == "origin":
+            if job.pickup_street_address:
+                return ecm._abbreviate_town(job.pickup_street_address)
+            elif job.pickup_ramp_id:
+                ramp = ecm.get_ramp_details(str(job.pickup_ramp_id))
+                # FIX: Check for both the ramp object AND its name before using them
+                if ramp and getattr(ramp, 'ramp_name', None):
+                    return ecm.get_ramp_display_name(ramp.ramp_name)
+                else:
+                    return "Unknown Ramp"
+
+        # Handle DESTINATION
+        elif direction == "destination":
+            if job.dropoff_street_address:
+                return ecm._abbreviate_town(job.dropoff_street_address)
+            elif job.dropoff_ramp_id:
+                ramp = ecm.get_ramp_details(str(job.dropoff_ramp_id))
+                # FIX: Check for both the ramp object AND its name before using them
+                if ramp and getattr(ramp, 'ramp_name', None):
+                    return ecm.get_ramp_display_name(ramp.ramp_name)
+                else:
+                    return "Unknown Ramp"
+        
+        return "" # Fallback
+
     # ---- stroke width constants ----
     JOB_OUTLINE_W       = 2.0   # outer job strokes
     JOB_DURATION_W_THIN = 0.8   # thin for 1.5h / 3h
@@ -556,7 +584,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     # Per-ramp tide windows
     _window_cache: dict[tuple[str, datetime.date], list[tuple[datetime.time, datetime.time]]] = {}
     def tide_windows_for_day(ramp_id: str, day: datetime.date):
-        # ... (This nested function remains unchanged)
         key = (str(ramp_id), day)
         if key in _window_cache: return _window_cache[key]
         ramp = ecm.get_ramp_details(str(ramp_id)) if ramp_id else None
@@ -576,44 +603,13 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         _window_cache[key] = windows; return windows
 
     def time_within_any_window(check_time: _time, windows: list[tuple[_time, _time]]):
-        # ... (This nested function remains unchanged)
         if not windows: return True
         for a, b in windows:
             if a <= b and a <= check_time <= b: return True
             if a > b and (check_time >= a or check_time <= b): return True
         return False
 
-    # Shade tide windows
-    # ... (This block remains unchanged)
-    
-    # --- HELPER FUNCTION TO GET CORRECT LOCATION DISPLAY NAME ---
-
-def get_location_abbr(job, direction):
-    # Handle ORIGIN
-    if direction == "origin":
-        if job.pickup_street_address:
-            return ecm._abbreviate_town(job.pickup_street_address)
-        elif job.pickup_ramp_id:
-            ramp = ecm.get_ramp_details(str(job.pickup_ramp_id))
-            # FIX: Check for both the ramp object AND its name before using them
-            if ramp and getattr(ramp, 'ramp_name', None):
-                return ecm.get_ramp_display_name(ramp.ramp_name)
-            else:
-                return "Unknown Ramp"
-
-    # Handle DESTINATION
-    elif direction == "destination":
-        if job.dropoff_street_address:
-            return ecm._abbreviate_town(job.dropoff_street_address)
-        elif job.dropoff_ramp_id:
-            ramp = ecm.get_ramp_details(str(job.dropoff_ramp_id))
-            # FIX: Check for both the ramp object AND its name before using them
-            if ramp and getattr(ramp, 'ramp_name', None):
-                return ecm.get_ramp_display_name(ramp.ramp_name)
-            else:
-                return "Unknown Ramp"
-    
-    return "" # Fallback
+    # Shade tide windows (This block remains unchanged)
 
     # Helper for job duration
     def _mins_between(t1, t2): return (t2.hour * 60 + t2.minute) - (t1.hour * 60 + t1.minute)
@@ -644,11 +640,9 @@ def get_location_abbr(job, direction):
             else:
                 c.drawCentredString(text_x, line2_y, "—")
             
-            # --- THIS IS THE FIX: Use the new helper function ---
             origin_abbr = get_location_abbr(job, "origin")
             dest_abbr = get_location_abbr(job, "destination")
             c.drawCentredString(text_x, line3_y, f"{origin_abbr}-{dest_abbr}")
-            # --- END FIX ---
 
             c.setLineWidth(lw); c.line(text_x, y0, text_x, y_end)
             c.setLineWidth(JOB_OUTLINE_W); c.line(text_x - 10, y_end, text_x + 10, y_end)
@@ -673,10 +667,8 @@ def get_location_abbr(job, direction):
             if customer: c.drawCentredString(crane_text_x, line1_y, customer.customer_name.split()[-1])
             c.setFont("Helvetica", 7)
 
-            # --- THIS IS ALSO THE FIX: Use the new helper for the crane column ---
             dest_abbr_crane = get_location_abbr(job, "destination")
             c.drawCentredString(crane_text_x, line2_y, dest_abbr_crane)
-            # --- END FIX ---
 
             c.setLineWidth(crane_lw); c.line(crane_text_x, y0 - 45, crane_text_x, y_crane_end)
             c.setLineWidth(JOB_OUTLINE_W); c.line(crane_text_x - 3, y_crane_end, crane_text_x + 3, y_crane_end)
@@ -684,7 +676,6 @@ def get_location_abbr(job, direction):
     c.save()
     buffer.seek(0)
     return buffer
-
 
 def generate_multi_day_planner_pdf(start_date, end_date, jobs):
     from PyPDF2 import PdfMerger
