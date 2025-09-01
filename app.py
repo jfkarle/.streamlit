@@ -414,85 +414,90 @@ def display_crane_day_calendar(crane_days_for_ramp):
 
 def generate_daily_planner_pdf(report_date, jobs_for_day):
     """
-    Daily planner PDF:
-      - Adds travel distance from the previous job's drop-off.
-      - Sorts jobs chronologically to ensure correct distance calculation.
-      - Adjusts layout to accommodate the new information line.
+    Daily planner PDF with correct structure and all previous fixes.
+    The get_location_abbr helper function is now nested inside to prevent NameErrors.
     """
     from reportlab.pdfgen import canvas
     from reportlab.lib.units import inch
     from datetime import time as _time, datetime as _dt, timedelta as _td
     from collections import Counter
 
-    # ---- stroke width constants ----
-    JOB_OUTLINE_W       = 2.0   # outer job strokes
-    JOB_DURATION_W_THIN = 0.8   # thin for 1.5h / 3h
-    JOB_DURATION_W_STD  = 2.0   # standard otherwise
+    # --- HELPER FUNCTION (Correctly nested inside) ---
+    def get_location_abbr(job, direction):
+        # Handle ORIGIN
+        if direction == "origin":
+            if job.pickup_street_address:
+                return ecm._abbreviate_town(job.pickup_street_address)
+            elif job.pickup_ramp_id:
+                ramp = ecm.get_ramp_details(str(job.pickup_ramp_id))
+                if ramp and getattr(ramp, 'ramp_name', None):
+                    return ecm.get_ramp_display_name(ramp.ramp_name)
+                else:
+                    return "Unknown Ramp"
+        # Handle DESTINATION
+        elif direction == "destination":
+            if job.dropoff_street_address:
+                return ecm._abbreviate_town(job.dropoff_street_address)
+            elif job.dropoff_ramp_id:
+                ramp = ecm.get_ramp_details(str(job.dropoff_ramp_id))
+                if ramp and getattr(ramp, 'ramp_name', None):
+                    return ecm.get_ramp_display_name(ramp.ramp_name)
+                else:
+                    return "Unknown Ramp"
+        return "" # Fallback
 
+    # ---- PDF Setup ----
+    JOB_OUTLINE_W = 2.0
+    JOB_DURATION_W_THIN = 0.8
+    JOB_DURATION_W_STD = 2.0
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
-
-    # Columns map (unchanged layout)
     planner_columns = ["S20/33", "S21/77", "S23/55", "S17"]
     column_map = {name: i for i, name in enumerate(planner_columns)}
-
     margin, time_col_width = 0.5 * inch, 0.75 * inch
     content_width = width - 2 * margin - time_col_width
     col_width = content_width / len(planner_columns)
-
     start_time_obj = datetime.time(7, 30)
     end_time_obj = datetime.time(17, 30)
     total_minutes = (end_time_obj.hour * 60 + end_time_obj.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
-
     top_y = height - margin - 0.8 * inch
     bottom_y = margin + 0.5 * inch
     content_height = top_y - bottom_y
+    id_to_name_map = {str(t.truck_id): t.truck_name for t in ecm.ECM_TRUCKS.values()}
 
     def get_y_for_time(t: datetime.time) -> float:
         minutes_into_day = (t.hour * 60 + t.minute) - (start_time_obj.hour * 60 + start_time_obj.minute)
         return top_y - ((minutes_into_day / total_minutes) * content_height)
 
-    # Truck/Crane names map
-    id_to_name_map = {str(t.truck_id): t.truck_name for t in ecm.ECM_TRUCKS.values()}
-
+    # ... (Drawing logic for header, grid, etc. remains the same) ...
     # ---------- Reference ramp tides for gutter shading & header label ----------
     ref_ramp_id = None
     ramp_counts = Counter()
     for j in jobs_for_day:
         rid = j.dropoff_ramp_id or j.pickup_ramp_id
-        if rid:
-            ramp_counts[str(rid)] += 1
+        if rid: ramp_counts[str(rid)] += 1
     if ramp_counts:
         ref_ramp_id = ramp_counts.most_common(1)[0][0]
     elif jobs_for_day:
         ref_ramp_id = str(jobs_for_day[0].dropoff_ramp_id or jobs_for_day[0].pickup_ramp_id)
-    if not ref_ramp_id:
-        ref_ramp_id = "3000001"
-
-    high_tide_highlights, low_tide_highlights = [], []
-    primary_high_tide = None
+    if not ref_ramp_id: ref_ramp_id = "3000001"
+    high_tide_highlights, low_tide_highlights, primary_high_tide = [], [], None
     if ref_ramp_id:
         ramp_obj = ecm.get_ramp_details(ref_ramp_id)
         if ramp_obj and getattr(ramp_obj, "noaa_station_id", None):
             tide_map = ecm.fetch_noaa_tides_for_range(ramp_obj.noaa_station_id, report_date, report_date) or {}
             readings = tide_map.get(report_date, [])
             highs = [t for t in readings if t.get("type") == "H"]
-            lows  = [t for t in readings if t.get("type") == "L"]
-
+            lows = [t for t in readings if t.get("type") == "L"]
             if highs:
                 noon = _dt.combine(report_date, datetime.time(12, 0), tzinfo=timezone.utc)
                 primary_high_tide = min(highs, key=lambda t: abs(_dt.combine(report_date, t['time'], tzinfo=timezone.utc) - noon))
-
             def _round_15(t: datetime.time) -> datetime.time:
-                mins = t.hour * 60 + t.minute
-                r = int(round(mins / 15.0) * 15)
+                mins = t.hour * 60 + t.minute; r = int(round(mins / 15.0) * 15)
                 return datetime.time(min(23, r // 60), r % 60)
-
             high_tide_highlights = [_round_15(t['time']) for t in highs if isinstance(t.get("time"), datetime.time)]
-            low_tide_highlights  = [_round_15(t['time']) for t in lows  if isinstance(t.get("time"), datetime.time)]
-
-    # Header & date
+            low_tide_highlights = [_round_15(t['time']) for t in lows if isinstance(t.get("time"), datetime.time)]
     c.setFont("Helvetica-Bold", 12)
     c.drawRightString(width - margin, height - 0.6 * inch, report_date.strftime("%A, %B %d").upper())
     if primary_high_tide:
@@ -500,57 +505,40 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         tide_height_str = f"{float(primary_high_tide.get('height', 0)):.1f}'"
         c.setFont("Helvetica-Bold", 9)
         c.drawString(margin, height - 0.6 * inch, f"High Tide: {tide_time_str} ({tide_height_str})")
-
-    # Column titles and time grid (remains unchanged)
     for i, name in enumerate(planner_columns):
         c.setFont("Helvetica-Bold", 14)
         c.drawCentredString(margin + time_col_width + i * col_width + col_width / 2, top_y + 10, name)
     c.setFont("Helvetica-Bold", 9)
     c.drawString(margin + 3, top_y - 9, "7:30")
     for hour in range(start_time_obj.hour + 1, end_time_obj.hour + 1):
-        # ... (grid drawing logic is unchanged) ...
         hour_highlight_color = None
         for m_check in [0, 15, 30, 45]:
             check_time = datetime.time(hour, m_check)
-            if check_time in high_tide_highlights:
-                hour_highlight_color = colors.Color(1, 1, 0, alpha=0.4)
-                break
-            if check_time in low_tide_highlights:
-                hour_highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4)
-                break
+            if check_time in high_tide_highlights: hour_highlight_color = colors.Color(1, 1, 0, alpha=0.4); break
+            if check_time in low_tide_highlights: hour_highlight_color = colors.Color(1, 0.6, 0.6, alpha=0.4); break
         for minute in [0, 15, 30, 45]:
             current_time = datetime.time(hour, minute)
-            if not (start_time_obj <= current_time <= end_time_obj):
-                continue
+            if not (start_time_obj <= current_time <= end_time_obj): continue
             y = get_y_for_time(current_time)
             c.setStrokeColorRGB(0.7, 0.7, 0.7)
             c.setLineWidth(1.0 if minute == 0 else 0.25)
             c.line(margin, y, width - margin, y)
             if minute == 0:
                 if hour_highlight_color:
-                    c.saveState()
-                    c.setFillColor(hour_highlight_color)
+                    c.saveState(); c.setFillColor(hour_highlight_color)
                     c.rect(margin + 1, y - 11, time_col_width - 2, 13, fill=1, stroke=0)
                     c.restoreState()
                 display_hour = hour if hour <= 12 else hour - 12
-                c.setFont("Helvetica-Bold", 9)
-                c.setFillColorRGB(0, 0, 0)
+                c.setFont("Helvetica-Bold", 9); c.setFillColorRGB(0, 0, 0)
                 c.drawString(margin + 3, y - 9, str(display_hour))
-
-    # Outer borders (remains unchanged)
     c.setStrokeColorRGB(0, 0, 0)
     for i in range(len(planner_columns) + 1):
-        x = margin + time_col_width + i * col_width
-        c.setLineWidth(0.5)
-        c.line(x, top_y, x, bottom_y)
-    # ... (rest of border drawing is unchanged) ...
+        x = margin + time_col_width + i * col_width; c.setLineWidth(0.5); c.line(x, top_y, x, bottom_y)
     c.line(margin, top_y, margin, bottom_y); c.line(width - margin, top_y, width - margin, bottom_y)
     c.line(margin, bottom_y, width - margin, bottom_y); c.line(margin, top_y, width - margin, top_y)
-
-    # Tide window helpers (remains unchanged)
+    
     _window_cache: dict[tuple[str, datetime.date], list[tuple[datetime.time, datetime.time]]] = {}
     def tide_windows_for_day(ramp_id: str, day: datetime.date):
-        # ... (implementation is unchanged) ...
         key = (str(ramp_id), day)
         if key in _window_cache: return _window_cache[key]
         ramp = ecm.get_ramp_details(str(ramp_id)) if ramp_id else None
@@ -569,19 +557,16 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             windows.append((start, end))
         _window_cache[key] = windows; return windows
     def time_within_any_window(check_time: _time, windows: list[tuple[_time, _time]]):
-        # ... (implementation is unchanged) ...
         if not windows: return True
         for a, b in windows:
             if a <= b and a <= check_time <= b: return True
             if a > b and (check_time >= a or check_time <= b): return True
         return False
-    
+
     # ---- Draw jobs ----
-    # FIX: Sort jobs by start time to calculate sequential travel distances
     sorted_jobs = sorted(jobs_for_day, key=lambda j: j.scheduled_start_datetime)
     last_truck_locs = {}
     yard_coords = ecm.get_location_coords(address=ecm.YARD_ADDRESS)
-
     def _mins_between(t1, t2): return (t2.hour * 60 + t2.minute) - (t1.hour * 60 + t1.minute)
 
     for job in sorted_jobs:
@@ -589,20 +574,15 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
         end_time   = job.scheduled_end_datetime.time()
         duration_m = max(0, _mins_between(start_time, end_time))
         lw = JOB_DURATION_W_THIN if duration_m in (90, 180) else JOB_DURATION_W_STD
-
-        # FIX: Call the function separately for the start and end times.
         y0 = get_y_for_time(start_time)
         y_end = get_y_for_time(end_time)
-        # FIX: Add a fourth line for distance and adjust Y coordinates
         line1_y, line2_y, line3_y, line4_y = y0 - 15, y0 - 25, y0 - 35, y0 - 45
         customer = ecm.get_customer_details(job.customer_id)
         boat = ecm.get_boat_details(job.boat_id)
-
         hauling_truck_name = id_to_name_map.get(str(job.assigned_hauling_truck_id))
         if hauling_truck_name and hauling_truck_name in column_map:
             col_index = column_map[hauling_truck_name]
             text_x = margin + time_col_width + (col_index + 0.5) * col_width
-
             c.setFillColorRGB(0, 0, 0)
             c.setFont("Helvetica-Bold", 8)
             c.drawCentredString(text_x, line1_y, customer.customer_name if customer else "—")
@@ -611,40 +591,30 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
                 c.drawCentredString(text_x, line2_y, f"{int(boat.boat_length)}' {boat.boat_type}")
             else:
                 c.drawCentredString(text_x, line2_y, "—")
-            
             origin_abbr = get_location_abbr(job, "origin")
             dest_abbr = get_location_abbr(job, "destination")
             c.drawCentredString(text_x, line3_y, f"{origin_abbr}-{dest_abbr}")
-
-            # --- NEW: Calculate and draw travel distance ---
             prev_loc = last_truck_locs.get(hauling_truck_name, yard_coords)
             pickup_loc = ecm.get_location_coords(address=job.pickup_street_address, ramp_id=job.pickup_ramp_id, boat_id=job.boat_id)
             distance_str = "Travel: -- mi"
             if prev_loc and pickup_loc:
                 dist_miles = ecm._calculate_distance_miles(prev_loc, pickup_loc)
                 distance_str = f"Travel: {dist_miles:.1f} mi"
-            
             c.setFont("Helvetica-Italic", 7)
             c.drawCentredString(text_x, line4_y, distance_str)
-            
-            # --- UPDATE: Update the last known location for this truck ---
             dropoff_loc = ecm.get_location_coords(address=job.dropoff_street_address, ramp_id=job.dropoff_ramp_id, boat_id=job.boat_id)
             if dropoff_loc:
                 last_truck_locs[hauling_truck_name] = dropoff_loc
-
             c.setLineWidth(lw); c.line(text_x, y0, text_x, y_end)
             c.setLineWidth(JOB_OUTLINE_W); c.line(text_x - 10, y_end, text_x + 10, y_end)
-
             ramp_id = job.dropoff_ramp_id or job.pickup_ramp_id
             job_windows = tide_windows_for_day(ramp_id, report_date)
-            # FIX: Adjust Y position of warning box to avoid overlap
             if not time_within_any_window(start_time, job_windows):
                 c.saveState(); c.setFillColor(colors.Color(1, 0.85, 0.85, alpha=0.9))
                 c.rect(text_x - 48, y0 - 62, 96, 12, fill=1, stroke=0)
                 c.setFillColorRGB(0.8, 0, 0)
                 c.setFont("Helvetica-Bold", 7); c.drawCentredString(text_x, y0 - 55, "OUTSIDE TIDE WINDOW")
                 c.restoreState()
-
         crane_truck_name = id_to_name_map.get(str(job.assigned_crane_truck_id))
         if crane_truck_name and crane_truck_name in column_map and getattr(job, "S17_busy_end_datetime", None):
             crane_col_index = column_map[crane_truck_name]
@@ -658,8 +628,6 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
             c.setFont("Helvetica", 7)
             dest_abbr_crane = get_location_abbr(job, "destination")
             c.drawCentredString(crane_text_x, line2_y, dest_abbr_crane)
-            
-            # FIX: Adjust Y position of crane's duration line
             c.setLineWidth(crane_lw); c.line(crane_text_x, y0 - 55, crane_text_x, y_crane_end)
             c.setLineWidth(JOB_OUTLINE_W); c.line(crane_text_x - 3, y_crane_end, crane_text_x + 3, y_crane_end)
 
