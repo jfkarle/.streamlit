@@ -1282,7 +1282,7 @@ def get_ramp_details(ramp_id):
 def _abbreviate_town(address):
     if not address: return ""
     if address.isdigit(): return "Pem"
-    abbr_map = { "pembroke": "Pem", "scituate": "Sci", "green harbor": "GrH", "marshfield": "Mar", "cohasset": "Coh", "weymouth": "Wey", "plymouth": "Ply", "sandwich": "San", "duxbury": "Dux", "humarock": "Hum", "hingham": "Hin", "hull": "Hul", "norwell": "Nor", "boston": "Bos", "quincy": "Qui", "kingston": "Kin", "hanover": "Han", "rockland": "Roc" }
+    abbr_map = { "pembroke": "Pem", "Brockton": "Brock", "East Bridgewater": "E Bridge", "West Bridgewater": "W Bridge", "scituate": "Sci", "green harbor": "GrH", "marshfield": "Mar", "cohasset": "Coh", "weymouth": "Wey", "plymouth": "Ply", "sandwich": "San", "duxbury": "Dux", "humarock": "Hum", "hingham": "Hin", "hull": "Hul", "norwell": "Nor", "boston": "Bos", "quincy": "Qui", "kingston": "Kin", "hanover": "Han", "rockland": "Roc" }
     if 'HOME' in address.upper(): return "Pem"
     address_lower = address.lower()
     for town, abbr in abbr_map.items():
