@@ -588,19 +588,27 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     
     # --- NEW HELPER FUNCTION TO GET CORRECT LOCATION ABBREVIATION ---
     def get_location_abbr(job, direction):
-        if direction == "origin":
-            if job.pickup_street_address:
-                return ecm._abbreviate_town(job.pickup_street_address)
-            elif job.pickup_ramp_id:
-                ramp = ecm.get_ramp_details(str(job.pickup_ramp_id))
-                return ecm._abbreviate_town(ramp.ramp_name if ramp else "")
-        elif direction == "destination":
-            if job.dropoff_street_address:
-                return ecm._abbreviate_town(job.dropoff_street_address)
-            elif job.dropoff_ramp_id:
-                ramp = ecm.get_ramp_details(str(job.dropoff_ramp_id))
-                return ecm._abbreviate_town(ramp.ramp_name if ramp else "")
-        return ""
+    # Handle ORIGIN
+    if direction == "origin":
+        # If it's a street address, use the town abbreviation.
+        if job.pickup_street_address:
+            return ecm._abbreviate_town(job.pickup_street_address)
+        # If it's a ramp, use the full ramp name.
+        elif job.pickup_ramp_id:
+            ramp = ecm.get_ramp_details(str(job.pickup_ramp_id))
+            return ramp.ramp_name if ramp else "Unknown Ramp"
+
+    # Handle DESTINATION
+    elif direction == "destination":
+        # If it's a street address, use the town abbreviation.
+        if job.dropoff_street_address:
+            return ecm._abbreviate_town(job.dropoff_street_address)
+        # If it's a ramp, use the full ramp name.
+        elif job.dropoff_ramp_id:
+            ramp = ecm.get_ramp_details(str(job.dropoff_ramp_id))
+            return ramp.ramp_name if ramp else "Unknown Ramp"
+    
+    return "" # Fallback
 
     # Helper for job duration
     def _mins_between(t1, t2): return (t2.hour * 60 + t2.minute) - (t1.hour * 60 + t1.minute)
