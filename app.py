@@ -1064,20 +1064,22 @@ def show_scheduler_page():
 
                 # === One-click search: use callback so a single click runs the search in this pass ===
                 def _run_slot_search_cb():
-                    # 1) Run the search
-                    slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
-                        customer_id=customer.customer_id,
-                        boat_id=boat.boat_id,
-                        service_type=service_type,
-                        requested_date_str=req_date.strftime("%Y-%m-%d"),
-                        selected_ramp_id=selected_ramp_id,
-                        num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
-                        relax_truck_preference=st.session_state.get("relax_truck_preference", False),
-                        tide_policy=_tide_policy_from_ui(),
-                    )
-                    # 2) Store results in session
-                    st.session_state['found_slots'] = [SlotDetail(s) for s in slot_dicts]
-                    st.session_state['failure_reasons'] = warnings
+                # 1) Run the search, now passing the max_distance setting
+                slot_dicts, msg, warnings, forced = ecm.find_available_job_slots(
+                    customer_id=customer.customer_id,
+                    boat_id=boat.boat_id,
+                    service_type=service_type,
+                    requested_date_str=req_date.strftime("%Y-%m-%d"),
+                    selected_ramp_id=selected_ramp_id,
+                    num_suggestions_to_find=st.session_state.get('num_suggestions', 3),
+                    relax_truck_preference=st.session_state.get("relax_truck_preference", False),
+                    tide_policy=_tide_policy_from_ui(),
+                    max_distance_miles=st.session_state.get('max_job_distance', 10) # <-- ADD THIS LINE
+                )
+                # 2) Store results in session (rest of function is the same)
+                st.session_state['found_slots'] = [SlotDetail(s) for s in slot_dicts]
+                st.session_state['failure_reasons'] = warnings
+                # ... (rest of the function is the same) ...
                     st.session_state['was_forced_search'] = forced
                     st.session_state['current_job_request'] = {
                         "customer_id": customer.customer_id,
