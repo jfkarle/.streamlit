@@ -590,13 +590,25 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     def get_location_abbr(job, direction):
     # Handle ORIGIN
     if direction == "origin":
-        # If it's a street address, use the town abbreviation.
+        # If it's a street address, use the town abbreviation
         if job.pickup_street_address:
             return ecm._abbreviate_town(job.pickup_street_address)
-        # If it's a ramp, use the full ramp name.
+        # If it's a ramp, use the NEW abbreviation function
         elif job.pickup_ramp_id:
             ramp = ecm.get_ramp_details(str(job.pickup_ramp_id))
-            return ramp.ramp_name if ramp else "Unknown Ramp"
+            return ecm.get_ramp_display_name(ramp.ramp_name) if ramp else "Unknown Ramp"
+
+    # Handle DESTINATION
+    elif direction == "destination":
+        # If it's a street address, use the town abbreviation
+        if job.dropoff_street_address:
+            return ecm._abbreviate_town(job.dropoff_street_address)
+        # If it's a ramp, use the NEW abbreviation function
+        elif job.dropoff_ramp_id:
+            ramp = ecm.get_ramp_details(str(job.dropoff_ramp_id))
+            return ecm.get_ramp_display_name(ramp.ramp_name) if ramp else "Unknown Ramp"
+    
+    return "" # Fallback
 
     # Handle DESTINATION
     elif direction == "destination":
