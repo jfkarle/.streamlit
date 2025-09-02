@@ -2489,8 +2489,8 @@ def _find_slot_on_day(
     compiled_schedule,
     customer_id,
     trucks_to_check: list,
-    daily_last_locations: dict,      # <-- Add this parameter
-    max_distance_miles: int | None,  # <-- Add this parameter
+    daily_last_locations: dict,
+    max_distance_miles: int | None,
     is_opportunistic_search: bool = False,
     tide_policy: dict | None = None,
 ):
@@ -2499,13 +2499,11 @@ def _find_slot_on_day(
     if not ramp:
         return None
 
-    # (The first part of the function remains the same)
     boat_type = (getattr(boat, "boat_type", "") or "").lower()
     is_sail = "sail" in boat_type
     duration_mins = 180 if service_type in ("Launch", "Haul") and is_sail else 90
     job_duration = timedelta(minutes=duration_mins)
 
-    # (The robust tide window calculation block you added previously remains here)
     from datetime import time as _dtime
     windows = []
     method = getattr(ramp, "tide_calculation_method", "AnyTide")
@@ -2537,7 +2535,6 @@ def _find_slot_on_day(
     if method != "AnyTide" and not windows:
         return None
 
-    # (The rest of the setup remains the same)
     policy = (tide_policy or globals().get("_GLOBAL_TIDE_POLICY") or globals().get("DEFAULT_TIDE_POLICY") or {})
     step = timedelta(minutes=int(policy.get("scan_step_mins", 15)))
     rules_map = globals().get("BOOKING_RULES", {}) or {}
@@ -2570,7 +2567,7 @@ def _find_slot_on_day(
             while start_dt <= range_end:
                 end_dt = start_dt + job_duration
 
-                # --- NEW: INTEGRATED DISTANCE CHECK ---
+                # --- INTEGRATED DISTANCE CHECK ---
                 if max_distance_miles is not None:
                     last_loc_info = daily_last_locations.get(truck.truck_id, {}).get(day)
                     if last_loc_info: # This is not the first job of the day
@@ -2587,7 +2584,6 @@ def _find_slot_on_day(
                                 start_dt += step
                                 continue # Skip this slot, it's too far
 
-                # (The existing checks for truck and crane availability remain)
                 if not check_truck_availability_optimized(truck.truck_id, start_dt, end_dt, compiled_schedule):
                     start_dt += step
                     continue
