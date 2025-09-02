@@ -970,7 +970,6 @@ def load_all_data_from_sheets():
         # --- Trucks ---
         trucks_resp = execute_query(conn.table("trucks").select("*"), ttl=0)
         ECM_TRUCKS.clear()
-        # FIX: Ensure Truck ID is a string when creating the dictionary key
         ECM_TRUCKS.update({str(row["truck_id"]): Truck(t_id=row["truck_id"], name=row.get("truck_name"), max_len=row.get("max_boat_length")) for row in trucks_resp.data})
         name_to_id = {t.truck_name: t.truck_id for t in ECM_TRUCKS.values()}
 
@@ -1046,32 +1045,6 @@ def load_all_data_from_sheets():
         _log_debug("Built protected tide windows for next 90 days.")
     except Exception as e:
         _log_debug(f"WARNING: could not build protected windows: {e}")
-
-def delete_all_jobs():
-    """
-    Deletes ALL records from the 'jobs' table in the database.
-    Returns a tuple of (success_boolean, message_string).
-    """
-    try:
-        conn = get_db_connection()
-        
-        # To delete all rows, we perform a delete with a filter that matches everything.
-        # This deletes all rows where the job_id is not -1 (which is all of them).
-        conn.table("jobs").delete().neq("job_id", -1).execute()
-
-        _log_debug("Successfully deleted all jobs from the database.")
-        
-        # Also clear the in-memory list to reflect the change immediately
-        global SCHEDULED_JOBS
-        SCHEDULED_JOBS.clear()
-        
-        return True, "Success! All jobs have been permanently deleted from the database."
-        
-    except Exception as e:
-        _log_debug(f"ERROR: Failed to delete all jobs. Details: {e}")
-        st.error(f"An error occurred while trying to delete jobs: {e}")
-        return False, f"Error: Could not delete jobs. Details: {e}"
-
 
 def save_job(job_to_save):
     conn = get_db_connection()
