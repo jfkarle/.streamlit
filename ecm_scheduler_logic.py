@@ -1639,11 +1639,8 @@ def _diagnose_failure_reasons(req_date, boat, ramp_obj, truck_hours, force_prefe
 
 def _compile_truck_schedules(jobs):
     schedule = {}
-    # New structure to track daily end locations: {truck_id: {date: (end_datetime, (lat, lon))}}
     daily_truck_last_location = {} 
 
-    # Sort jobs by start time to accurately determine the *last* job on a given day
-    # Ensure all scheduled_start_datetime are datetime objects with timezone for sorting
     sorted_jobs = sorted([j for j in jobs if j.scheduled_start_datetime], 
                          key=lambda j: j.scheduled_start_datetime)
 
@@ -1652,50 +1649,35 @@ def _compile_truck_schedules(jobs):
             continue
 
         job_date = job.scheduled_start_dt.date()
-
-        # Determine dropoff coordinates for the current job
-        job_dropoff_coords = None
-        if job.dropoff_street_address:
-            job_dropoff_coords = get_location_coords(address=job.dropoff_street_address)
-        elif job.dropoff_ramp_id:
-            job_dropoff_coords = get_location_coords(ramp_id=job.dropoff_ramp_id)
-        # Fallback to pickup if no dropoff is specified (e.g., if Transport job and dropoff is null)
-        elif job.pickup_street_address:
-             job_dropoff_coords = get_location_coords(address=job.pickup_street_address)
-        elif job.pickup_ramp_id:
-            job_dropoff_coords = get_location_coords(ramp_id=job.pickup_ramp_id)
-        
-        # If still no coords, default to yard (should log this as a data issue)
+        job_dropoff_coords = get_location_coords(
+            address=job.dropoff_street_address, 
+            ramp_id=job.dropoff_ramp_id
+        )
         if not job_dropoff_coords:
-            DEBUG_MESSAGES.append(f"WARNING: Job {job.job_id} has no valid dropoff/pickup location for geocoding. Defaulting to yard coords for location tracking.")
-            job_dropoff_coords = get_location_coords(address=YARD_ADDRESS) # Fallback to yard
+            job_dropoff_coords = get_location_coords(address=YARD_ADDRESS)
 
-        # Process hauling truck schedule and last location
+        # Process hauling truck
         hauler_id = getattr(job, 'assigned_hauling_truck_id', None)
         if hauler_id and job.scheduled_start_datetime and job.scheduled_end_datetime:
-            schedule.setdefault(hauler_id, []).append((job.scheduled_start_datetime, job.scheduled_end_datetime))
+            hauler_id_str = str(hauler_id) #<-- FIX: Ensure key is a string
+            schedule.setdefault(hauler_id_str, []).append((job.scheduled_start_datetime, job.scheduled_end_datetime))
             
-            current_last_for_hauler = daily_truck_last_location.get(hauler_id, {}).get(job_date)
-            # Update last known location if this job ends later than the current last job for this truck on this day
+            current_last_for_hauler = daily_truck_last_location.get(hauler_id_str, {}).get(job_date)
             if not current_last_for_hauler or job.scheduled_end_datetime > current_last_for_hauler[0]:
-                daily_truck_last_location.setdefault(hauler_id, {})[job_date] = \
-                    (job.scheduled_end_datetime, job_dropoff_coords) # (datetime, (lat, lon))
+                daily_truck_last_location.setdefault(hauler_id_str, {})[job_date] = (job.scheduled_end_datetime, job_dropoff_coords)
 
-        # Process crane truck schedule and last location (if different end time or location logic)
+        # Process crane truck
         crane_id = getattr(job, 'assigned_crane_truck_id', None)
         crane_end_time = getattr(job, 'S17_busy_end_datetime', None)
         if crane_id and job.scheduled_start_datetime and crane_end_time:
-            schedule.setdefault(crane_id, []).append((job.scheduled_start_datetime, crane_end_time))
+            crane_id_str = str(crane_id) #<-- FIX: Ensure key is a string
+            schedule.setdefault(crane_id_str, []).append((job.scheduled_start_datetime, crane_end_time))
             
-            current_last_for_crane = daily_truck_last_location.get(crane_id, {}).get(job_date)
-            # Update last known location if this crane job ends later
+            current_last_for_crane = daily_truck_last_location.get(crane_id_str, {}).get(job_date)
             if not current_last_for_crane or crane_end_time > current_last_for_crane[0]:
-                daily_truck_last_location.setdefault(crane_id, {})[job_date] = \
-                    (crane_end_time, job_dropoff_coords) # (datetime, (lat, lon))
+                daily_truck_last_location.setdefault(crane_id_str, {})[job_date] = (crane_end_time, job_dropoff_coords)
     
-    # Return both the time schedule and the daily last known locations
     return schedule, daily_truck_last_location
-
 def _count_jobs_on_truck_day(truck_id, date_obj, compiled_schedule):
     """Counts jobs already on a truck's given day using compiled_schedule."""
     cnt = 0
@@ -2470,16 +2452,19 @@ def _find_slot_on_day(
     crane_minutes = int(rules.get("crane_mins", 0))
 
     for truck in (trucks_to_check or []):
-        hours = (TRUCK_OPERATING_HOURS.get(truck.truck_id, {}) or {}).get(day.weekday())
+        truck_id_str = str(truck.truck_id) # <-- FIX: Ensure key is a string for lookups
+        hours = (TRUCK_OPERATING_HOURS.get(truck_id_str, {}) or {}).get(day.weekday())
         if not hours:
             continue
+            
         truck_open  = dt.datetime.combine(day, hours[0], tzinfo=timezone.utc)
         truck_close = dt.datetime.combine(day, hours[1], tzinfo=timezone.utc)
         reserve_first_slot = timedelta(minutes=90)
-        earliest = truck_open if getattr(boat, "is_e_boat", False) else (truck_open + reserve_first_slot)
+        earliest = truck_open if getattr(boat, "is_ecm_boat", False) else (truck_open + reserve_first_slot)
         latest_start = truck_close - job_duration
         if earliest > latest_start:
             continue
+            
         candidate_ranges = []
         if windows:
             for (w0, w1) in windows:
@@ -2495,39 +2480,22 @@ def _find_slot_on_day(
             while start_dt <= range_end:
                 end_dt = start_dt + job_duration
 
-                # --- START: DEBUGGING DISTANCE CHECK ---
                 if max_distance_miles is not None:
-                    _log_debug(f"--- DISTANCE CHECK FOR {boat.boat_id} on {day} at {start_dt.time()} ---")
-                    _log_debug(f"RULE: Max distance is {max_distance_miles} miles.")
-                    last_loc_info = daily_last_locations.get(truck.truck_id, {}).get(day)
-                    
+                    last_loc_info = daily_last_locations.get(truck_id_str, {}).get(day)
                     if last_loc_info:
-                        _log_debug(f"Found previous job for truck {truck.truck_name}. Last location: {last_loc_info[1]}")
                         last_coords = last_loc_info[1]
-                        
                         if service_type == "Launch":
                              new_coords = get_location_coords(boat_id=boat.boat_id)
                         else:
                              new_coords = get_location_coords(ramp_id=ramp_id)
                         
-                        _log_debug(f"New job location: {new_coords}")
-                        
                         if last_coords and new_coords:
                             distance = _calculate_distance_miles(last_coords, new_coords)
-                            _log_debug(f"Calculated distance: {distance:.1f} miles.")
                             if distance > max_distance_miles:
-                                _log_debug(f"VIOLATION: Distance {distance:.1f} > {max_distance_miles}. Skipping slot.")
                                 start_dt += step
                                 continue
-                            else:
-                                _log_debug("PASS: Distance is within limit.")
-                        else:
-                            _log_debug("WARNING: Could not get coordinates for distance check. Allowing slot.")
-                    else:
-                        _log_debug(f"INFO: No previous jobs for truck {truck.truck_name} on {day}. Allowing as first job.")
-                # --- END: DEBUGGING DISTANCE CHECK ---
 
-                if not check_truck_availability_optimized(truck.truck_id, start_dt, end_dt, compiled_schedule):
+                if not check_truck_availability_optimized(truck_id_str, start_dt, end_dt, compiled_schedule):
                     start_dt += step
                     continue
 
@@ -2539,7 +2507,7 @@ def _find_slot_on_day(
                 if crane_needed and crane_minutes > 0:
                     s17_id = get_s17_truck_id()
                     crane_end_dt = start_dt + timedelta(minutes=crane_minutes)
-                    if not check_truck_availability_optimized(s17_id, start_dt, crane_end_dt, compiled_schedule):
+                    if not check_truck_availability_optimized(str(s17_id), start_dt, crane_end_dt, compiled_schedule):
                         start_dt += step
                         continue
                 
