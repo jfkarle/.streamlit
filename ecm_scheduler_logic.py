@@ -1045,7 +1045,6 @@ def load_all_data_from_sheets():
         _log_debug("Built protected tide windows for next 90 days.")
     except Exception as e:
         _log_debug(f"WARNING: could not build protected windows: {e}")
-
 def save_job(job_to_save):
     conn = get_db_connection()
     job_dict = job_to_save.__dict__
