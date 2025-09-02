@@ -1868,6 +1868,7 @@ def simulate_job_requests(
     """
     Generates jobs and attempts to schedule them, returning a summary and a list of failures.
     """
+    global DEBUG_MESSAGES; DEBUG_MESSAGES.clear() # <-- Line 1: ADD THIS
     import datetime as dt
     import random as _rnd
 
@@ -1928,7 +1929,7 @@ def simulate_job_requests(
             "customer_id": boat.customer_id, "boat_id": boat.boat_id, "service_type": service_type,
             "requested_date_str": random_date.strftime("%Y-%m-%d"),
             "selected_ramp_id": ramp_id_to_use, "relax_truck_preference": True,
-            "max_distance_miles": st.session_state.get('max_job_distance', 10), # Add this line
+            "max_distance_miles": st.session_state.get('max_job_distance', 10),
         }
 
         slots, _, _, _ = find_available_job_slots(**request)
@@ -1956,8 +1957,10 @@ def simulate_job_requests(
         f"Total Boats Scheduled: {total_scheduled_boats}"
     )
     
+    st.session_state['last_batch_debug_log'] = "\n".join(DEBUG_MESSAGES) # <-- Line 2: ADD THIS
+    
     return summary, failed_requests
-
+    
 def analyze_job_distribution(scheduled_jobs, all_boats, all_ramps):
     """
     Analyzes the distribution of scheduled jobs by day of the week and by ramp
@@ -2183,7 +2186,6 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     Finds available slots by first searching for the preferred truck, then falling
     back to other trucks. Integrates distance checks into the core search loop.
     """
-    global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
 
     relax_truck_preference = kwargs.get('relax_truck_preference', False)
     max_distance_miles = kwargs.get('max_distance_miles') # Get the distance rule
