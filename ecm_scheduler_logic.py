@@ -203,7 +203,10 @@ def fetch_scheduled_jobs():
 # --- DATA MODELS (CLASSES) ---
 class Truck:
     def __init__(self, t_id, name, max_len):
-        self.truck_id, self.truck_name, self.max_boat_length, self.is_crane = t_id, name, max_len, "Crane" in name
+        self.truck_id = str(t_id) #<-- FIX: Ensure ID is a string
+        self.truck_name = name
+        self.max_boat_length = max_len
+        self.is_crane = "Crane" in name
 
 class Ramp:
     def __init__(self, r_id, name, station, tide_method="AnyTide", offset=None, boats=None, latitude=None, longitude=None):
@@ -237,12 +240,53 @@ class Boat:
 
 class Job:
     def __init__(self, **kwargs):
-        # ----- small helpers -----
+        # (The _parse_int and _parse_float helpers remain the same)
         def _parse_int(v):
-            try:
-                return int(v) if v is not None and str(v).strip() != "" else None
-            except (ValueError, TypeError):
-                return None
+            try: return int(v) if v is not None and str(v).strip() != "" else None
+            except (ValueError, TypeError): return None
+        def _parse_float(v):
+            try: return float(v) if v is not None and str(v).strip() != "" else None
+            except (ValueError, TypeError): return None
+
+        self.job_id                     = _parse_int(kwargs.get("job_id"))
+        self.customer_id                = _parse_int(kwargs.get("customer_id"))
+        self.boat_id                    = _parse_int(kwargs.get("boat_id"))
+        self.service_type               = kwargs.get("service_type")
+        self.scheduled_start_datetime   = self._parse_or_get_datetime(kwargs.get("scheduled_start_datetime"))
+        self.scheduled_end_datetime     = self._parse_or_get_datetime(kwargs.get("scheduled_end_datetime"))
+        
+        # --- FIX: Ensure Truck IDs are always strings ---
+        self.assigned_hauling_truck_id  = str(kwargs.get("assigned_hauling_truck_id")) if kwargs.get("assigned_hauling_truck_id") else None
+        self.assigned_crane_truck_id    = str(kwargs.get("assigned_crane_truck_id")) if kwargs.get("assigned_crane_truck_id") else None
+        # -----------------------------------------------
+
+        self.S17_busy_end_datetime      = self._parse_or_get_datetime(kwargs.get("S17_busy_end_datetime"))
+        self.pickup_ramp_id             = kwargs.get("pickup_ramp_id")
+        self.dropoff_ramp_id            = kwargs.get("dropoff_ramp_id")
+        self.pickup_street_address      = kwargs.get("pickup_street_address", "") or ""
+        self.dropoff_street_address     = kwargs.get("dropoff_street_address", "") or ""
+        self.job_status                 = kwargs.get("job_status", "Scheduled")
+        self.notes                      = kwargs.get("notes", "")
+        self.pickup_latitude            = _parse_float(kwargs.get("pickup_latitude"))
+        self.pickup_longitude           = _parse_float(kwargs.get("pickup_longitude"))
+        self.dropoff_latitude           = _parse_float(kwargs.get("dropoff_latitude"))
+        self.dropoff_longitude          = _parse_float(kwargs.get("dropoff_longitude"))
+
+    # (The _parse_or_get_datetime and property methods remain the same)
+    def _parse_or_get_datetime(self, dt_value):
+        parsed = None
+        if isinstance(dt_value, dt.datetime): parsed = dt_value
+        elif isinstance(dt_value, str):
+            try: parsed = dt.datetime.fromisoformat(dt_value.replace(" ", "T"))
+            except (ValueError, TypeError): return None
+        if parsed is None: return None
+        if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
+            return parsed.replace(tzinfo=dt.timezone.utc)
+        return parsed
+    @property
+    def scheduled_start_dt(self): return self.scheduled_start_datetime
+    @property
+    def scheduled_end_dt(self): return self.scheduled_end_datetime
 
         def _parse_float(v):
             try:
@@ -900,61 +944,52 @@ def load_travel_time_matrix(filepath: str = "Town_to_Ramp_Matrix.csv"):
         
 
 def load_all_data_from_sheets():
-    """Loads all data from Supabase, now including truck schedules."""
+    """Loads all data from Supabase, ensuring consistent string types for IDs."""
     global SCHEDULED_JOBS, PARKED_JOBS, LOADED_CUSTOMERS, LOADED_BOATS, ECM_TRUCKS, ECM_RAMPS, TRUCK_OPERATING_HOURS, CANDIDATE_CRANE_DAYS
     try:
         conn = get_db_connection()
 
-        # Safety guards
         if SCHEDULED_JOBS is None: SCHEDULED_JOBS = []
         if PARKED_JOBS is None: PARKED_JOBS = {}
     
         # --- Jobs ---
         query_columns = (
-            "job_id, customer_id, boat_id, service_type, "
-            "scheduled_start_datetime, scheduled_end_datetime, "
-            "assigned_hauling_truck_id, assigned_crane_truck_id, "
-            "S17_busy_end_datetime, pickup_ramp_id, dropoff_ramp_id, "
+            "job_id, customer_id, boat_id, service_type, scheduled_start_datetime, scheduled_end_datetime, "
+            "assigned_hauling_truck_id, assigned_crane_truck_id, S17_busy_end_datetime, pickup_ramp_id, dropoff_ramp_id, "
             "pickup_street_address, dropoff_street_address, job_status, notes, "
             "pickup_latitude, pickup_longitude, dropoff_latitude, dropoff_longitude"
         )
         jobs_resp = execute_query(conn.table("jobs").select(query_columns), ttl=0)
-        all_jobs = [Job(**row) for row in jobs_resp.data if row.get('scheduled_start_datetime')] if isinstance(jobs_resp.data, list) else []
+        all_jobs = [Job(**row) for row in jobs_resp.data] if isinstance(jobs_resp.data, list) else []
         
         SCHEDULED_JOBS.clear() 
-        SCHEDULED_JOBS.extend([job for job in all_jobs if job.job_status == "Scheduled"])
+        SCHEDULED_JOBS.extend([job for job in all_jobs if job.job_status == "Scheduled" and job.scheduled_start_datetime])
         PARKED_JOBS.clear()
         PARKED_JOBS.update({job.job_id: job for job in all_jobs if job.job_status == "Parked"})
 
         # --- Trucks ---
         trucks_resp = execute_query(conn.table("trucks").select("*"), ttl=0)
         ECM_TRUCKS.clear()
-        ECM_TRUCKS.update({row["truck_id"]: Truck(t_id=row["truck_id"], name=row.get("truck_name"), max_len=row.get("max_boat_length")) for row in trucks_resp.data})
+        # FIX: Ensure Truck ID is a string when creating the dictionary key
+        ECM_TRUCKS.update({str(row["truck_id"]): Truck(t_id=row["truck_id"], name=row.get("truck_name"), max_len=row.get("max_boat_length")) for row in trucks_resp.data})
         name_to_id = {t.truck_name: t.truck_id for t in ECM_TRUCKS.values()}
 
-        # --- Ramps (Corrected Type Handling) ---
+        # --- Ramps ---
         ramps_resp = execute_query(conn.table("ramps").select("*"), ttl=0)
         ECM_RAMPS.clear()
         for row in ramps_resp.data:
             try:
                 ramp_id_str = str(int(row["ramp_id"]))
-                
-                # --- THIS IS THE FIX: Robustly parse the allowed_boat_types column ---
                 allowed_boats_raw = row.get("allowed_boat_types")
                 allowed_boats_list = []
                 if isinstance(allowed_boats_raw, str):
-                    # Handle string format like '{"Powerboat","Sailboat"}'
                     allowed_boats_list = allowed_boats_raw.strip('{}').split(',')
                 elif isinstance(allowed_boats_raw, list):
-                    # Already a list, just use it
                     allowed_boats_list = allowed_boats_raw
-                # --- END FIX ---
-
                 ECM_RAMPS[ramp_id_str] = Ramp(
                     r_id=row["ramp_id"], name=row.get("ramp_name"), station=row.get("noaa_station_id"),
                     tide_method=row.get("tide_calculation_method"), offset=row.get("tide_offset_hours"),
-                    boats=allowed_boats_list, # Pass the correctly parsed list
-                    latitude=row.get("latitude"), longitude=row.get("longitude")
+                    boats=allowed_boats_list, latitude=row.get("latitude"), longitude=row.get("longitude")
                 )
             except (ValueError, TypeError):
                 _log_debug(f"Skipping ramp with invalid ID: {row.get('ramp_id')}")
@@ -964,7 +999,7 @@ def load_all_data_from_sheets():
         LOADED_CUSTOMERS.clear()
         LOADED_CUSTOMERS.update({int(r["customer_id"]): Customer(c_id=r["customer_id"], name=r.get("Customer", "")) for r in cust_resp.data if r.get("customer_id")})
 
-        # --- Boats (Corrected Type Handling) ---
+        # --- Boats ---
         boat_resp = execute_query(conn.table("boats").select("*"), ttl=0)
         LOADED_BOATS.clear()
         for row in boat_resp.data:
@@ -972,7 +1007,6 @@ def load_all_data_from_sheets():
             try:
                 pref_ramp_val = row.get("preferred_ramp")
                 pref_ramp_str = str(int(pref_ramp_val)) if pref_ramp_val is not None else ""
-                
                 LOADED_BOATS[int(row["boat_id"])] = Boat(
                     b_id=row["boat_id"], c_id=row["customer_id"], b_type=row.get("boat_type"),
                     b_len=row.get("boat_length"), draft=row.get("boat_draft") or row.get("draft_ft"),
@@ -997,68 +1031,21 @@ def load_all_data_from_sheets():
         TRUCK_OPERATING_HOURS.clear()
         TRUCK_OPERATING_HOURS.update(processed_schedules)
         
-        # Populate candidate crane days and ideal days
         CANDIDATE_CRANE_DAYS.clear()
         CANDIDATE_CRANE_DAYS.update(generate_crane_day_candidates())
         precalculate_ideal_crane_days()
-
-    # ... inside load_all_data_from_sheets() ...
-    
-        # Populate candidate crane days and ideal days
-        CANDIDATE_CRANE_DAYS.clear()
-        CANDIDATE_CRANE_DAYS.update(generate_crane_day_candidates())
-        precalculate_ideal_crane_days()
-    
-        # ADD THIS LINE HERE
         load_travel_time_matrix()
     
     except Exception as e:
             st.error(f"Error loading data: {e}")
             raise
 
-    # Build protected tide windows
     try:
         start = dt.date.today()
         _build_protected_windows(start, start + dt.timedelta(days=90))
         _log_debug("Built protected tide windows for next 90 days.")
     except Exception as e:
         _log_debug(f"WARNING: could not build protected windows: {e}")
-
-
-def _build_protected_windows(start_date: dt.date, end_date: dt.date):
-    """Populate CRANE_WINDOWS and ANYTIDE_LOW_TIDE_WINDOWS for the given date range."""
-    CRANE_WINDOWS.clear()
-    ANYTIDE_LOW_TIDE_WINDOWS.clear()
-
-    for ramp_id, ramp in ECM_RAMPS.items():
-        tides = fetch_noaa_tides_for_range(ramp.noaa_station_id, start_date, end_date)
-        for d, events in tides.items():
-            # Crane windows: HT ± offset for tide-dependent ramps (used to RESERVE for sailboats)
-            if ramp.tide_calculation_method not in ("AnyTide", "AnyTideWithDraftRule"):
-                offset_hours = float(ramp.tide_offset_hours1) if ramp.tide_offset_hours1 is not None else 0.0
-                if offset_hours >= 0:
-                    w = []
-                    delta = dt.timedelta(hours=offset_hours)
-                    for ev in events:
-                        if ev['type'] == 'H':
-                            lt = (dt.datetime.combine(d, ev['time'], tzinfo=timezone.utc) - delta).time()
-                            rt = (dt.datetime.combine(d, ev['time'], tzinfo=timezone.utc) + delta).time()
-                            w.append((lt, rt))
-                    if w:
-                        CRANE_WINDOWS[(str(ramp_id), d)] = w
-
-            # AnyTide low‑tide preference windows: low tide falling between 10–14 local
-            if ramp.tide_calculation_method in ("AnyTide", "AnyTideWithDraftRule"):
-                w = []
-                for ev in events:
-                    if ev['type'] == 'L' and 10 <= ev['time'].hour < 14:
-                        # a small 60‑min window centered on LT; adjust as you like
-                        lt = (dt.datetime.combine(d, ev['time'], tzinfo=timezone.utc) - dt.timedelta(minutes=30)).time()
-                        rt = (dt.datetime.combine(d, ev['time'], tzinfo=timezone.utc) + dt.timedelta(minutes=30)).time()
-                        w.append((lt, rt))
-                if w:
-                    ANYTIDE_LOW_TIDE_WINDOWS[(str(ramp_id), d)] = w
-
 
 def delete_all_jobs():
     """
