@@ -19,6 +19,7 @@ from collections import Counter, defaultdict   # pull in defaultdict here
 from geopy.geocoders import Nominatim
 from supabase import create_client
 from requests.adapters import HTTPAdapter, Retry
+import re
 
 # --- Tide policy knobs (you can tweak these) ---
 LAUNCH_PREP_MIN_POWER = 30        # powerboat time before arriving to ramp
@@ -88,6 +89,8 @@ DEFAULT_NOAA_STATION = "8445138"  # Scituate Harbor, MA
 
 # Pre-initialize global caches and registries
 DEBUG_MESSAGES: list[str] = []
+_town_center_coords_cache = {}
+
 
 CRANE_WINDOWS: dict[tuple[str, dt.date], list[tuple[dt.time, dt.time]]] = {}
 ANYTIDE_LOW_TIDE_WINDOWS: dict[tuple[str, dt.date], list[tuple[dt.time, dt.time]]] = {}
@@ -154,6 +157,19 @@ def _log_debug(msg):
     # Ensure DEBUG_MESSAGES is treated as a global variable
     global DEBUG_MESSAGES
     DEBUG_MESSAGES.insert(0, f"{dt.datetime.now().strftime('%H:%M:%S')}: {msg}")
+
+def _get_town_from_address(address: str) -> str | None:
+    """Extracts a town name from a typical address string."""
+    if not isinstance(address, str):
+        return None
+    try:
+        parts = address.split(',')
+        if len(parts) > 1:
+            town_part = parts[-2].strip()
+            return re.sub(r'\s+[A-Z]{2}$', '', town_part).strip()
+    except Exception:
+        pass
+    return None
 
 def fetch_scheduled_jobs():
     """
@@ -1148,50 +1164,44 @@ def delete_job_from_db(job_id):
 
 def get_location_coords(address=None, ramp_id=None, boat_id=None, service_type=None):
     """
-    Returns (latitude, longitude) for a given location.
-    PRIORITIZES in-memory data (ECM_RAMPS, LOADED_BOATS) before other lookups.
+    Returns (lat, lon) for a location. Prioritizes in-memory data and uses
+    town centers for boat storage locations per the design rule.
     """
     # --- RAMP COORDINATE LOGIC ---
     if ramp_id:
         ramp_obj = get_ramp_details(str(ramp_id))
         if ramp_obj and ramp_obj.latitude is not None and ramp_obj.longitude is not None:
             return (ramp_obj.latitude, ramp_obj.longitude)
-        # Fallback to geocoding if coords are missing from the loaded ramp data
-        if ramp_obj and ramp_obj.ramp_name:
-            address = f"{ramp_obj.ramp_name}, MA, USA"
-        else:
-            _log_debug(f"WARNING: Could not find ramp details in memory for ramp_id: {ramp_id}")
 
-    # --- BOAT STORAGE COORDINATE LOGIC ---
+    # --- BOAT STORAGE COORDINATE LOGIC (REVISED FOR TOWN CENTERS) ---
     if boat_id:
         boat_obj = get_boat_details(int(boat_id))
-        if boat_obj and boat_obj.storage_latitude is not None and boat_obj.storage_longitude is not None:
-            return (boat_obj.storage_latitude, boat_obj.storage_longitude)
-        # Fallback to geocoding if coords are missing from the loaded boat data
-        if boat_obj and boat_obj.storage_address:
-            address = boat_obj.storage_address
-        else:
-             _log_debug(f"WARNING: Could not find boat details in memory for boat_id: {boat_id}")
+        if boat_obj:
+            # 1. Prioritize pre-loaded, specific coordinates if they exist
+            if boat_obj.storage_latitude is not None and boat_obj.storage_longitude is not None:
+                return (boat_obj.storage_latitude, boat_obj.storage_longitude)
+
+            # 2. If no specific coords, use the town center as planned
+            town = _get_town_from_address(boat_obj.storage_address)
+            if town:
+                # 3. Check our town center cache first
+                if town in _town_center_coords_cache:
+                    return _town_center_coords_cache[town]
+                
+                # 4. If not in cache, geocode the town center and store it
+                try:
+                    _log_debug(f"Geocoding center of town: {town}")
+                    location = _geocode_with_backoff(_geolocator, f"{town}, MA")
+                    if location:
+                        coords = (location.latitude, location.longitude)
+                        _town_center_coords_cache[town] = coords
+                        return coords
+                except Exception as e:
+                    _log_debug(f"ERROR: Geocoding for town '{town}' failed: {e}")
 
     # --- YARD ADDRESS (No lookup needed) ---
     if address == YARD_ADDRESS:
-        # A default, hardcoded value is acceptable here
-        return (42.0833, -70.7681)
-
-    # --- GEOCODING AS A LAST RESORT ---
-    if address:
-        cache_key = f"address:{address}"
-        if cache_key in _location_coords_cache:
-            return _location_coords_cache[cache_key]
-        
-        try:
-            location = _geocode_with_backoff(_geolocator, address)
-            if location:
-                coords = (location.latitude, location.longitude)
-                _location_coords_cache[cache_key] = coords
-                return coords
-        except Exception as e:
-            _log_debug(f"ERROR: Live geocoding for '{address}' failed: {e}")
+        return (42.0833, -70.7681) # Default for Pembroke
 
     # Final fallback if all else fails
     _log_debug(f"WARNING: Could not determine coordinates for request. Returning yard as default.")
