@@ -2422,39 +2422,32 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         found = []
         POOL_CAP = max(20, num_suggestions_to_find * 20)
         
+        # Pass the new parameters down to the daily scanner
+        search_params = {
+            "boat": boat,
+            "service_type": service_type,
+            "ramp_id": selected_ramp_id,
+            "crane_needed": crane_needed,
+            "compiled_schedule": compiled_schedule,
+            "customer_id": customer_id,
+            "trucks_to_check": trucks_to_search,
+            "daily_last_locations": daily_last_locations, 
+            "max_distance_miles": kwargs.get('max_distance_miles')
+        }
+
         for day in opp_days:
-            slot = _find_slot_on_day( day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_search, is_opportunistic_search=True )
+            slot = _find_slot_on_day(day, is_opportunistic_search=True, **search_params)
             if slot: found.append(slot)
         
         if len(found) < POOL_CAP:
             for day in fb_days:
-                slot = _find_slot_on_day( day, boat, service_type, selected_ramp_id, crane_needed, compiled_schedule, customer_id, trucks_to_search, is_opportunistic_search=(day in active_crane_days) )
+                slot = _find_slot_on_day(day, is_opportunistic_search=(day in active_crane_days), **search_params)
                 if slot: found.append(slot)
 
         if found:
             best = _select_best_slots(found, compiled_schedule, daily_last_locations, requested_date, prime_days, k=num_suggestions_to_find)
             return (best, f"Found {len(best)} slot(s) using {search_message_type} truck.")
         return ([], None)
-
-    found_slots, message = [], None
-    trucks_to_try = preferred_trucks if boat.preferred_truck_id else other_trucks
-
-    if trucks_to_try:
-        search_type = "preferred" if boat.preferred_truck_id else "any suitable"
-        found_slots, message = _run_search(trucks_to_try, search_type, requested_date, prime_days)
-
-    if (not found_slots) and relax_truck_preference and other_trucks:
-        found_slots, message = _run_search(other_trucks, "other", requested_date, prime_days)
-
-    if found_slots:
-        return (found_slots, message, [], False)
-
-    # --- GUARANTEED FALLBACK ---
-    k = max(1, int(num_suggestions_to_find or 3))
-    # Fallback search logic... (rest of the function is the same)
-    
-    # ... (rest of the fallback logic as it was)
-    return ([], f"No slots found after extensive search.", DEBUG_MESSAGES, True)
 
 def find_available_ramps_for_boat(boat, all_ramps):
     """
@@ -2570,77 +2563,57 @@ def _find_slot_on_day(
     compiled_schedule,
     customer_id,
     trucks_to_check: list,
+    daily_last_locations: dict,      # <-- Add this parameter
+    max_distance_miles: int | None,  # <-- Add this parameter
     is_opportunistic_search: bool = False,
     tide_policy: dict | None = None,
 ):
-    """Single-day scanner that only iterates inside allowed tide windows."""
+    """Single-day scanner that integrates time and distance checks."""
     ramp = get_ramp_details(str(ramp_id))
     if not ramp:
         return None
 
+    # (The first part of the function remains the same)
     boat_type = (getattr(boat, "boat_type", "") or "").lower()
     is_sail = "sail" in boat_type
     duration_mins = 180 if service_type in ("Launch", "Haul") and is_sail else 90
     job_duration = timedelta(minutes=duration_mins)
 
-    # --- BEGIN: Robust Tide Window Calculation ---
-    # This block dynamically calculates the valid tide windows based on the rules
-    # for the specific ramp, as defined in the database.
-
+    # (The robust tide window calculation block you added previously remains here)
     from datetime import time as _dtime
     windows = []
-    
-    # Get the specific rules and boat info
     method = getattr(ramp, "tide_calculation_method", "AnyTide")
-    # Note: The Ramp object uses 'tide_offset_hours1' as the attribute name
     offset_hours = float(getattr(ramp, "tide_offset_hours1", 0.0) or 0.0)
     try:
         draft_ft = float(getattr(boat, "draft_ft", 0.0) or 0.0)
     except (ValueError, TypeError):
         draft_ft = 0.0
-
-    # Determine if the boat qualifies for shallow draft exceptions
     is_shallow_draft = draft_ft <= 5.0
-
-    # Get high tides for the day to build windows if needed
     tides_today = fetch_noaa_tides_for_range(ramp.noaa_station_id, day, day) or {}
     highs = [t["time"] for t in tides_today.get(day, []) if t.get("type") == "H" and isinstance(t.get("time"), dt.time)]
-
-    # Apply rules based on the ramp's method
     if method in ("AnyTide", "AnyTideWithDraftRule") and is_shallow_draft:
-        # Rule: AnyTide or a draft-based rule with a shallow boat means the ramp is open all day.
         windows = [(_dtime(0, 0), _dtime(23, 59))]
-    
     elif method == 'HoursAroundHighTide_WithDraftRule':
-        # Rule: A conditional window. Shallow boats get all day, deep boats get a restricted window.
         if is_shallow_draft:
             windows = [(_dtime(0, 0), _dtime(23, 59))]
-        else: # Boat has a deep draft (> 5ft)
+        else:
             if highs and offset_hours > 0:
                 for ht in highs:
                     start_dt = (dt.datetime.combine(day, ht) - dt.timedelta(hours=offset_hours)).time()
                     end_dt = (dt.datetime.combine(day, ht) + dt.timedelta(hours=offset_hours)).time()
                     windows.append((start_dt, end_dt))
-    
     elif method == 'HoursAroundHighTide':
-        # Rule: All boats must adhere to the tide window.
         if highs and offset_hours > 0:
             for ht in highs:
                 start_dt = (dt.datetime.combine(day, ht) - dt.timedelta(hours=offset_hours)).time()
                 end_dt = (dt.datetime.combine(day, ht) + dt.timedelta(hours=offset_hours)).time()
                 windows.append((start_dt, end_dt))
-
-    # If the ramp has a tide rule but we couldn't find a high tide, the ramp is effectively closed.
-    # The 'windows' list will remain empty, and the function will correctly find no slots.
-    # --- END: Robust Tide Window Calculation ---
-
-    # If the ramp has a tide rule but we failed to build a window, bail early.
     if method != "AnyTide" and not windows:
         return None
 
+    # (The rest of the setup remains the same)
     policy = (tide_policy or globals().get("_GLOBAL_TIDE_POLICY") or globals().get("DEFAULT_TIDE_POLICY") or {})
     step = timedelta(minutes=int(policy.get("scan_step_mins", 15)))
-
     rules_map = globals().get("BOOKING_RULES", {}) or {}
     rules = rules_map.get(getattr(boat, "boat_type", None), {}) or {}
     crane_minutes = int(rules.get("crane_mins", 0))
@@ -2651,15 +2624,11 @@ def _find_slot_on_day(
             continue
         truck_open  = dt.datetime.combine(day, hours[0], tzinfo=timezone.utc)
         truck_close = dt.datetime.combine(day, hours[1], tzinfo=timezone.utc)
-
-        # Reserve first 90 minutes for ECM boats only
         reserve_first_slot = timedelta(minutes=90)
         earliest = truck_open if getattr(boat, "is_ecm_boat", False) else (truck_open + reserve_first_slot)
         latest_start = truck_close - job_duration
         if earliest > latest_start:
             continue
-
-        # Build candidate ranges: only scan INSIDE windows (or whole day if none)
         candidate_ranges = []
         if windows:
             for (w0, w1) in windows:
@@ -2675,6 +2644,24 @@ def _find_slot_on_day(
             while start_dt <= range_end:
                 end_dt = start_dt + job_duration
 
+                # --- NEW: INTEGRATED DISTANCE CHECK ---
+                if max_distance_miles is not None:
+                    last_loc_info = daily_last_locations.get(truck.truck_id, {}).get(day)
+                    if last_loc_info: # This is not the first job of the day
+                        last_coords = last_loc_info[1]
+                        # Determine pickup location for this potential job
+                        if service_type == "Launch":
+                             new_coords = get_location_coords(boat_id=boat.boat_id)
+                        else: # Haul or other service starting at a ramp
+                             new_coords = get_location_coords(ramp_id=ramp_id)
+                        
+                        if last_coords and new_coords:
+                            distance = _calculate_distance_miles(last_coords, new_coords)
+                            if distance > max_distance_miles:
+                                start_dt += step
+                                continue # Skip this slot, it's too far
+
+                # (The existing checks for truck and crane availability remain)
                 if not check_truck_availability_optimized(truck.truck_id, start_dt, end_dt, compiled_schedule):
                     start_dt += step
                     continue
@@ -2691,7 +2678,6 @@ def _find_slot_on_day(
                         start_dt += step
                         continue
                 
-                # The 'highs' variable was defined in the new block above
                 return {
                     "is_piggyback": is_opportunistic_search,
                     "boat_id": boat.boat_id,
@@ -2710,5 +2696,4 @@ def _find_slot_on_day(
                 }
 
                 start_dt += step
-
     return None
