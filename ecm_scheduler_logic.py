@@ -2454,8 +2454,10 @@ def _find_slot_on_day(
     crane_minutes = int(rules.get("crane_mins", 0))
 
     for truck in (trucks_to_check or []):
-        truck_id_str = str(truck.truck_id) # <-- FIX: Ensure key is a string for lookups
-        hours = (TRUCK_OPERATING_HOURS.get(truck_id_str, {}) or {}).get(day.weekday())
+        truck_id_str = str(truck.truck_id) 
+        # --- THIS IS THE FIX ---
+        # Use the original integer truck.truck_id for TRUCK_OPERATING_HOURS lookup
+        hours = (TRUCK_OPERATING_HOURS.get(truck.truck_id, {}) or {}).get(day.weekday())
         if not hours:
             continue
             
@@ -2483,6 +2485,7 @@ def _find_slot_on_day(
                 end_dt = start_dt + job_duration
 
                 if max_distance_miles is not None:
+                    # Use the string version of the ID for this dictionary, as we corrected it before
                     last_loc_info = daily_last_locations.get(truck_id_str, {}).get(day)
                     if last_loc_info:
                         last_coords = last_loc_info[1]
@@ -2497,6 +2500,7 @@ def _find_slot_on_day(
                                 start_dt += step
                                 continue
 
+                # Use the string version of the ID here as well
                 if not check_truck_availability_optimized(truck_id_str, start_dt, end_dt, compiled_schedule):
                     start_dt += step
                     continue
@@ -2508,10 +2512,12 @@ def _find_slot_on_day(
                 crane_end_dt = None
                 if crane_needed and crane_minutes > 0:
                     s17_id = get_s17_truck_id()
-                    crane_end_dt = start_dt + timedelta(minutes=crane_minutes)
-                    if not check_truck_availability_optimized(str(s17_id), start_dt, crane_end_dt, compiled_schedule):
-                        start_dt += step
-                        continue
+                    if s17_id:
+                        crane_end_dt = start_dt + timedelta(minutes=crane_minutes)
+                        # And use the string version here
+                        if not check_truck_availability_optimized(str(s17_id), start_dt, crane_end_dt, compiled_schedule):
+                            start_dt += step
+                            continue
                 
                 return {
                     "is_piggyback": is_opportunistic_search,
