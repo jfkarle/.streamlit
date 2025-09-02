@@ -2466,7 +2466,7 @@ def _find_slot_on_day(
         truck_open  = dt.datetime.combine(day, hours[0], tzinfo=timezone.utc)
         truck_close = dt.datetime.combine(day, hours[1], tzinfo=timezone.utc)
         reserve_first_slot = timedelta(minutes=90)
-        earliest = truck_open if getattr(boat, "is_ecm_boat", False) else (truck_open + reserve_first_slot)
+        earliest = truck_open if getattr(boat, "is_e_boat", False) else (truck_open + reserve_first_slot)
         latest_start = truck_close - job_duration
         if earliest > latest_start:
             continue
@@ -2485,22 +2485,37 @@ def _find_slot_on_day(
             while start_dt <= range_end:
                 end_dt = start_dt + job_duration
 
-                # --- INTEGRATED DISTANCE CHECK ---
+                # --- START: DEBUGGING DISTANCE CHECK ---
                 if max_distance_miles is not None:
+                    _log_debug(f"--- DISTANCE CHECK FOR {boat.boat_id} on {day} at {start_dt.time()} ---")
+                    _log_debug(f"RULE: Max distance is {max_distance_miles} miles.")
                     last_loc_info = daily_last_locations.get(truck.truck_id, {}).get(day)
-                    if last_loc_info: # This is not the first job of the day
+                    
+                    if last_loc_info:
+                        _log_debug(f"Found previous job for truck {truck.truck_name}. Last location: {last_loc_info[1]}")
                         last_coords = last_loc_info[1]
-                        # Determine pickup location for this potential job
+                        
                         if service_type == "Launch":
                              new_coords = get_location_coords(boat_id=boat.boat_id)
-                        else: # Haul or other service starting at a ramp
+                        else:
                              new_coords = get_location_coords(ramp_id=ramp_id)
+                        
+                        _log_debug(f"New job location: {new_coords}")
                         
                         if last_coords and new_coords:
                             distance = _calculate_distance_miles(last_coords, new_coords)
+                            _log_debug(f"Calculated distance: {distance:.1f} miles.")
                             if distance > max_distance_miles:
+                                _log_debug(f"VIOLATION: Distance {distance:.1f} > {max_distance_miles}. Skipping slot.")
                                 start_dt += step
-                                continue # Skip this slot, it's too far
+                                continue
+                            else:
+                                _log_debug("PASS: Distance is within limit.")
+                        else:
+                            _log_debug("WARNING: Could not get coordinates for distance check. Allowing slot.")
+                    else:
+                        _log_debug(f"INFO: No previous jobs for truck {truck.truck_name} on {day}. Allowing as first job.")
+                # --- END: DEBUGGING DISTANCE CHECK ---
 
                 if not check_truck_availability_optimized(truck.truck_id, start_dt, end_dt, compiled_schedule):
                     start_dt += step
