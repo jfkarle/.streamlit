@@ -240,7 +240,6 @@ class Boat:
 
 class Job:
     def __init__(self, **kwargs):
-        # (The _parse_int and _parse_float helpers remain the same)
         def _parse_int(v):
             try: return int(v) if v is not None and str(v).strip() != "" else None
             except (ValueError, TypeError): return None
@@ -255,10 +254,9 @@ class Job:
         self.scheduled_start_datetime   = self._parse_or_get_datetime(kwargs.get("scheduled_start_datetime"))
         self.scheduled_end_datetime     = self._parse_or_get_datetime(kwargs.get("scheduled_end_datetime"))
         
-        # --- FIX: Ensure Truck IDs are always strings ---
+        # FIX: Ensure Truck IDs are always strings
         self.assigned_hauling_truck_id  = str(kwargs.get("assigned_hauling_truck_id")) if kwargs.get("assigned_hauling_truck_id") else None
         self.assigned_crane_truck_id    = str(kwargs.get("assigned_crane_truck_id")) if kwargs.get("assigned_crane_truck_id") else None
-        # -----------------------------------------------
 
         self.S17_busy_end_datetime      = self._parse_or_get_datetime(kwargs.get("S17_busy_end_datetime"))
         self.pickup_ramp_id             = kwargs.get("pickup_ramp_id")
@@ -272,58 +270,6 @@ class Job:
         self.dropoff_latitude           = _parse_float(kwargs.get("dropoff_latitude"))
         self.dropoff_longitude          = _parse_float(kwargs.get("dropoff_longitude"))
 
-    # (The _parse_or_get_datetime and property methods remain the same)
-    def _parse_or_get_datetime(self, dt_value):
-        parsed = None
-        if isinstance(dt_value, dt.datetime): parsed = dt_value
-        elif isinstance(dt_value, str):
-            try: parsed = dt.datetime.fromisoformat(dt_value.replace(" ", "T"))
-            except (ValueError, TypeError): return None
-        if parsed is None: return None
-        if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
-            return parsed.replace(tzinfo=dt.timezone.utc)
-        return parsed
-    @property
-    def scheduled_start_dt(self): return self.scheduled_start_datetime
-    @property
-    def scheduled_end_dt(self): return self.scheduled_end_datetime
-
-        def _parse_float(v):
-            try:
-                return float(v) if v is not None and str(v).strip() != "" else None
-            except (ValueError, TypeError):
-                return None
-
-        # ----- scalar ids / strings -----
-        self.job_id                     = _parse_int(kwargs.get("job_id"))
-        self.customer_id                = _parse_int(kwargs.get("customer_id"))
-        self.boat_id                    = _parse_int(kwargs.get("boat_id"))
-        self.service_type               = kwargs.get("service_type")
-
-        # ----- datetimes (always timezone-aware UTC when present) -----
-        self.scheduled_start_datetime   = self._parse_or_get_datetime(kwargs.get("scheduled_start_datetime"))
-        self.scheduled_end_datetime     = self._parse_or_get_datetime(kwargs.get("scheduled_end_datetime"))
-        self.assigned_hauling_truck_id  = kwargs.get("assigned_hauling_truck_id")
-        self.assigned_crane_truck_id    = kwargs.get("assigned_crane_truck_id")
-        self.S17_busy_end_datetime      = self._parse_or_get_datetime(kwargs.get("S17_busy_end_datetime"))
-
-        # ----- ramps / addresses -----
-        self.pickup_ramp_id             = kwargs.get("pickup_ramp_id")
-        self.dropoff_ramp_id            = kwargs.get("dropoff_ramp_id")
-        self.pickup_street_address      = kwargs.get("pickup_street_address", "") or ""
-        self.dropoff_street_address     = kwargs.get("dropoff_street_address", "") or ""
-
-        # ----- status / notes -----
-        self.job_status                 = kwargs.get("job_status", "Scheduled")
-        self.notes                      = kwargs.get("notes", "")
-
-        # ----- coords (floats or None) -----
-        self.pickup_latitude            = _parse_float(kwargs.get("pickup_latitude"))
-        self.pickup_longitude           = _parse_float(kwargs.get("pickup_longitude"))
-        self.dropoff_latitude           = _parse_float(kwargs.get("dropoff_latitude"))
-        self.dropoff_longitude          = _parse_float(kwargs.get("dropoff_longitude"))
-
-    # ---- helper lives at class level (NOT nested inside __init__) ----
     def _parse_or_get_datetime(self, dt_value):
         """Return a timezone-aware (UTC) datetime or None."""
         parsed = None
@@ -345,7 +291,6 @@ class Job:
             return parsed.replace(tzinfo=dt.timezone.utc)
         return parsed
 
-    # --- Back-compat alias properties (keep existing code working) ---
     @property
     def scheduled_start_dt(self):
         return self.scheduled_start_datetime
