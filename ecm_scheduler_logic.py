@@ -1037,8 +1037,8 @@ def load_all_data_from_sheets():
         load_travel_time_matrix()
     
     except Exception as e:
-            st.error(f"Error loading data: {e}")
-            raise
+        st.error(f"Error loading data: {e}")
+        raise
 
     try:
         start = dt.date.today()
