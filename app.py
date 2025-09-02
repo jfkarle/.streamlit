@@ -1701,8 +1701,9 @@ app_mode = st.sidebar.radio(
 # Call the new functions based on the selected mode
 if app_mode == "Schedule New Boat":
     show_scheduler_page()
-    with st.expander("Show Debug Log for Last Slot Search", expanded=False):
-        st.text_area("Debug Output:", "\n".join(ecm.DEBUG_MESSAGES), height=500, key="debug_log_text_area")
+    with st.expander("Show Debug Log for Last Batch Run", expanded=False):
+        log_output = st.session_state.get('last_batch_debug_log', 'No batch log available. Run the generator from the Settings page.')
+        st.text_area("Debug Output:", log_output, height=500, key="debug_log_text_area")
 elif app_mode == "Reporting":
     show_reporting_page()
 elif app_mode == "Settings":
