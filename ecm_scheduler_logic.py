@@ -1942,87 +1942,6 @@ def analyze_travel_distances(scheduled_jobs: List[Job]) -> Dict:
         'over_12_miles_count': sum(1 for d in all_distances if d > 12)
     }
     
-def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, tide_policy=None, max_distance_miles=None, **kwargs):
-    """
-    Finds available slots, now with an added filter for max_distance_miles between jobs.
-    """
-    global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
-
-    relax_truck_preference = kwargs.get('relax_truck_preference', False)
-    fetch_scheduled_jobs()
-
-    # ... (The first part of the function remains the same) ...
-    if not requested_date_str:
-        return [], "Please select a target date before searching.", [], False
-    try:
-        requested_date = dt.datetime.strptime(requested_date_str, "%Y-%m-%d").date()
-    except ValueError:
-        return [], f"Date '{requested_date_str}' is not valid.", [], True
-
-    compiled_schedule, daily_last_locations = _compile_truck_schedules(SCHEDULED_JOBS)
-    boat = get_boat_details(boat_id)
-    if not boat:
-        return [], f"Could not find boat ID: {boat_id}", [], True
-    crane_needed = "Sailboat" in boat.boat_type
-
-    # ... (Truck separation and date window logic remains the same) ...
-    all_suitable_trucks = get_suitable_trucks(boat.boat_length)
-    preferred_trucks, other_trucks = [], []
-    if boat.preferred_truck_id:
-        for t in all_suitable_trucks:
-            (preferred_trucks if t.truck_name == boat.preferred_truck_id else other_trucks).append(t)
-    else:
-        other_trucks = all_suitable_trucks
-
-    # (Date search logic remains the same...)
-
-    def _run_search(trucks_to_search, search_message_type, requested_date, prime_days):
-        # ... (The _run_search function itself remains the same) ...
-        # It calls _find_slot_on_day and returns a list of found slots
-        found = []
-        # ...
-        return best, msg
-
-    # ... (The main search calls to _run_search remain the same) ...
-
-    # --- THIS IS THE NEW FILTERING LOGIC ---
-    if max_distance_miles is not None and found_slots:
-        _log_debug(f"Applying max distance filter: {max_distance_miles} miles")
-        filtered_slots = []
-        for slot in found_slots:
-            truck_id = slot.get("truck_id")
-            slot_date = slot.get("date")
-            ramp_id = slot.get("ramp_id")
-
-            # Check if there are other jobs for this truck on this day
-            last_loc_info = daily_last_locations.get(truck_id, {}).get(slot_date)
-            if last_loc_info:
-                # This is not the first job of the day, so check distance
-                last_coords = last_loc_info[1]
-                new_coords = get_location_coords(ramp_id=ramp_id)
-
-                if last_coords and new_coords:
-                    distance = _calculate_distance_miles(last_coords, new_coords)
-                    if distance <= max_distance_miles:
-                        filtered_slots.append(slot) # Distance is OK
-                    else:
-                        _log_debug(f"Filtering out slot on {slot_date} at {ramp_id}. Distance {distance:.1f} mi > {max_distance_miles} mi.")
-                else:
-                    filtered_slots.append(slot) # Can't calculate distance, so allow it
-            else:
-                # This is the first job of the day, always allow it
-                filtered_slots.append(slot)
-
-        found_slots = filtered_slots # Replace the original list with the filtered one
-    # --- END NEW FILTERING LOGIC ---
-
-
-    if found_slots:
-        return (found_slots, message, [], False)
-
-    # (The rest of the fallback logic remains the same)
-    # ...
-
 
 # --- Seasonal batch generator (Spring/Fall), sequential dates, safe if fewer boats remain ---
 
@@ -2349,16 +2268,15 @@ def confirm_and_schedule_job(final_slot: dict, parked_job_to_remove: int = None)
         _log_debug(f"ERROR in confirm_and_schedule_job: {e}")
         return None, f"An unexpected error occurred during confirmation: {e}"
 
-
 def find_available_job_slots(customer_id, boat_id, service_type, requested_date_str, selected_ramp_id, num_suggestions_to_find=3, tide_policy=None, **kwargs):
     """
-    Finds available slots by first searching ONLY for the preferred truck, then
-    falling back to other trucks ONLY if relax_truck_preference is True.
-    Uses scoring to rank all found candidates and returns the top-K.
+    Finds available slots by first searching for the preferred truck, then falling
+    back to other trucks. Integrates distance checks into the core search loop.
     """
     global DEBUG_MESSAGES; DEBUG_MESSAGES.clear()
 
     relax_truck_preference = kwargs.get('relax_truck_preference', False)
+    max_distance_miles = kwargs.get('max_distance_miles') # Get the distance rule
     fetch_scheduled_jobs()
 
     # --- Validation & Initial Setup ---
@@ -2370,27 +2288,23 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         return [], f"Date '{requested_date_str}' is not valid.", [], True
 
     compiled_schedule, daily_last_locations = _compile_truck_schedules(SCHEDULED_JOBS)
-
     boat = get_boat_details(boat_id)
     if not boat:
         return [], f"Could not find boat ID: {boat_id}", [], True
-
     crane_needed = "Sailboat" in boat.boat_type
     
-    # --- Separate Trucks into Preferred and Others ---
+    # --- Truck Separation ---
     all_suitable_trucks = get_suitable_trucks(boat.boat_length)
     preferred_trucks, other_trucks = [], []
     if boat.preferred_truck_id:
         for t in all_suitable_trucks:
-            if t.truck_name == boat.preferred_truck_id:
-                preferred_trucks.append(t)
-            else:
-                other_trucks.append(t)
+            (preferred_trucks if t.truck_name == boat.preferred_truck_id else other_trucks).append(t)
     else:
         other_trucks = all_suitable_trucks
 
-    # --- Build candidate day windows ---
+    # --- Candidate Day Windows ---
     opp_window = [requested_date + dt.timedelta(days=i) for i in range(-7, 8)]
+    # (This section remains unchanged)
     if crane_needed:
         potential = [d for r_id, d in IDEAL_CRANE_DAYS if str(r_id) == str(selected_ramp_id) and d >= requested_date]
         early = [d for d in potential if d <= requested_date + dt.timedelta(days=21)]
@@ -2401,19 +2315,15 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
     else:
         season_end_date = dt.date(requested_date.year, 10, 31)
         days_to_search = (season_end_date - requested_date).days + 1
-        if days_to_search < 14:
-            days_to_search = 14
+        if days_to_search < 14: days_to_search = 14
         fb_days = [requested_date + dt.timedelta(days=i) for i in range(days_to_search)]
 
     span_start = min(fb_days) if fb_days else requested_date
     span_end = max(fb_days) if fb_days else requested_date
-
     station_id = _station_for_ramp_or_scituate(selected_ramp_id)
     prime_days = get_low_tide_prime_days(station_id, span_start, span_end)
-
     s17_id = get_s17_truck_id()
     active_crane_days = { j.scheduled_start_dt.date() for j in SCHEDULED_JOBS if j.scheduled_start_datetime and j.scheduled_start_dt.date() in opp_window and j.assigned_crane_truck_id == str(s17_id) and (str(j.pickup_ramp_id) == str(selected_ramp_id) or str(j.dropoff_ramp_id) == str(selected_ramp_id)) }
-    
     opp_days = sorted(list(active_crane_days), key=lambda d: abs((d - requested_date).days))
     opp_days = order_dates_with_low_tide_bias(requested_date, opp_days, prime_days)
     fb_days = order_dates_with_low_tide_bias(requested_date, fb_days, prime_days)
@@ -2422,7 +2332,7 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
         found = []
         POOL_CAP = max(20, num_suggestions_to_find * 20)
         
-        # Pass the new parameters down to the daily scanner
+        # Pass all necessary parameters down to the daily scanner
         search_params = {
             "boat": boat,
             "service_type": service_type,
@@ -2432,10 +2342,11 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             "customer_id": customer_id,
             "trucks_to_check": trucks_to_search,
             "daily_last_locations": daily_last_locations, 
-            "max_distance_miles": kwargs.get('max_distance_miles')
+            "max_distance_miles": max_distance_miles # Pass the rule down
         }
 
         for day in opp_days:
+            # The first argument 'day' is positional, the rest are keywords from the dictionary
             slot = _find_slot_on_day(day, is_opportunistic_search=True, **search_params)
             if slot: found.append(slot)
         
@@ -2449,6 +2360,21 @@ def find_available_job_slots(customer_id, boat_id, service_type, requested_date_
             return (best, f"Found {len(best)} slot(s) using {search_message_type} truck.")
         return ([], None)
 
+    # (The final part of the function remains unchanged)
+    found_slots, message = [], None
+    trucks_to_try = preferred_trucks if boat.preferred_truck_id else other_trucks
+    if trucks_to_try:
+        search_type = "preferred" if boat.preferred_truck_id else "any suitable"
+        found_slots, message = _run_search(trucks_to_try, search_type, requested_date, prime_days)
+
+    if (not found_slots) and relax_truck_preference and other_trucks:
+        found_slots, message = _run_search(other_trucks, "other", requested_date, prime_days)
+
+    if found_slots:
+        return (found_slots, message, [], False)
+
+    return ([], f"No slots found after extensive search.", DEBUG_MESSAGES, True)
+    
 def find_available_ramps_for_boat(boat, all_ramps):
     """
     Finds a list of ramp IDs suitable for a given boat by checking the boat's type
