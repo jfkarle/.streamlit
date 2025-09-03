@@ -1721,31 +1721,43 @@ def analyze_travel_distances(scheduled_jobs: List[Job]) -> Dict:
     if not scheduled_jobs:
         return {'avg_distance': 0, 'max_distance': 0, 'over_12_miles_count': 0}
 
-    jobs_by_truck = defaultdict(list)
+    # CORRECTED: Group by date first, then by truck to analyze daily routes
+    jobs_by_day_then_truck = defaultdict(lambda: defaultdict(list))
     for job in scheduled_jobs:
         if job.assigned_hauling_truck_id and job.scheduled_start_datetime:
-            jobs_by_truck[job.assigned_hauling_truck_id].append(job)
+            job_date = job.scheduled_start_datetime.date()
+            jobs_by_day_then_truck[job_date][job.assigned_hauling_truck_id].append(job)
 
     all_distances = []
     yard_coords = get_location_coords(address=YARD_ADDRESS)
 
-    for truck_id, jobs in jobs_by_truck.items():
-        # Sort this truck's jobs chronologically to calculate sequential travel
-        sorted_jobs = sorted(jobs, key=lambda j: j.scheduled_start_datetime)
-        
-        # The first trip of the day is from the yard
-        last_coords = yard_coords
-        
-        for job in sorted_jobs:
-            # Get pickup location for the current job
-            pickup_coords = get_location_coords(address=job.pickup_street_address, ramp_id=job.pickup_ramp_id, boat_id=job.boat_id)
+    # CORRECTED: Iterate through the new daily structure
+    for date, jobs_by_truck in jobs_by_day_then_truck.items():
+        for truck_id, jobs in jobs_by_truck.items():
+            # Sort this truck's jobs for the day chronologically
+            sorted_jobs = sorted(jobs, key=lambda j: j.scheduled_start_datetime)
             
-            if last_coords and pickup_coords:
-                distance = _calculate_distance_miles(last_coords, pickup_coords)
-                all_distances.append(distance)
+            # The first trip of each day is from the yard
+            last_coords = yard_coords
             
-            # This job's dropoff becomes the starting point for the next one
-            last_coords = get_location_coords(address=job.dropoff_street_address, ramp_id=job.dropoff_ramp_id, boat_id=job.boat_id)
+            for job in sorted_jobs:
+                # Get pickup location for the current job
+                pickup_coords = get_location_coords(
+                    address=job.pickup_street_address, 
+                    ramp_id=job.pickup_ramp_id, 
+                    boat_id=job.boat_id
+                )
+                
+                if last_coords and pickup_coords:
+                    distance = _calculate_distance_miles(last_coords, pickup_coords)
+                    all_distances.append(distance)
+                
+                # This job's dropoff becomes the starting point for the next one on the SAME DAY
+                last_coords = get_location_coords(
+                    address=job.dropoff_street_address, 
+                    ramp_id=job.dropoff_ramp_id, 
+                    boat_id=job.boat_id
+                )
 
     if not all_distances:
         return {'avg_distance': 0, 'max_distance': 0, 'over_12_miles_count': 0}
