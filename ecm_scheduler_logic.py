@@ -20,6 +20,7 @@ from geopy.geocoders import Nominatim
 from supabase import create_client
 from requests.adapters import HTTPAdapter, Retry
 import re
+import math
 
 # --- Tide policy knobs (you can tweak these) ---
 LAUNCH_PREP_MIN_POWER = 30        # powerboat time before arriving to ramp
@@ -316,6 +317,7 @@ class Ramp:
         self.noaa_station_id = station
         self.tide_calculation_method = tide_method
         self.tide_offset_hours1 = offset
+        self.tide_offset_hours  = offset   # NEW: mirror for compatibility
         self.allowed_boat_types = boats or ["Powerboat", "Sailboat DT", "Sailboat MT"]
         self.latitude = float(latitude) if latitude is not None else None
         self.longitude = float(longitude) if longitude is not None else None
@@ -671,16 +673,13 @@ def _day_high_low_tides(ramp, day_date):
     return (highs, lows)
 
 def _within_any_high_tide_window(dt_local, ramp, method, base_offset, boat_draft_ft):
-    """
-    True if dt_local falls within ±offset around any day's high tide for this ramp.
-    """
-    if not isinstance(dt_local, datetime):
+    if not isinstance(dt_local, dt.datetime):  # <-- was 'datetime'
         return False
     offset = _window_offset_for_boat(method, base_offset, boat_draft_ft)
 
     highs, _ = _day_high_low_tides(ramp, dt_local.date())
     for ht in highs:
-        ht_dt = datetime.combine(dt_local.date(), ht, tzinfo=timezone.utc)  # keep everything UTC in your app
+        ht_dt = dt.datetime.combine(dt_local.date(), ht, tzinfo=timezone.utc)  # <-- was 'datetime'
         if abs((dt_local - ht_dt).total_seconds()) <= offset * 3600:
             return True
     return False
