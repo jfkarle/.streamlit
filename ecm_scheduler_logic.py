@@ -2570,7 +2570,7 @@ def _find_slot_on_day(
     max_distance_miles=None,
     is_opportunistic_search=False,
 ):
-
+    
     """Single-day scanner that integrates time and distance checks."""
     ramp = get_ramp_details(str(ramp_id))
     if not ramp:
@@ -2700,6 +2700,8 @@ def _find_slot_on_day(
                     "high_tide_times": highs,
                     "boat_draft": getattr(boat, "draft_ft", None),
                 }
+
+                slot["max_distance_miles"] = max_distance_miles
 
                 start_dt += step
     return None
