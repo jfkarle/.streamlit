@@ -1236,45 +1236,39 @@ def show_reporting_page():
             # Example renderer — replace with your existing table code if different
             rows = []
             for j in jobs:
-                try:
-                    start = getattr(j, "scheduled_start_datetime", None) or getattr(j, "scheduled_start_dt", None)
-                    end   = getattr(j, "scheduled_end_datetime",   None) or getattr(j, "scheduled_end_dt",   None)
+                start = getattr(j, "scheduled_start_datetime", None) or getattr(j, "scheduled_start_dt", None)
+                end   = getattr(j, "scheduled_end_datetime",   None) or getattr(j, "scheduled_end_dt",   None)
             
-                    cust = ecm.get_customer_details(getattr(j, "customer_id", None))
-                    boat = ecm.get_boat_details(getattr(j, "boat_id", None)) if hasattr(j, "boat_id") else None
-                    pick = ecm.get_ramp_details(getattr(j, "pickup_ramp_id", None)) if getattr(j, "pickup_ramp_id", None) else None
-                    drop = ecm.get_ramp_details(getattr(j, "dropoff_ramp_id", None)) if getattr(j, "dropoff_ramp_id", None) else None
-                    truck= ecm.get_truck_details(getattr(j, "assigned_truck_id", None)) if hasattr(ecm, "get_truck_details") else None
+                cust  = ecm.get_customer_details(getattr(j, "customer_id", None))
+                boat  = ecm.get_boat_details(getattr(j, "boat_id", None)) if hasattr(j, "boat_id") else None
+                pick  = ecm.get_ramp_details(getattr(j, "pickup_ramp_id", None)) if getattr(j, "pickup_ramp_id", None) else None
+                drop  = ecm.get_ramp_details(getattr(j, "dropoff_ramp_id", None)) if getattr(j, "dropoff_ramp_id", None) else None
+                truck = ecm.get_truck_details(getattr(j, "assigned_truck_id", None)) if hasattr(ecm, "get_truck_details") else None
             
-                    rows.append({
-                        "Job #": getattr(j, "job_id", ""),
-                        "Date":  start.date() if start else "",
-                        "Start": start.strftime("%I:%M %p") if start else "",
-                        "End":   end.strftime("%I:%M %p")   if end   else "",
-                        "Customer": getattr(cust, "customer_name", getattr(j, "customer_id", "")),
-                        "Boat":     (getattr(boat, "boat_name", "")
-                                     or f"{getattr(boat,'boat_length','?')}’ {getattr(boat,'boat_type','Boat')}"
-                                     if boat else ""),
-                        "Service":  getattr(j, "service_type", ""),
-                        "Pickup Ramp":  getattr(pick, "ramp_name", getattr(j, "pickup_ramp_id", "")),
-                        "Dropoff Ramp": getattr(drop, "ramp_name", getattr(j, "dropoff_ramp_id", "")),
-                        "Truck":        getattr(truck, "truck_name", getattr(j, "assigned_truck_id", "")),
-                    })
-                except Exception as _e:
-                    # keep rendering even if one row has a missing field
-                    rows.append({"Job #": getattr(j, "job_id", ""), "Date": "", "Start": "", "Customer": "(error building row)"})
-
-# Sort by start time if available
-if rows and rows[0].get("Date"):
-    try:
-        df = pd.DataFrame(rows)
-        df = df.sort_values(["Date","Start"], na_position="last", kind="stable")
-    except Exception:
-        df = pd.DataFrame(rows)
-else:
-    df = pd.DataFrame(rows)
-
-st.dataframe(df, use_container_width=True)
+                rows.append({
+                    "Job #": getattr(j, "job_id", ""),
+                    "Date":  (start.date() if start else ""),
+                    "Start": (start.strftime("%I:%M %p") if start else ""),
+                    "End":   (end.strftime("%I:%M %p")   if end   else ""),
+                    "Customer": getattr(cust, "customer_name", getattr(j, "customer_id", "")),
+                    "Boat": (
+                        getattr(boat, "boat_name", "")
+                        or (f"{int(getattr(boat, 'boat_length', 0))}’ {getattr(boat, 'boat_type', 'Boat')}" if boat else "")
+                    ),
+                    "Service":      getattr(j, "service_type", ""),
+                    "Pickup Ramp":  getattr(pick, "ramp_name",  getattr(j, "pickup_ramp_id",  "")),
+                    "Dropoff Ramp": getattr(drop, "ramp_name",  getattr(j, "dropoff_ramp_id", "")),
+                    "Truck":        getattr(truck, "truck_name", getattr(j, "assigned_truck_id", "")),
+                })
+            
+            # Build and sort the DataFrame (safe if columns missing)
+            df = pd.DataFrame(rows)
+            try:
+                df = df.sort_values(["Date", "Start"], kind="stable", na_position="last")
+            except Exception:
+                pass
+            
+            st.dataframe(df, use_container_width=True)
 
 
     # ===== Tab 2: Crane Day Calendar (your real content) =====
