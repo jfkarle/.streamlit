@@ -10,6 +10,20 @@ import os
 import json
 import uuid
 from requests.adapters import HTTPAdapter, Retry
+
+
+st.markdown("""
+<style>
+.stButton > button {
+    padding: 0.25rem 0.65rem;
+    height: 32px;
+    min-height: 32px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+
 # === BEGIN: DATA LOADER (top-level, no indentation) ===
 
 def _load_data():
@@ -193,7 +207,8 @@ def render_slot_lists():
                 st.markdown(f"**🏗️ Crane**<br>{crane_needed}", unsafe_allow_html=True)
                 st.button("Select", key=f"sel_req_{req_slot.slot_id}", use_container_width=True,
                           on_click=lambda s=req_slot: st.session_state.__setitem__('selected_slot', s))
-        st.divider()
+        st.markdown("<hr style='margin:6px 0;border:0;border-top:1px solid #eee;'>", unsafe_allow_html=True)
+
 
     # ---- Preferred dates (paged) ----
     total = len(preferred)
@@ -1258,7 +1273,8 @@ def show_reporting_page():
         
             info = f"**#{getattr(j,'job_id','')}** · **{date_str}** · {time_str} · {cust_name} · {boat_label} · {getattr(j,'service_type','')} · {pick_name} → {drop_name} · {truck_name}"
         
-            c1, c2, c3, c4 = st.columns([8, 1, 1, 1])
+            c1, c2, c3, c4 = st.columns([8, 1, 1, 1], gap="small")
+
             with c1:
                 st.markdown(info)
             with c2:
