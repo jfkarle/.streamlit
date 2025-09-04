@@ -729,7 +729,7 @@ def _route_distance_minutes(a_latlon, b_latlon):
 
 def _score_candidate(slot, compiled_schedule, daily_last_locations, after_threshold=False, prime_days=None):
     """
-    Larger is better. Enforces multi-job days and rewards piggybacks & proximity.
+    Larger is better. Uses DYNAMIC scoring: lenient early on, strict when busy.
     """
     # ---- HARD LIMIT: Max distance between storage -> pickup ramp ----
     try:
@@ -741,7 +741,7 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
         est_miles = _estimate_trip_miles_for_job(slot.get("boat_id"), slot.get("ramp_id"))
         if est_miles is not None and float(est_miles) > limit:
             slot["reject_reason"] = f"Distance {float(est_miles):.1f} mi > {limit:.0f} mi"
-            return -1e9  # kill this candidate immediately
+            return -1e9
     except Exception:
         pass
 
@@ -754,25 +754,29 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
     ramp_id = str(slot.get("ramp_id"))
     boat = get_boat_details(slot.get("boat_id"))
 
-    # Get number of jobs already on this truck for this day
     todays = [iv for iv in compiled_schedule.get(truck_id, [])
               if iv and hasattr(iv[0], "date") and iv[0].date() == date]
     n = len(todays)
 
-    # --- THIS IS THE FIX: New scoring to enforce multi-job days ---
-    # HEAVY penalty for starting a new truck's day (n=0), making it a last resort.
-    if n == 0:
-        score -= 50.0
-
-    # STRONG reward for the second job (n=1), which confirms an efficient day.
-    elif n == 1:
-        score += 20.0
-
-    # Moderate reward for 3rd and 4th jobs.
-    elif n == 2:
-        score += 10.0
-    elif n >= 3:
-        score += 5.0
+    # --- THIS IS THE FIX: Dynamic scoring based on schedule density ---
+    if after_threshold:
+        # LATER in the season (schedule is busy): Be VERY STRICT.
+        # Heavily penalize starting a new truck's day to force consolidation.
+        if n == 0:
+            score -= 50.0  # High cost to open a new truck
+        elif n == 1:
+            score += 20.0  # High reward for creating an efficient 2-job day
+        elif n == 2:
+            score += 10.0
+        elif n >= 3:
+            score += 5.0
+    else:
+        # EARLY in the season (schedule is sparse): Be lenient.
+        # It's okay to have single-job days, but still encourage packing.
+        if n == 0: score += 2.0
+        if n == 1: score += 6.0
+        if n == 2: score += 10.0
+        if n >= 3: score += 8.0
     # --- END FIX ---
 
     if slot.get("is_piggyback"):
