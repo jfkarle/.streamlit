@@ -1276,6 +1276,8 @@ def show_reporting_page():
         st.subheader("Scheduling Progress Report")
         stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
         st.markdown("#### Overall Progress")
+
+        
         c1, c2 = st.columns(2)
         c1.metric("Boats Scheduled", f"{stats['all_boats']['scheduled']} / {stats['all_boats']['total']}")
         c2.metric("Boats Launched (to date)", f"{stats['all_boats']['launched']} / {stats['all_boats']['total']}")
@@ -1291,7 +1293,23 @@ def show_reporting_page():
                 eff_analysis = ecm.perform_efficiency_analysis(ecm.SCHEDULED_JOBS)
                 pdf_buffer = generate_progress_report_pdf(stats, dist_analysis, eff_analysis)
                 st.download_button(label="📥 Download Report (.pdf)", data=pdf_buffer, file_name=f"progress_report_{datetime.date.today()}.pdf", mime="application/pdf")
+        # === ADD THIS BLOCK AT THE END OF tab3 ===
+        st.divider()
+        st.subheader("Travel Matrix & Coordinates Audit")
+    
+        with st.expander("Run audit and show details", expanded=False):
+            if st.button("Run Audit", key="btn_audit_travel_matrix"):
+                results = ecm.audit_travel_matrix_and_coords(
+                    max_miles=st.session_state.get('max_job_distance', 10),
+                    auto_fix_missing=False
+                )
+                if results:
+                    import pandas as pd
+                    st.dataframe(pd.DataFrame(results), use_container_width=True)
+                else:
+                    st.success("Audit OK: no issues found.")
 
+    
     with tab4:
         st.subheader("Generate Daily Planner PDF")
         selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
