@@ -22,6 +22,22 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Make job rows compact across the page
+st.markdown("""
+<style>
+/* shrink default gaps between components a bit */
+.block-container .element-container { margin-bottom: 0.35rem; }
+
+/* compact markdown text used for job lines */
+.jobline { margin: 0; padding: 2px 0; line-height: 1.2; }
+
+/* compact buttons */
+.stButton > button { padding: 0.25rem 0.65rem; height: 32px; min-height: 32px; }
+
+/* optional: lighten the separators */
+.job-sep { margin: 4px 0; border: 0; border-top: 1px solid #eee; }
+</style>
+""", unsafe_allow_html=True)
 
 
 # === BEGIN: DATA LOADER (top-level, no indentation) ===
@@ -1273,17 +1289,23 @@ def show_reporting_page():
         
             info = f"**#{getattr(j,'job_id','')}** · **{date_str}** · {time_str} · {cust_name} · {boat_label} · {getattr(j,'service_type','')} · {pick_name} → {drop_name} · {truck_name}"
         
-            c1, c2, c3, c4 = st.columns([8, 1, 1, 1], gap="small")
-
+            # Narrow column gap and give more space to the text column
+            c1, c2, c3, c4 = st.columns([12, 1, 1, 1], gap="small")
+            
             with c1:
-                st.markdown(info)
+                # zero-margin text line
+                st.markdown(f"<div class='jobline'>{info}</div>", unsafe_allow_html=True)
+            
             with c2:
                 st.button("Move",   key=f"move_{j.job_id}",   on_click=move_job,          args=(j.job_id,), use_container_width=True)
             with c3:
                 st.button("Park",   key=f"park_{j.job_id}",   on_click=park_job,          args=(j.job_id,), use_container_width=True)
             with c4:
                 st.button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
-            st.divider()
+            
+            # a very thin separator (replace the old st.divider)
+            st.markdown("<hr class='job-sep'>", unsafe_allow_html=True)
+
         
         # ---- cancel confirmation footer (uses your existing callbacks) ----
         if st.session_state.get('job_to_cancel'):
