@@ -1,4 +1,4 @@
-import datetime as dt
+import pandas as pdimport datetime as dt
 import streamlit as st
 import datetime
 import ecm_scheduler_logic as ecm
@@ -1202,6 +1202,55 @@ def show_reporting_page():
             clear_cancel_prompt()
 
     # --- UI Layout ---
+
+# --- Weekday aggregation helper (Mon=0 ... Sun=6) ---
+def build_weekday_counts(jobs, tz="America/New_York", include_weekends=True):
+    """
+    Returns a pandas Series indexed by ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+    with counts of jobs per weekday in fixed order (Mon->Sun). Missing days = 0.
+    """
+    import pandas as pd
+
+    # Collect start datetimes from your job objects (supports either attr name)
+    starts = []
+    for j in (jobs or []):
+        dt_val = getattr(j, "scheduled_start_dt", None) or getattr(j, "scheduled_start_datetime", None)
+        if dt_val is None:
+            continue
+        starts.append(pd.to_datetime(dt_val))
+
+    labels_full = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+    labels_week = labels_full if include_weekends else labels_full[:5]
+
+    if not starts:
+        # No jobs → return all zeros in correct order
+        import pandas as pd
+        idx = labels_full
+        s = pd.Series([0]*7, index=idx, dtype="int64")
+        return s if include_weekends else s.iloc[:5]
+
+    s = pd.Series(starts)
+
+    # Handle timezone consistently
+    try:
+        if s.dt.tz is not None:
+            s = s.dt.tz_convert(tz)
+        else:
+            s = s.dt.tz_localize(tz)
+    except Exception:
+        # If tz localization fails, proceed naive (ordering still fixed)
+        pass
+
+    # Map to weekday numbers and count
+    weekday_nums = s.dt.dayofweek  # 0=Mon ... 6=Sun
+    counts = weekday_nums.value_counts().reindex(range(7), fill_value=0).sort_index()
+
+    # Rename index to labels in strict Mon->Sun order
+    counts.index = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+
+    return counts if include_weekends else counts.iloc[:5]
+
+
     tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
 
@@ -1304,11 +1353,22 @@ def show_reporting_page():
                     auto_fix_missing=False
                 )
                 if results:
-                    import pandas as pd
                     st.dataframe(pd.DataFrame(results), use_container_width=True)
                 else:
                     st.success("Audit OK: no issues found.")
+        # Jobs by Day of Week (fixed order; Thu always present if data exists)
+        import pandas as pd
+        
+        st.markdown("#### Jobs by Day of Week")
+        weekday_counts = build_weekday_counts(ecm.SCHEDULED_JOBS, tz="America/New_York", include_weekends=False)  # set True to include Sat/Sun
+        st.bar_chart(weekday_counts)
+        
+        # Optional: also show the exact counts as a small table
+        with st.expander("Show weekday counts", expanded=False):
+            st.dataframe(pd.DataFrame({"Jobs": weekday_counts}), use_container_width=True)
 
+
+    
     
     with tab4:
         st.subheader("Generate Daily Planner PDF")
