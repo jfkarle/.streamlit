@@ -2556,19 +2556,21 @@ def calculate_ramp_windows(ramp, boat, tide_data, date):
 
 
 def _find_slot_on_day(
-    day: date,
+    day,
+    *,
     boat,
-    service_type: str,
-    ramp_id: str,
-    crane_needed: bool,
+    service_type,
+    ramp_id,
+    crane_needed,
     compiled_schedule,
     customer_id,
-    trucks_to_check: list,
-    daily_last_locations: dict,
-    max_distance_miles: int | None,
-    is_opportunistic_search: bool = False,
-    tide_policy: dict | None = None,
+    trucks,
+    daily_last_locations,
+    tide_policy=None,
+    max_distance_miles=None,
+    is_opportunistic_search=False,
 ):
+
     """Single-day scanner that integrates time and distance checks."""
     ramp = get_ramp_details(str(ramp_id))
     if not ramp:
