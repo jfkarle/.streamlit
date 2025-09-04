@@ -1189,6 +1189,83 @@ def _tide_policy_from_ui() -> dict:
         'launch_water_phase_min': int(st.session_state.get('launch_water_phase_min', 60)),
         'haul_water_phase_min':   int(st.session_state.get('haul_water_phase_min', 30)),
     }
+def _ui_inject_compact_css_v2():
+    import streamlit as st
+    st.markdown("""
+    <style>
+      /* tighten gaps between elements */
+      .block-container .element-container { margin-bottom: 0.15rem !important; }
+      /* compact one-line job text */
+      .jobline { margin: 0; padding: 2px 0; line-height: 1.2; font-size: 0.95rem; }
+      /* compact buttons */
+      .stButton > button { padding: 0.25rem 0.65rem; height: 32px; min-height: 32px; }
+      /* thin separator between rows */
+      .jobsep { margin: 6px 0; border: 0; border-top: 1px solid #eee; }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def _render_scheduled_jobs_rows_v2(ecm, move_job, park_job, prompt_for_cancel, cancel_job_confirmed, clear_cancel_prompt):
+    import streamlit as st
+    _ui_inject_compact_css_v2()
+
+    # build & sort the jobs that actually have start times
+    jobs = [j for j in ecm.SCHEDULED_JOBS if getattr(j, "scheduled_start_datetime", None)]
+    jobs.sort(key=lambda j: j.scheduled_start_datetime)
+
+    for j in jobs:
+        start = getattr(j, "scheduled_start_datetime", None)
+        end   = getattr(j, "scheduled_end_datetime",   None)
+
+        cust  = ecm.get_customer_details(getattr(j, "customer_id", None))
+        boat  = ecm.get_boat_details(getattr(j, "boat_id", None)) if hasattr(j, "boat_id") else None
+        pick  = ecm.get_ramp_details(getattr(j, "pickup_ramp_id", None)) if getattr(j, "pickup_ramp_id", None) else None
+        drop  = ecm.get_ramp_details(getattr(j, "dropoff_ramp_id", None)) if getattr(j, "dropoff_ramp_id", None) else None
+        truck = ecm.get_truck_details(getattr(j, "assigned_truck_id", None)) if hasattr(ecm, "get_truck_details") else None
+
+        date_str   = start.strftime("%Y-%m-%d") if start else ""
+        time_str   = f"{start.strftime('%I:%M %p')}–{end.strftime('%I:%M %p')}" if (start and end) else ""
+        cust_name  = getattr(cust, "customer_name", getattr(j, "customer_id", ""))
+        boat_label = (getattr(boat, "boat_name", "") or
+                      (f"{int(getattr(boat,'boat_length', 0))}’ {getattr(boat,'boat_type','Boat')}" if boat else ""))
+        pick_name  = getattr(pick, "ramp_name",  getattr(j, "pickup_ramp_id",  ""))
+        drop_name  = getattr(drop, "ramp_name",  getattr(j, "dropoff_ramp_id", "")) or "None"
+        truck_name = getattr(truck, "truck_name", getattr(j, "assigned_truck_id", ""))
+
+        # pure HTML (no Markdown inside HTML)
+        info_html = (
+            f"<div class='jobline'>"
+            f"<strong>#{getattr(j,'job_id','')}</strong> · "
+            f"<strong>{date_str}</strong> · "
+            f"{time_str} · {cust_name} · {boat_label} · "
+            f"{getattr(j,'service_type','')} · {pick_name} → {drop_name} · {truck_name}"
+            f"</div>"
+        )
+
+        c1, c2, c3, c4 = st.columns([12, 1, 1, 1], gap="small")
+        with c1:
+            st.markdown(info_html, unsafe_allow_html=True)
+        with c2:
+            st.button("Move",   key=f"move_{j.job_id}",   on_click=move_job,          args=(j.job_id,), use_container_width=True)
+        with c3:
+            st.button("Park",   key=f"park_{j.job_id}",   on_click=park_job,          args=(j.job_id,), use_container_width=True)
+        with c4:
+            st.button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
+
+        # thin separator (delete this line if you want zero space between rows)
+        st.markdown("<hr class='jobsep'>", unsafe_allow_html=True)
+
+    # cancel confirmation footer
+    if st.session_state.get('job_to_cancel'):
+        jid = st.session_state['job_to_cancel']
+        cx1, cx2 = st.columns([3, 2])
+        with cx1:
+            st.error(f"Confirm cancellation of Job #{jid}?")
+        with cx2:
+            cA, cB = st.columns(2)
+            cA.button("Confirm Delete", key="confirm_delete_btn", on_click=cancel_job_confirmed, use_container_width=True)
+            cB.button("Nevermind",      key="cancel_nevermind_btn", on_click=clear_cancel_prompt, use_container_width=True)
+
 
 def show_reporting_page():
     """
@@ -1258,67 +1335,9 @@ def show_reporting_page():
     tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
 
-    # ===== Tab 1: Scheduled Jobs (your real content) =====
     with tab1:
         st.subheader("Scheduled Jobs Overview")
-    
-        # ---- build a sorted list of scheduled jobs (same as before) ----
-        jobs = [j for j in ecm.SCHEDULED_JOBS if getattr(j, "scheduled_start_datetime", None)]
-        jobs.sort(key=lambda j: j.scheduled_start_datetime)
-        
-        # ---- compact row renderer with action buttons ----
-        for j in jobs:
-            start = getattr(j, "scheduled_start_datetime", None)
-            end   = getattr(j, "scheduled_end_datetime", None)
-        
-            cust  = ecm.get_customer_details(getattr(j, "customer_id", None))
-            boat  = ecm.get_boat_details(getattr(j, "boat_id", None)) if hasattr(j, "boat_id") else None
-            pick  = ecm.get_ramp_details(getattr(j, "pickup_ramp_id", None)) if getattr(j, "pickup_ramp_id", None) else None
-            drop  = ecm.get_ramp_details(getattr(j, "dropoff_ramp_id", None)) if getattr(j, "dropoff_ramp_id", None) else None
-            truck = ecm.get_truck_details(getattr(j, "assigned_truck_id", None)) if hasattr(ecm, "get_truck_details") else None
-        
-            date_str  = start.strftime("%Y-%m-%d") if start else ""
-            time_str  = f"{start.strftime('%I:%M %p')}–{end.strftime('%I:%M %p')}" if (start and end) else ""
-            cust_name = getattr(cust, "customer_name", getattr(j, "customer_id", ""))
-            boat_label = (
-                getattr(boat, "boat_name", "") or (f"{int(getattr(boat, 'boat_length', 0))}’ {getattr(boat, 'boat_type', 'Boat')}" if boat else "")
-            )
-            pick_name = getattr(pick, "ramp_name", getattr(j, "pickup_ramp_id", ""))
-            drop_name = getattr(drop, "ramp_name", getattr(j, "dropoff_ramp_id", "")) or "None"
-            truck_name = getattr(truck, "truck_name", getattr(j, "assigned_truck_id", ""))
-        
-            info = f"**#{getattr(j,'job_id','')}** · **{date_str}** · {time_str} · {cust_name} · {boat_label} · {getattr(j,'service_type','')} · {pick_name} → {drop_name} · {truck_name}"
-        
-            # Narrow column gap and give more space to the text column
-            c1, c2, c3, c4 = st.columns([12, 1, 1, 1], gap="small")
-            
-            with c1:
-                # zero-margin text line
-                st.markdown(f"<div class='jobline'>{info}</div>", unsafe_allow_html=True)
-            
-            with c2:
-                st.button("Move",   key=f"move_{j.job_id}",   on_click=move_job,          args=(j.job_id,), use_container_width=True)
-            with c3:
-                st.button("Park",   key=f"park_{j.job_id}",   on_click=park_job,          args=(j.job_id,), use_container_width=True)
-            with c4:
-                st.button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
-            
-            # a very thin separator (replace the old st.divider)
-            st.markdown("<hr class='job-sep'>", unsafe_allow_html=True)
-
-        
-        # ---- cancel confirmation footer (uses your existing callbacks) ----
-        if st.session_state.get('job_to_cancel'):
-            jid  = st.session_state['job_to_cancel']
-            jobX = ecm.get_job_details(jid)
-            cx1, cx2 = st.columns([3,2])
-            with cx1:
-                st.error(f"Confirm cancellation of Job #{jid}?")
-            with cx2:
-                cA, cB = st.columns(2)
-                cA.button("Confirm Delete", key="confirm_delete_btn", on_click=cancel_job_confirmed, use_container_width=True)
-                cB.button("Nevermind",      key="cancel_nevermind_btn", on_click=clear_cancel_prompt, use_container_width=True)
-
+        _render_scheduled_jobs_rows_v2(ecm, move_job, park_job, prompt_for_cancel, cancel_job_confirmed, clear_cancel_prompt)
 
     # ===== Tab 2: Crane Day Calendar (your real content) =====
     with tab2:
