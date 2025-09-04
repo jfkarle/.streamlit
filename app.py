@@ -714,8 +714,13 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     if dist_analysis.get('by_day'):
         story.append(Paragraph("Jobs by Day of Week", styles['h3']))
         drawing = Drawing(400, 200)
-        day_data = [tuple(v for k, v in sorted(dist_analysis['by_day'].items()))]
-        day_names = [k for k, v in sorted(dist_analysis['by_day'].items())]
+        # enforce canonical weekday order
+        order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]  # use [:5] if you only want Mon–Fri
+        by_day = dist_analysis.get("by_day", {})
+        
+        # keep only days that exist in your analysis (and in this order)
+        day_names = [d for d in order if d in by_day]
+        day_data  = [tuple(by_day.get(d, 0) for d in day_names)]
         bc = VerticalBarChart()
         bc.x = 50; bc.y = 50; bc.height = 125; bc.width = 300
         bc.data = day_data
