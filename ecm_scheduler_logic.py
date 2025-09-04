@@ -1274,6 +1274,17 @@ def get_location_coords(address=None, ramp_id=None, boat_id=None, service_type=N
         ramp_obj = get_ramp_details(str(ramp_id))
         if ramp_obj and ramp_obj.latitude is not None and ramp_obj.longitude is not None:
             return (ramp_obj.latitude, ramp_obj.longitude)
+# If ramp exists but is missing coords, try to geocode once
+        try:
+            if getattr(ramp_obj, "ramp_name", None):
+                q = f"{ramp_obj.ramp_name}, MA"
+                loc = _geocode_with_backoff(_geolocator, q)
+                if loc:
+                    ramp_obj.latitude = float(loc.latitude)
+                    ramp_obj.longitude = float(loc.longitude)
+                    return (ramp_obj.latitude, ramp_obj.longitude)
+        except Exception as e:
+            _log_debug(f"RAMP GEOCODE FAIL for {getattr(ramp_obj,'ramp_name',r_id)}: {e}")
 
     # --- BOAT STORAGE COORDINATE LOGIC (REVISED FOR TOWN CENTERS) ---
     if boat_id:
