@@ -360,22 +360,27 @@ def _compute_truck_utilization_metrics(scheduled_jobs):
 
 def create_gauge(value, max_value, label):
     """Generates an SVG string for a semi-circle gauge chart that displays an absolute value."""
-    if max_value == 0:        percent = 0
-    else:        percent = min(max(value / max_value, 0), 1)
+    if max_value == 0:
+        percent = 0
+    else:
+        percent = min(max(value / max_value, 0), 1)
 
     # If the value is zero, create an empty path so no colored arc is drawn.
     if value == 0:
         d = ""
     else:
-        # --- THIS IS THE CORRECTED MATH ---
         # Map the percentage to an angle from -180 (left) to 0 (right) degrees
         angle_deg = -180 + (percent * 180)
         rads = math.radians(angle_deg)
         # Calculate the end point of the arc
         x = 50 + 40 * math.cos(rads)
         y = 50 + 40 * math.sin(rads)
-        # Determine if the arc should be drawn the "long way" (for >50%)
-        large_arc_flag = 1 if percent > 0.5 else 0
+        
+        # --- THIS IS THE FIX ---
+        # For a semi-circle gauge, the arc is never > 180 degrees, 
+        # so the large-arc-flag must always be 0.
+        large_arc_flag = 0
+        
         # The start point of the arc is fixed at (10, 50)
         d = f"M 10 50 A 40 40 0 {large_arc_flag} 1 {x} {y}"
 
@@ -391,7 +396,6 @@ def create_gauge(value, max_value, label):
         <text x="50" y="60" text-anchor="middle" font-size="8" fill="#333">{sub_label}</text>
     </svg>
     '''
-
 def format_tides_for_display(slot, truck_schedule):
     tide_times = slot.get('high_tide_times', [])
     if not tide_times: return ""
@@ -1332,10 +1336,6 @@ def show_reporting_page():
             clear_cancel_prompt()
 
     # --------- TABS (must be INSIDE this function) ---------
-    tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
-
-    # --- UI Layout ---
     tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
 
