@@ -1160,20 +1160,22 @@ def show_reporting_page():
     interactive job management with a confirmation step for cancellation.
     """
     import pandas as pd
+    import datetime
+
     st.header("ECM Logistics")
     st.subheader("Reporting Dashboard")
 
-    # --- Action Callbacks (preserved from your version) ---
+    # --- Action Callbacks (keep yours) ---
     def move_job(job_id):
         job = ecm.get_job_details(job_id)
-        if not job:
+        if not job: 
             return
         ecm.park_job(job_id)
         st.session_state.selected_customer_id = job.customer_id
         st.session_state.rebooking_details = {
-            'parked_job_id': job.job_id,
+            'parked_job_id': job.job_id, 
             'customer_id': job.customer_id,
-            'service_type': job.service_type,
+            'service_type': job.service_type, 
             'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
         }
         st.session_state.info_message = (
@@ -1188,13 +1190,13 @@ def show_reporting_page():
 
     def reschedule_parked_job(parked_job_id):
         job = ecm.get_parked_job_details(parked_job_id)
-        if not job:
+        if not job: 
             return
         st.session_state.selected_customer_id = job.customer_id
         st.session_state.rebooking_details = {
-            'parked_job_id': job.job_id,
+            'parked_job_id': job.job_id, 
             'customer_id': job.customer_id,
-            'service_type': job.service_type,
+            'service_type': job.service_type, 
             'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
         }
         st.session_state.info_message = (
@@ -1216,32 +1218,59 @@ def show_reporting_page():
             st.toast(f"🗑️ Job #{job_id} has been permanently cancelled.", icon="🗑️")
             clear_cancel_prompt()
 
-    # --- UI Layout: TABS MUST LIVE INSIDE THIS FUNCTION ---
+    # --------- TABS (must be INSIDE this function) ---------
     tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
 
-    # ===== Tab 1: Scheduled Jobs =====
+    # ===== Tab 1: Scheduled Jobs (your real content) =====
     with tab1:
         st.subheader("Scheduled Jobs Overview")
-        # TODO: render your existing jobs table/filters here
-        # Example stub:
-        # st.dataframe(ecm.build_scheduled_jobs_df(), use_container_width=True)
+        # Your table/controls (pulled from your file): 
+        jobs = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime]
+        if jobs:
+            # Example renderer — replace with your existing table code if different
+            df = ecm.build_scheduled_jobs_df() if hasattr(ecm, "build_scheduled_jobs_df") else None
+            if df is not None:
+                st.dataframe(df, use_container_width=True)
+            else:
+                # Fallback: minimal list
+                for j in jobs:
+                    st.write(ecm.describe_job(j) if hasattr(ecm, "describe_job") else str(j))
+        else:
+            st.write("No jobs scheduled.")
 
-    # ===== Tab 2: Crane Day Calendar =====
+    # ===== Tab 2: Crane Day Calendar (your real content) =====
     with tab2:
-        st.subheader("Crane Day Calendar")
-        # TODO: render your existing crane calendar UI here
+        st.subheader("Crane Day Candidate Calendar")
+        st.info("This calendar shows potential days with ideal tides for crane operations.")
+        ramp_options = {
+            ramp_id: ecm.ECM_RAMPS[ramp_id].ramp_name
+            for ramp_id, candidate_days in ecm.CANDIDATE_CRANE_DAYS.items()
+            if candidate_days
+        }
+        if ramp_options:
+            ramp_id = st.selectbox(
+                "Select a ramp:", 
+                ramp_options.keys(), 
+                format_func=lambda x: ramp_options[x], 
+                key="cal_ramp_sel"
+            )
+            if ramp_id and ecm.CANDIDATE_CRANE_DAYS.get(ramp_id):
+                display_crane_day_calendar(ecm.CANDIDATE_CRANE_DAYS[ramp_id])
+            else:
+                st.write("No crane day data for this ramp.")
+        else:
+            st.warning("No crane day data available.")
 
-    # ===== Tab 3: Progress (metrics, PDF, audit, weekday chart) =====
+    # ===== Tab 3: Progress (your metrics + PDF + audit + weekday chart) =====
     with tab3:
         st.subheader("Scheduling Progress Report")
-
         stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
         st.markdown("#### Overall Progress")
+
         c1, c2 = st.columns(2)
         c1.metric("Boats Scheduled", f"{stats['all_boats']['scheduled']} / {stats['all_boats']['total']}")
         c2.metric("Boats Launched (to date)", f"{stats['all_boats']['launched']} / {stats['all_boats']['total']}")
-
         st.markdown("#### ECM Boats")
         c1, c2 = st.columns(2)
         c1.metric("ECM Scheduled", f"{stats['ecm_boats']['scheduled']} / {stats['ecm_boats']['total']}")
@@ -1250,18 +1279,18 @@ def show_reporting_page():
         st.markdown("---")
         st.subheader("Download Formatted PDF Report")
         if st.button("📊 Generate PDF Report"):
-            with st.spinner("Generating your report..."):
+            with st.spinner("Generating your report."):
                 dist_analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
                 eff_analysis  = ecm.perform_efficiency_analysis(ecm.SCHEDULED_JOBS)
                 pdf_buffer    = generate_progress_report_pdf(stats, dist_analysis, eff_analysis)
                 st.download_button(
-                    label="📥 Download Report (.pdf)",
-                    data=pdf_buffer,
-                    file_name=f"progress_report_{dt.date.today()}.pdf",
+                    label="📥 Download Report (.pdf)", 
+                    data=pdf_buffer, 
+                    file_name=f"progress_report_{datetime.date.today()}.pdf", 
                     mime="application/pdf"
                 )
 
-        # --- Travel Matrix & Coordinates Audit ---
+        # Travel Matrix & Coordinates Audit
         st.divider()
         st.subheader("Travel Matrix & Coordinates Audit")
         with st.expander("Run audit and show details", expanded=False):
@@ -1275,37 +1304,77 @@ def show_reporting_page():
                 else:
                     st.success("Audit OK: no issues found.")
 
-        # --- Jobs by Day of Week (fixed Mon→Sun order) ---
+        # Jobs by Day of Week (Mon→Sun order; Thu fixed)
         st.markdown("#### Jobs by Day of Week")
         weekday_counts = build_weekday_counts(ecm.SCHEDULED_JOBS, tz="America/New_York", include_weekends=False)
         st.bar_chart(weekday_counts)
         with st.expander("Show weekday counts", expanded=False):
             st.dataframe(pd.DataFrame({"Jobs": weekday_counts}), use_container_width=True)
 
-    # ===== Tab 4: PDF Exports =====
+    # ===== Tab 4: PDF Exports (your real content) =====
     with tab4:
-        st.subheader("PDF Exports")
-        # TODO: add any extra export tools here
+        st.subheader("Generate Daily Planner PDF")
+        selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
+        if st.button("📤 Generate Daily PDF", key="generate_daily_pdf_button"):
+            jobs_today = [j for j in ecm.SCHEDULED_JOBS 
+                          if j.scheduled_start_datetime 
+                          and j.scheduled_start_datetime.date() == selected_date]
+            if not jobs_today:
+                st.warning("No jobs scheduled for that date.")
+            else:
+                pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
+                st.download_button(
+                    label="📥 Download Daily Planner", 
+                    data=pdf_buffer.getvalue(), 
+                    file_name=f"Daily_Planner_{selected_date}.pdf", 
+                    mime="application/pdf", 
+                    key="download_daily_planner_button"
+                )
 
-    # ===== Tab 5: Parked Jobs =====
+        st.markdown("---")
+        st.subheader("Generate Multi-Day Planner PDF")
+        d_col1, d_col2 = st.columns(2)
+        start_date = d_col1.date_input("Start date:", datetime.date.today())
+        end_date   = d_col2.date_input("End date:",   datetime.date.today() + datetime.timedelta(days=6))
+
+        if st.button("📤 Generate Multi-Day PDF", key="generate_multi_day_pdf_button"):
+            if start_date > end_date:
+                st.error("Start date cannot be after end date.")
+            else:
+                jobs_in_range = [j for j in ecm.SCHEDULED_JOBS 
+                                 if j.scheduled_start_datetime 
+                                 and start_date <= j.scheduled_start_datetime.date() <= end_date]
+                if not jobs_in_range:
+                    st.warning("No jobs scheduled in that date range.")
+                else:
+                    multi_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
+                    st.download_button(
+                        label="📥 Download Multi-Day Planner", 
+                        data=multi_pdf.getvalue(), 
+                        file_name=f"Multi_Day_Planner_{start_date}_to_{end_date}.pdf", 
+                        mime="application/pdf", 
+                        key="download_multi_day_planner_button"
+                    )
+
+    # ===== Tab 5: Parked Jobs (keep your actions) =====
     with tab5:
         st.subheader("Parked Jobs")
-        # TODO: render parked jobs list + actions
-        # Example for your callbacks:
-        # for pj in ecm.get_parked_jobs():
-        #     col1, col2, col3 = st.columns([3,1,1])
-        #     col1.write(ecm.describe_job(pj))
-        #     if col2.button("Reschedule", key=f"resched_{pj.job_id}"):
-        #         reschedule_parked_job(pj.job_id)
-        #     if col3.button("Cancel", key=f"cancel_{pj.job_id}"):
-        #         prompt_for_cancel(pj.job_id)
-        # if st.session_state.get('job_to_cancel'):
-        #     st.error("Confirm cancellation?")
-        #     c1, c2 = st.columns(2)
-        #     if c1.button("Confirm Delete"):
-        #         cancel_job_confirmed()
-        #     if c2.button("Nevermind"):
-        #         clear_cancel_prompt()
+        parked = ecm.get_parked_jobs() if hasattr(ecm, "get_parked_jobs") else []
+        if not parked:
+            st.info("No parked jobs.")
+        else:
+            for pj in parked:
+                col1, col2, col3 = st.columns([3,1,1])
+                col1.write(ecm.describe_job(pj) if hasattr(ecm, "describe_job") else f"Job #{pj.job_id}")
+                col2.button("Reschedule", key=f"resched_{pj.job_id}", on_click=reschedule_parked_job, args=(pj.job_id,), use_container_width=True)
+                col3.button("Cancel",     key=f"cancel_{pj.job_id}",  on_click=prompt_for_cancel,         args=(pj.job_id,), type="primary", use_container_width=True)
+        if st.session_state.get('job_to_cancel'):
+            st.error("Confirm cancellation?")
+            cc1, cc2 = st.columns(2)
+            if cc1.button("Confirm Delete"):
+                cancel_job_confirmed()
+            if cc2.button("Nevermind"):
+                clear_cancel_prompt()
 
 
 # --- Weekday aggregation helper (Mon=0 ... Sun=6) ---
