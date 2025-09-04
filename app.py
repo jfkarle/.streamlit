@@ -1335,10 +1335,61 @@ def show_reporting_page():
     tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
     tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
 
+    # --- UI Layout ---
+    tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
+
     with tab1:
         st.subheader("Scheduled Jobs Overview")
-        _render_scheduled_jobs_rows_v2(ecm, move_job, park_job, prompt_for_cancel, cancel_job_confirmed, clear_cancel_prompt)
+        if ecm.SCHEDULED_JOBS:
+            # Create a map to look up truck names from IDs, ensuring keys are strings
+            id_to_name_map = {str(t.truck_id): t.truck_name for t in ecm.ECM_TRUCKS.values()}
 
+            # Set up 7 columns for the header
+            cols = st.columns((2, 1, 2, 2, 1, 1, 3))
+            fields = ["Date/Time", "Service", "Customer", "Ramp", "Haul Truck", "Crane", "Actions"]
+            for col, field in zip(cols, fields):
+                col.markdown(f"**{field}**")
+            st.markdown("---")
+
+            # Sort jobs by date to display them chronologically
+            sorted_jobs = sorted(ecm.SCHEDULED_JOBS, key=lambda j: j.scheduled_start_datetime or datetime.datetime.max.replace(tzinfo=datetime.timezone.utc))
+            for j in sorted_jobs:
+                customer = ecm.get_customer_details(j.customer_id)
+                if not customer:
+                    continue # Safety check
+
+                # Create 7 columns for each row of job data
+                cols = st.columns((2, 1, 2, 2, 1, 1, 3))
+                cols[0].write(j.scheduled_start_datetime.strftime("%a, %b %d @ %I:%M%p") if j.scheduled_start_datetime else "No Date Set")
+                cols[1].write(j.service_type)
+                cols[2].write(customer.customer_name)
+
+                # Find and display the ramp name for the job
+                ramp_id = j.dropoff_ramp_id or j.pickup_ramp_id
+                # V-- FIX: Convert ramp_id to a string for the lookup --V
+                ramp_name = ecm.get_ramp_details(str(ramp_id)).ramp_name if ramp_id and ecm.get_ramp_details(str(ramp_id)) else "—"
+                cols[3].write(ramp_name)
+
+                # Look up and display truck/crane names, casting IDs to strings for safety
+                cols[4].write(id_to_name_map.get(str(j.assigned_hauling_truck_id), "—"))
+                cols[5].write(id_to_name_map.get(str(j.assigned_crane_truck_id), "—"))
+
+                # Display the action buttons
+                with cols[6]:
+                    if st.session_state.get('job_to_cancel') == j.job_id:
+                        st.warning("Are you sure?")
+                        btn_cols = st.columns(2)
+                        btn_cols[0].button("✅ Yes, Cancel", key=f"confirm_cancel_{j.job_id}", on_click=cancel_job_confirmed, use_container_width=True, type="primary")
+                        btn_cols[1].button("❌ No", key=f"deny_cancel_{j.job_id}", on_click=clear_cancel_prompt, use_container_width=True)
+                    else:
+                        btn_cols = st.columns(3)
+                        btn_cols[0].button("Move", key=f"move_{j.job_id}", on_click=move_job, args=(j.job_id,), use_container_width=True)
+                        btn_cols[1].button("Park", key=f"park_{j.job_id}", on_click=park_job, args=(j.job_id,), use_container_width=True)
+                        btn_cols[2].button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
+        else:
+            st.write("No jobs scheduled.")
+            
     # ===== Tab 2: Crane Day Calendar (your real content) =====
     with tab2:
         st.subheader("Crane Day Candidate Calendar")
