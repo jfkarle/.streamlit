@@ -728,8 +728,10 @@ def _route_distance_minutes(a_latlon, b_latlon):
     return (km / 50.0) * 60.0  # 50 km/h -> minutes
 
 def _score_candidate(slot, compiled_schedule, daily_last_locations, after_threshold=False, prime_days=None):
+    """
+    Larger is better. Enforces multi-job days and rewards piggybacks & proximity.
+    """
     # ---- HARD LIMIT: Max distance between storage -> pickup ramp ----
-    # Pull from slot (set upstream from your UI setting); fallback to default.
     try:
         limit = float(slot.get("max_distance_miles", DEFAULT_MAX_JOB_DISTANCE_MILES))
     except Exception:
@@ -741,12 +743,8 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
             slot["reject_reason"] = f"Distance {float(est_miles):.1f} mi > {limit:.0f} mi"
             return -1e9  # kill this candidate immediately
     except Exception:
-        # If we can't estimate, don't auto-kill; let other rules decide
         pass
 
-    """
-    Larger is better. Packs days, rewards piggybacks & proximity.
-    """
     if prime_days is None:
         prime_days = set()
 
@@ -761,29 +759,34 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
               if iv and hasattr(iv[0], "date") and iv[0].date() == date]
     n = len(todays)
 
-    # --- Scoring for packing days (existing logic) ---
-    if n == 0: score += 2.0
-    if n == 1: score += 6.0
-    if n == 2: score += 10.0
-    if n >= 3: score += 8.0
+    # --- THIS IS THE FIX: New scoring to enforce multi-job days ---
+    # HEAVY penalty for starting a new truck's day (n=0), making it a last resort.
+    if n == 0:
+        score -= 50.0
+
+    # STRONG reward for the second job (n=1), which confirms an efficient day.
+    elif n == 1:
+        score += 20.0
+
+    # Moderate reward for 3rd and 4th jobs.
+    elif n == 2:
+        score += 10.0
+    elif n >= 3:
+        score += 5.0
+    # --- END FIX ---
 
     if slot.get("is_piggyback"):
         score += 8.0
 
-    # --- NEW: Scoring for geographic proximity ---
-    ramp_details = None  # ensure defined even if try-block fails
+    # --- Scoring for geographic proximity ---
+    ramp_details = None
     try:
         ramp_details = get_ramp_details(ramp_id)
         if boat and ramp_details and hasattr(boat, 'storage_address'):
             storage_town = _abbreviate_town(boat.storage_address)
             ramp_name = ramp_details.ramp_name
-
-            # Look up the pre-calculated travel time
             travel_minutes = TRAVEL_TIME_MATRIX.get(storage_town, {}).get(ramp_name)
-
             if travel_minutes is not None:
-                # Reward shorter travel times. A 60-min trip gets 0 bonus.
-                # A 10-min trip gets a bonus of 5.
                 proximity_bonus = max(0.0, (60 - travel_minutes) / 10.0)
                 score += proximity_bonus
     except Exception as e:
@@ -793,7 +796,6 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
     if after_threshold and date in prime_days:
         tide_method = getattr(ramp_details, "tide_calculation_method", "AnyTide") if ramp_details else "AnyTide"
         boat_type = getattr(boat, "boat_type", "") if boat else ""
-
         if "Powerboat" in boat_type and tide_method == "AnyTide":
             score += 6.0
         elif "Sailboat" in boat_type:
