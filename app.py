@@ -1159,19 +1159,27 @@ def show_reporting_page():
     Displays the entire Reporting dashboard, including all original tabs and
     interactive job management with a confirmation step for cancellation.
     """
-    st.header("Reporting Dashboard")
+    import pandas as pd
+    st.header("ECM Logistics")
+    st.subheader("Reporting Dashboard")
 
-    # --- Action Callbacks ---
+    # --- Action Callbacks (preserved from your version) ---
     def move_job(job_id):
         job = ecm.get_job_details(job_id)
-        if not job: return
+        if not job:
+            return
         ecm.park_job(job_id)
         st.session_state.selected_customer_id = job.customer_id
         st.session_state.rebooking_details = {
-            'parked_job_id': job.job_id, 'customer_id': job.customer_id,
-            'service_type': job.service_type, 'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
+            'parked_job_id': job.job_id,
+            'customer_id': job.customer_id,
+            'service_type': job.service_type,
+            'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
         }
-        st.session_state.info_message = f"Rebooking job for {ecm.get_customer_details(job.customer_id).customer_name}. Please find a new slot."
+        st.session_state.info_message = (
+            f"Rebooking job for {ecm.get_customer_details(job.customer_id).customer_name}. "
+            "Please find a new slot."
+        )
         st.session_state.app_mode_switch = "Schedule New Boat"
 
     def park_job(job_id):
@@ -1180,13 +1188,19 @@ def show_reporting_page():
 
     def reschedule_parked_job(parked_job_id):
         job = ecm.get_parked_job_details(parked_job_id)
-        if not job: return
+        if not job:
+            return
         st.session_state.selected_customer_id = job.customer_id
         st.session_state.rebooking_details = {
-            'parked_job_id': job.job_id, 'customer_id': job.customer_id,
-            'service_type': job.service_type, 'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
+            'parked_job_id': job.job_id,
+            'customer_id': job.customer_id,
+            'service_type': job.service_type,
+            'ramp_id': job.dropoff_ramp_id or job.pickup_ramp_id
         }
-        st.session_state.info_message = f"Rescheduling parked job for {ecm.get_customer_details(job.customer_id).customer_name}. Please select a new slot."
+        st.session_state.info_message = (
+            f"Rescheduling parked job for {ecm.get_customer_details(job.customer_id).customer_name}. "
+            "Please select a new slot."
+        )
         st.session_state.app_mode_switch = "Schedule New Boat"
 
     def prompt_for_cancel(job_id):
@@ -1202,7 +1216,97 @@ def show_reporting_page():
             st.toast(f"🗑️ Job #{job_id} has been permanently cancelled.", icon="🗑️")
             clear_cancel_prompt()
 
-    # --- UI Layout ---
+    # --- UI Layout: TABS MUST LIVE INSIDE THIS FUNCTION ---
+    tab_keys = ["Scheduled Jobs", "Crane Day Calendar", "Progress", "PDF Exports", "Parked Jobs"]
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_keys)
+
+    # ===== Tab 1: Scheduled Jobs =====
+    with tab1:
+        st.subheader("Scheduled Jobs Overview")
+        # TODO: render your existing jobs table/filters here
+        # Example stub:
+        # st.dataframe(ecm.build_scheduled_jobs_df(), use_container_width=True)
+
+    # ===== Tab 2: Crane Day Calendar =====
+    with tab2:
+        st.subheader("Crane Day Calendar")
+        # TODO: render your existing crane calendar UI here
+
+    # ===== Tab 3: Progress (metrics, PDF, audit, weekday chart) =====
+    with tab3:
+        st.subheader("Scheduling Progress Report")
+
+        stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
+        st.markdown("#### Overall Progress")
+        c1, c2 = st.columns(2)
+        c1.metric("Boats Scheduled", f"{stats['all_boats']['scheduled']} / {stats['all_boats']['total']}")
+        c2.metric("Boats Launched (to date)", f"{stats['all_boats']['launched']} / {stats['all_boats']['total']}")
+
+        st.markdown("#### ECM Boats")
+        c1, c2 = st.columns(2)
+        c1.metric("ECM Scheduled", f"{stats['ecm_boats']['scheduled']} / {stats['ecm_boats']['total']}")
+        c2.metric("ECM Launched (to date)", f"{stats['ecm_boats']['launched']} / {stats['ecm_boats']['total']}")
+
+        st.markdown("---")
+        st.subheader("Download Formatted PDF Report")
+        if st.button("📊 Generate PDF Report"):
+            with st.spinner("Generating your report..."):
+                dist_analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
+                eff_analysis  = ecm.perform_efficiency_analysis(ecm.SCHEDULED_JOBS)
+                pdf_buffer    = generate_progress_report_pdf(stats, dist_analysis, eff_analysis)
+                st.download_button(
+                    label="📥 Download Report (.pdf)",
+                    data=pdf_buffer,
+                    file_name=f"progress_report_{dt.date.today()}.pdf",
+                    mime="application/pdf"
+                )
+
+        # --- Travel Matrix & Coordinates Audit ---
+        st.divider()
+        st.subheader("Travel Matrix & Coordinates Audit")
+        with st.expander("Run audit and show details", expanded=False):
+            if st.button("Run Audit", key="btn_audit_travel_matrix"):
+                results = ecm.audit_travel_matrix_and_coords(
+                    max_miles=st.session_state.get('max_job_distance', 10),
+                    auto_fix_missing=False
+                )
+                if results:
+                    st.dataframe(pd.DataFrame(results), use_container_width=True)
+                else:
+                    st.success("Audit OK: no issues found.")
+
+        # --- Jobs by Day of Week (fixed Mon→Sun order) ---
+        st.markdown("#### Jobs by Day of Week")
+        weekday_counts = build_weekday_counts(ecm.SCHEDULED_JOBS, tz="America/New_York", include_weekends=False)
+        st.bar_chart(weekday_counts)
+        with st.expander("Show weekday counts", expanded=False):
+            st.dataframe(pd.DataFrame({"Jobs": weekday_counts}), use_container_width=True)
+
+    # ===== Tab 4: PDF Exports =====
+    with tab4:
+        st.subheader("PDF Exports")
+        # TODO: add any extra export tools here
+
+    # ===== Tab 5: Parked Jobs =====
+    with tab5:
+        st.subheader("Parked Jobs")
+        # TODO: render parked jobs list + actions
+        # Example for your callbacks:
+        # for pj in ecm.get_parked_jobs():
+        #     col1, col2, col3 = st.columns([3,1,1])
+        #     col1.write(ecm.describe_job(pj))
+        #     if col2.button("Reschedule", key=f"resched_{pj.job_id}"):
+        #         reschedule_parked_job(pj.job_id)
+        #     if col3.button("Cancel", key=f"cancel_{pj.job_id}"):
+        #         prompt_for_cancel(pj.job_id)
+        # if st.session_state.get('job_to_cancel'):
+        #     st.error("Confirm cancellation?")
+        #     c1, c2 = st.columns(2)
+        #     if c1.button("Confirm Delete"):
+        #         cancel_job_confirmed()
+        #     if c2.button("Nevermind"):
+        #         clear_cancel_prompt()
+
 
 # --- Weekday aggregation helper (Mon=0 ... Sun=6) ---
 def build_weekday_counts(jobs, tz="America/New_York", include_weekends=True):
