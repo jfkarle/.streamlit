@@ -1229,46 +1229,57 @@ def show_reporting_page():
 
     # ===== Tab 1: Scheduled Jobs (your real content) =====
     with tab1:
-        st.subheader("Scheduled Jobs Overview")
-        # Your table/controls (pulled from your file): 
-        jobs = [j for j in ecm.SCHEDULED_JOBS if j.scheduled_start_datetime]
-        if jobs:
-            # Example renderer — replace with your existing table code if different
-            rows = []
-            for j in jobs:
-                start = getattr(j, "scheduled_start_datetime", None) or getattr(j, "scheduled_start_dt", None)
-                end   = getattr(j, "scheduled_end_datetime",   None) or getattr(j, "scheduled_end_dt",   None)
-            
-                cust  = ecm.get_customer_details(getattr(j, "customer_id", None))
-                boat  = ecm.get_boat_details(getattr(j, "boat_id", None)) if hasattr(j, "boat_id") else None
-                pick  = ecm.get_ramp_details(getattr(j, "pickup_ramp_id", None)) if getattr(j, "pickup_ramp_id", None) else None
-                drop  = ecm.get_ramp_details(getattr(j, "dropoff_ramp_id", None)) if getattr(j, "dropoff_ramp_id", None) else None
-                truck = ecm.get_truck_details(getattr(j, "assigned_truck_id", None)) if hasattr(ecm, "get_truck_details") else None
-            
-                rows.append({
-                    "Job #": getattr(j, "job_id", ""),
-                    "Date":  (start.date() if start else ""),
-                    "Start": (start.strftime("%I:%M %p") if start else ""),
-                    "End":   (end.strftime("%I:%M %p")   if end   else ""),
-                    "Customer": getattr(cust, "customer_name", getattr(j, "customer_id", "")),
-                    "Boat": (
-                        getattr(boat, "boat_name", "")
-                        or (f"{int(getattr(boat, 'boat_length', 0))}’ {getattr(boat, 'boat_type', 'Boat')}" if boat else "")
-                    ),
-                    "Service":      getattr(j, "service_type", ""),
-                    "Pickup Ramp":  getattr(pick, "ramp_name",  getattr(j, "pickup_ramp_id",  "")),
-                    "Dropoff Ramp": getattr(drop, "ramp_name",  getattr(j, "dropoff_ramp_id", "")),
-                    "Truck":        getattr(truck, "truck_name", getattr(j, "assigned_truck_id", "")),
-                })
-            
-            # Build and sort the DataFrame (safe if columns missing)
-            df = pd.DataFrame(rows)
-            try:
-                df = df.sort_values(["Date", "Start"], kind="stable", na_position="last")
-            except Exception:
-                pass
-            
-            st.dataframe(df, use_container_width=True)
+    st.subheader("Scheduled Jobs Overview")
+
+        # ---- build a sorted list of scheduled jobs (same as before) ----
+        jobs = [j for j in ecm.SCHEDULED_JOBS if getattr(j, "scheduled_start_datetime", None)]
+        jobs.sort(key=lambda j: j.scheduled_start_datetime)
+        
+        # ---- compact row renderer with action buttons ----
+        for j in jobs:
+            start = getattr(j, "scheduled_start_datetime", None)
+            end   = getattr(j, "scheduled_end_datetime", None)
+        
+            cust  = ecm.get_customer_details(getattr(j, "customer_id", None))
+            boat  = ecm.get_boat_details(getattr(j, "boat_id", None)) if hasattr(j, "boat_id") else None
+            pick  = ecm.get_ramp_details(getattr(j, "pickup_ramp_id", None)) if getattr(j, "pickup_ramp_id", None) else None
+            drop  = ecm.get_ramp_details(getattr(j, "dropoff_ramp_id", None)) if getattr(j, "dropoff_ramp_id", None) else None
+            truck = ecm.get_truck_details(getattr(j, "assigned_truck_id", None)) if hasattr(ecm, "get_truck_details") else None
+        
+            date_str  = start.strftime("%Y-%m-%d") if start else ""
+            time_str  = f"{start.strftime('%I:%M %p')}–{end.strftime('%I:%M %p')}" if (start and end) else ""
+            cust_name = getattr(cust, "customer_name", getattr(j, "customer_id", ""))
+            boat_label = (
+                getattr(boat, "boat_name", "") or (f"{int(getattr(boat, 'boat_length', 0))}’ {getattr(boat, 'boat_type', 'Boat')}" if boat else "")
+            )
+            pick_name = getattr(pick, "ramp_name", getattr(j, "pickup_ramp_id", ""))
+            drop_name = getattr(drop, "ramp_name", getattr(j, "dropoff_ramp_id", "")) or "None"
+            truck_name = getattr(truck, "truck_name", getattr(j, "assigned_truck_id", ""))
+        
+            info = f"**#{getattr(j,'job_id','')}** · **{date_str}** · {time_str} · {cust_name} · {boat_label} · {getattr(j,'service_type','')} · {pick_name} → {drop_name} · {truck_name}"
+        
+            c1, c2, c3, c4 = st.columns([8, 1, 1, 1])
+            with c1:
+                st.markdown(info)
+            with c2:
+                st.button("Move",   key=f"move_{j.job_id}",   on_click=move_job,          args=(j.job_id,), use_container_width=True)
+            with c3:
+                st.button("Park",   key=f"park_{j.job_id}",   on_click=park_job,          args=(j.job_id,), use_container_width=True)
+            with c4:
+                st.button("Cancel", key=f"cancel_{j.job_id}", on_click=prompt_for_cancel, args=(j.job_id,), type="primary", use_container_width=True)
+            st.divider()
+        
+        # ---- cancel confirmation footer (uses your existing callbacks) ----
+        if st.session_state.get('job_to_cancel'):
+            jid  = st.session_state['job_to_cancel']
+            jobX = ecm.get_job_details(jid)
+            cx1, cx2 = st.columns([3,2])
+            with cx1:
+                st.error(f"Confirm cancellation of Job #{jid}?")
+            with cx2:
+                cA, cB = st.columns(2)
+                cA.button("Confirm Delete", key="confirm_delete_btn", on_click=cancel_job_confirmed, use_container_width=True)
+                cB.button("Nevermind",      key="cancel_nevermind_btn", on_click=clear_cancel_prompt, use_container_width=True)
 
 
     # ===== Tab 2: Crane Day Calendar (your real content) =====
