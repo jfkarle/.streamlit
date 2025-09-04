@@ -158,18 +158,84 @@ def _log_debug(msg):
     global DEBUG_MESSAGES
     DEBUG_MESSAGES.insert(0, f"{dt.datetime.now().strftime('%H:%M:%S')}: {msg}")
 
+# --- STRICT ADDRESS PARSERS & FILTERS ---
+
+_POBOX_PATTERNS = (
+    r'\bP\.?\s*O\.?\s*Box\b',
+    r'\bPO\s*Box\b',
+    r'\bPost\s*Office\s*Box\b',
+)
+
+def _looks_like_pobox(s: str) -> bool:
+    if not isinstance(s, str):
+        return False
+    import re
+    s_norm = s.strip()
+    for pat in _POBOX_PATTERNS:
+        if re.search(pat, s_norm, flags=re.IGNORECASE):
+            return True
+    return False
+
 def _get_town_from_address(address: str) -> str | None:
-    """Extracts a town name from a typical address string."""
+    """
+    Extract a Massachusetts town/city from a free-form address line.
+    Rules:
+      - If PO Box is present anywhere, return None.
+      - Prefer token immediately before 'MA' or 'Massachusetts'.
+      - Clean trailing state/zip tokens.
+      - Reject obviously bad tokens (too short, numeric-heavy).
+    """
+    import re
     if not isinstance(address, str):
         return None
-    try:
-        parts = address.split(',')
-        if len(parts) > 1:
-            town_part = parts[-2].strip()
-            return re.sub(r'\s+[A-Z]{2}$', '', town_part).strip()
-    except Exception:
-        pass
-    return None
+
+    addr = address.strip()
+    if not addr or addr.upper() == "MISSING":
+        return None
+    if _looks_like_pobox(addr):
+        return None
+
+    # Normalize multiple spaces, strip commas
+    addr = re.sub(r'\s+', ' ', addr.replace(' ,', ',').replace(', ,', ',')).strip()
+
+    # Try to capture "... , <Town> , MA <ZIP>" OR "... <Town> MA <ZIP>"
+    # We only care about the <Town> token.
+    # Examples this handles:
+    #   "18 Creek Road, Marshfield MA 02050"
+    #   "19 Anderson Drive, Marshfield, MA 02050"
+    #   "Hingham MA 02043"
+    #   "69 Old Main Street, Marshfield Hills, MA"
+    town = None
+
+    # 1) Comma-friendly pattern: last token before MA/Massachusetts
+    m = re.search(r',\s*([^,]+?)\s*,\s*(?:MA|Massachusetts)\b', addr, flags=re.IGNORECASE)
+    if m:
+        town = m.group(1).strip()
+    else:
+        # 2) Space-only pattern: token(s) before MA
+        m2 = re.search(r'\b([^,]+?)\s+(?:MA|Massachusetts)\b', addr, flags=re.IGNORECASE)
+        if m2:
+            # This can capture "Marshfield MA" or "Marshfield Hills MA"
+            # We may still have a leading street segment; try to trim that by taking the last 1–3 words.
+            candidate = m2.group(1).strip()
+            parts = candidate.split()
+            # Heuristic: town names are usually last 1–3 words in the run-up to MA
+            town = " ".join(parts[-3:]).strip()
+
+    if not town:
+        return None
+
+    # Clean zip remnants or trailing punctuation
+    town = re.sub(r'\d{5}(-\d{4})?$', '', town).strip(' ,')
+
+    # Reject bad tokens (too short or clearly not a town)
+    if len(town) < 2:
+        return None
+    # Too many digits means it isn't a town
+    if sum(ch.isdigit() for ch in town) > 0:
+        return None
+
+    return town
 
 def fetch_scheduled_jobs():
     """
