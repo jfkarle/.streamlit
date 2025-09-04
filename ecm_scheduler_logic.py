@@ -2564,12 +2564,18 @@ def _find_slot_on_day(
     crane_needed,
     compiled_schedule,
     customer_id,
-    trucks,
-    daily_last_locations,
+    trucks=None,                 # NEW: support caller passing 'trucks'
+    trucks_to_check=None,        # keep backward-compat with existing body
+    daily_last_locations=None,
     tide_policy=None,
     max_distance_miles=None,
     is_opportunistic_search=False,
 ):
+    # normalize trucks input
+    if trucks_to_check is None:
+        trucks_to_check = trucks or []
+    if daily_last_locations is None:
+        daily_last_locations = {}
     
     """Single-day scanner that integrates time and distance checks."""
     ramp = get_ramp_details(str(ramp_id))
@@ -2693,6 +2699,7 @@ def _find_slot_on_day(
                     "truck_id": truck.truck_id,
                     "ramp_id": ramp_id,
                     "service_type": service_type,
+                    "max_distance_miles": max_distance_miles,   # <-- NEW: carry the UI limit into the slot
                     "S17_needed": bool(crane_needed),
                     "scheduled_end_datetime": end_dt,
                     "S17_busy_end_datetime": crane_end_dt,
