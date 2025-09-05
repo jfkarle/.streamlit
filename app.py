@@ -1458,11 +1458,20 @@ def show_reporting_page():
                     st.success("Audit OK: no issues found.")
 
         # Jo ... inside show_reporting_page, with tab3 ...
+        # ... inside show_reporting_page, with tab3 ...
         st.markdown("#### Jobs by Day of Week")
         weekday_counts = build_weekday_counts(ecm.SCHEDULED_JOBS, tz="America/New_York", include_weekends=False)
-        # Convert to a DataFrame and explicitly set the axes to enforce order
+
+        # Convert to a DataFrame for charting
         chart_data = pd.DataFrame(weekday_counts).reset_index()
         chart_data.columns = ['Day', 'Jobs']
+
+        # --- THIS IS THE DEFINITIVE FIX ---
+        # Explicitly define the correct order for the days of the week.
+        day_order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+        # Convert the 'Day' column to a special ordered type that the chart will respect.
+        chart_data['Day'] = pd.Categorical(chart_data['Day'], categories=day_order, ordered=True)
+
         st.bar_chart(chart_data, x='Day', y='Jobs')
         with st.expander("Show weekday counts", expanded=False):
             st.dataframe(pd.DataFrame({"Jobs": weekday_counts}), use_container_width=True)
