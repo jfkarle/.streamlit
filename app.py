@@ -750,11 +750,13 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
         story.append(Paragraph("Jobs by Day of Week", styles['h3']))
         drawing = Drawing(400, 200)
         # enforce canonical weekday order
-        order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]  # use [:5] if you only want Mon–Fri
+        # ... inside generate_progress_report_pdf ...
+        order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         by_day = dist_analysis.get("by_day", {})
         
-        # keep only days that exist in your analysis (and in this order)
-        day_names = [d for d in order if d in by_day]
+        # CORRECTED: Always use the first 5 days for the chart's x-axis
+        day_names = order[:5]
+        # Get data for each day, defaulting to 0 for any day with no jobs
         day_data  = [tuple(by_day.get(d, 0) for d in day_names)]
         bc = VerticalBarChart()
         bc.x = 50; bc.y = 50; bc.height = 125; bc.width = 300
@@ -1455,10 +1457,13 @@ def show_reporting_page():
                 else:
                     st.success("Audit OK: no issues found.")
 
-        # Jobs by Day of Week (Mon→Sun order; Thu fixed)
+        # Jo ... inside show_reporting_page, with tab3 ...
         st.markdown("#### Jobs by Day of Week")
         weekday_counts = build_weekday_counts(ecm.SCHEDULED_JOBS, tz="America/New_York", include_weekends=False)
-        st.bar_chart(weekday_counts)
+        # Convert to a DataFrame and explicitly set the axes to enforce order
+        chart_data = pd.DataFrame(weekday_counts).reset_index()
+        chart_data.columns = ['Day', 'Jobs']
+        st.bar_chart(chart_data, x='Day', y='Jobs')
         with st.expander("Show weekday counts", expanded=False):
             st.dataframe(pd.DataFrame({"Jobs": weekday_counts}), use_container_width=True)
 
