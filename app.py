@@ -683,9 +683,8 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
 
     # --- NEW: Generate and add the Progress Report first ---
     stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
-    dist_analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
     eff_analysis = ecm.perform_efficiency_analysis(ecm.SCHEDULED_JOBS)
-    progress_report_buffer = generate_progress_report_pdf(stats, dist_analysis, eff_analysis)
+    progress_report_buffer = generate_progress_report_pdf(stats, eff_analysis)
     if len(progress_report_buffer.getvalue()) > 0:
         merger.append(progress_report_buffer)
     # --- END NEW SECTION ---
@@ -710,12 +709,10 @@ def generate_multi_day_planner_pdf(start_date, end_date, jobs):
 from reportlab.graphics.charts.legends import Legend
 from reportlab.graphics.shapes import Rect
 
-from reportlab.graphics.charts.legends import Legend
-from reportlab.graphics.shapes import Rect
-
-def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
+def generate_progress_report_pdf(stats, eff_analysis):
     """
     MODIFIED: Generates a multi-page PDF progress report. The detailed boat status list has been removed.
+    BUG FIX: Replaced chart data source to correctly show all weekdays.
     """
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -752,22 +749,21 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     story.append(summary_table)
     story.append(Spacer(1, 24))
 
-    # --- Page 2: Scheduling Analytics (Unchanged) ---
+    # --- Page 2: Scheduling Analytics (MODIFIED FOR BUG FIX) ---
     story.append(PageBreak())
     story.append(Paragraph("Scheduling Analytics", styles['h2']))
     story.append(Spacer(1, 12))
-    if dist_analysis.get('by_day'):
+    
+    # Use the reliable build_weekday_counts function, which is also used by the UI chart.
+    weekday_counts = build_weekday_counts(ecm.SCHEDULED_JOBS, include_weekends=False)
+
+    if not weekday_counts.empty:
         story.append(Paragraph("Jobs by Day of Week", styles['h3']))
         drawing = Drawing(400, 200)
-        # enforce canonical weekday order
-        # ... inside generate_progress_report_pdf ...
-        order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        by_day = dist_analysis.get("by_day", {})
         
-        # CORRECTED: Always use the first 5 days for the chart's x-axis
-        day_names = order[:5]
-        # Get data for each day, defaulting to 0 for any day with no jobs
-        day_data  = [tuple(by_day.get(d, 0) for d in day_names)]
+        day_names = weekday_counts.index.tolist()
+        day_data  = [tuple(weekday_counts.values)]
+        
         bc = VerticalBarChart()
         bc.x = 50; bc.y = 50; bc.height = 125; bc.width = 300
         bc.data = day_data
