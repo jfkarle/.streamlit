@@ -762,7 +762,12 @@ def generate_progress_report_pdf(stats, eff_analysis):
         drawing = Drawing(400, 200)
         
         day_names = weekday_counts.index.tolist()
-        day_data  = [tuple(weekday_counts.values)]
+        
+        # --- THIS IS THE FIX ---
+        # Explicitly convert the pandas/numpy data types to a standard Python list
+        # to ensure compatibility with the reportlab charting library.
+        counts_list = list(weekday_counts)
+        day_data = [counts_list]
         
         bc = VerticalBarChart()
         bc.x = 50; bc.y = 50; bc.height = 125; bc.width = 300
