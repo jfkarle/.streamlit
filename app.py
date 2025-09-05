@@ -672,17 +672,28 @@ def generate_daily_planner_pdf(report_date, jobs_for_day):
     return buffer
     
 def generate_multi_day_planner_pdf(start_date, end_date, jobs):
+    """
+    MODIFIED: Generates a combined PDF with a new progress report followed by daily planner pages.
+    """
     from PyPDF2 import PdfMerger
     from io import BytesIO
     import datetime
 
     merger = PdfMerger()
+
+    # --- NEW: Generate and add the Progress Report first ---
+    stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
+    dist_analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
+    eff_analysis = ecm.perform_efficiency_analysis(ecm.SCHEDULED_JOBS)
+    progress_report_buffer = generate_progress_report_pdf(stats, dist_analysis, eff_analysis)
+    if len(progress_report_buffer.getvalue()) > 0:
+        merger.append(progress_report_buffer)
+    # --- END NEW SECTION ---
+
     for single_date in (start_date + datetime.timedelta(n) for n in range((end_date - start_date).days + 1)):
         jobs_for_day = [j for j in jobs if j.scheduled_start_datetime and j.scheduled_start_datetime.date() == single_date]
         if jobs_for_day:
             daily_pdf_buffer = generate_daily_planner_pdf(single_date, jobs_for_day)
-            
-            # FIX: Use a more compatible method to check if the buffer has content.
             if len(daily_pdf_buffer.getvalue()) > 0:
                 merger.append(daily_pdf_buffer)
 
@@ -704,8 +715,7 @@ from reportlab.graphics.shapes import Rect
 
 def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     """
-    Generates a multi-page PDF progress report with stats, charts, and tables,
-    including an enhanced Truck Utilization section.
+    MODIFIED: Generates a multi-page PDF progress report. The detailed boat status list has been removed.
     """
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -812,7 +822,7 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
     else:
         story.append(Paragraph("Not enough job data exists to generate an efficiency report.", styles['Normal']))
     
-    # --- Remaining Pages (Unchanged) ---
+    # --- Truck Utilization Page ---
     story.append(PageBreak())
     story.append(Paragraph("Truck Utilization", styles['h2']))
     story.append(Spacer(1, 8))
@@ -850,31 +860,8 @@ def generate_progress_report_pdf(stats, dist_analysis, eff_analysis):
             (colors.HexColor('#FF7F7F'), '1-Job Days'), (colors.HexColor('#FFD700'), '2-Job Days'),
             (colors.HexColor('#90EE90'), '3-Job Days'), (colors.HexColor('#2E8B57'), '4+ Job Days')]
         drawing.add(bc); drawing.add(legend); story.append(drawing)
-    story.append(PageBreak())
-    story.append(Paragraph("Detailed Boat Status", styles['h2']))
-    story.append(Spacer(1, 12))
-    scheduled_rows = []; unscheduled_rows = []
-    scheduled_services_by_cust = {}
-    for job in ecm.SCHEDULED_JOBS:
-        if job.job_status == "Scheduled":
-            scheduled_services_by_cust.setdefault(job.customer_id, []).append(job.service_type)
-    for boat in sorted(ecm.LOADED_BOATS.values(), key=lambda b: (ecm.get_customer_details(b.customer_id).customer_name if ecm.get_customer_details(b.customer_id) else "")):
-        cust = ecm.get_customer_details(boat.customer_id)
-        if not cust: continue
-        services = scheduled_services_by_cust.get(cust.customer_id, [])
-        status = "Launched" if "Launch" in services else (f"Scheduled ({', '.join(services)})" if services else "Not Scheduled")
-        row_data = [Paragraph(cust.customer_name, styles['Normal']), Paragraph(f"{boat.boat_length}' {boat.boat_type}", styles['Normal']), "Yes" if boat.is_ecm_boat else "No", status]
-        (scheduled_rows if status != "Not Scheduled" else unscheduled_rows).append(row_data)
-    table_style = TableStyle([('BACKGROUND', (0,0), (-1,0), colors.grey), ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke), ('ALIGN', (0,0), (-1,-1), 'LEFT'), ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('BOTTOMPADDING', (0,0), (-1,0), 12), ('BACKGROUND', (0,1), (-1,-1), colors.beige), ('GRID', (0,0), (-1,-1), 1, colors.black)])
-    headers = [["Customer Name", "Boat Details", "ECM?", "Scheduling Status"]]
-    if scheduled_rows:
-        story.append(Paragraph("Scheduled Boats", styles['h3'])); story.append(Spacer(1, 6))
-        scheduled_table = Table(headers + scheduled_rows, colWidths=[150, 150, 50, 150]); scheduled_table.setStyle(table_style)
-        story.append(scheduled_table); story.append(Spacer(1, 24))
-    if unscheduled_rows:
-        story.append(Paragraph("Unscheduled Boats", styles['h3'])); story.append(Spacer(1, 6))
-        unscheduled_table = Table(headers + unscheduled_rows, colWidths=[150, 150, 50, 150]); unscheduled_table.setStyle(table_style)
-        story.append(unscheduled_table)
+
+    # --- REMOVED: Detailed Boat Status section has been deleted from here.
 
     doc.build(story)
     buffer.seek(0)
@@ -1275,8 +1262,8 @@ def _render_scheduled_jobs_rows_v2(ecm, move_job, park_job, prompt_for_cancel, c
 
 def show_reporting_page():
     """
-    Displays the entire Reporting dashboard, including all original tabs and
-    interactive job management with a confirmation step for cancellation.
+    MODIFIED: Displays the Reporting dashboard. Standalone progress report and single-day planner
+    options have been removed and combined into a single multi-day report generator.
     """
     import pandas as pd
     import datetime
@@ -1415,7 +1402,7 @@ def show_reporting_page():
         else:
             st.warning("No crane day data available.")
 
-    # ===== Tab 3: Progress (your metrics + PDF + audit + weekday chart) =====
+    # ===== Tab 3: Progress (MODIFIED)=====
     with tab3:
         st.subheader("Scheduling Progress Report")
         stats = ecm.calculate_scheduling_stats(ecm.LOADED_CUSTOMERS, ecm.LOADED_BOATS, ecm.SCHEDULED_JOBS)
@@ -1429,19 +1416,7 @@ def show_reporting_page():
         c1.metric("ECM Scheduled", f"{stats['ecm_boats']['scheduled']} / {stats['ecm_boats']['total']}")
         c2.metric("ECM Launched (to date)", f"{stats['ecm_boats']['launched']} / {stats['ecm_boats']['total']}")
 
-        st.markdown("---")
-        st.subheader("Download Formatted PDF Report")
-        if st.button("📊 Generate PDF Report"):
-            with st.spinner("Generating your report."):
-                dist_analysis = ecm.analyze_job_distribution(ecm.SCHEDULED_JOBS, ecm.LOADED_BOATS, ecm.ECM_RAMPS)
-                eff_analysis  = ecm.perform_efficiency_analysis(ecm.SCHEDULED_JOBS)
-                pdf_buffer    = generate_progress_report_pdf(stats, dist_analysis, eff_analysis)
-                st.download_button(
-                    label="📥 Download Report (.pdf)", 
-                    data=pdf_buffer, 
-                    file_name=f"progress_report_{datetime.date.today()}.pdf", 
-                    mime="application/pdf"
-                )
+        # --- REMOVED: Standalone PDF download button was here. ---
 
         # Travel Matrix & Coordinates Audit
         st.divider()
@@ -1457,8 +1432,6 @@ def show_reporting_page():
                 else:
                     st.success("Audit OK: no issues found.")
 
-        # Jo ... inside show_reporting_page, with tab3 ...
-        # ... inside show_reporting_page, with tab3 ...
         st.markdown("#### Jobs by Day of Week")
         weekday_counts = build_weekday_counts(ecm.SCHEDULED_JOBS, tz="America/New_York", include_weekends=False)
 
@@ -1466,7 +1439,6 @@ def show_reporting_page():
         chart_data = pd.DataFrame(weekday_counts).reset_index()
         chart_data.columns = ['Day', 'Jobs']
 
-        # --- THIS IS THE DEFINITIVE FIX ---
         # Explicitly define the correct order for the days of the week.
         day_order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
         # Convert the 'Day' column to a special ordered type that the chart will respect.
@@ -1476,47 +1448,34 @@ def show_reporting_page():
         with st.expander("Show weekday counts", expanded=False):
             st.dataframe(pd.DataFrame({"Jobs": weekday_counts}), use_container_width=True)
 
-    # ===== Tab 4: PDF Exports (your real content) =====
+    # ===== Tab 4: PDF Exports (MODIFIED) =====
     with tab4:
-        st.subheader("Generate Daily Planner PDF")
-        selected_date = st.date_input("Select date to export:", value=datetime.date.today(), key="daily_pdf_date_input")
-        if st.button("📤 Generate Daily PDF", key="generate_daily_pdf_button"):
-            jobs_today = [j for j in ecm.SCHEDULED_JOBS 
-                          if j.scheduled_start_datetime 
-                          and j.scheduled_start_datetime.date() == selected_date]
-            if not jobs_today:
-                st.warning("No jobs scheduled for that date.")
-            else:
-                pdf_buffer = generate_daily_planner_pdf(selected_date, jobs_today)
-                st.download_button(
-                    label="📥 Download Daily Planner", 
-                    data=pdf_buffer.getvalue(), 
-                    file_name=f"Daily_Planner_{selected_date}.pdf", 
-                    mime="application/pdf", 
-                    key="download_daily_planner_button"
-                )
-
-        st.markdown("---")
-        st.subheader("Generate Multi-Day Planner PDF")
+        st.subheader("Generate Combined Progress Report & Planner")
+        st.info("This will generate a single PDF containing the latest progress report followed by daily planner pages for the selected date range.")
+        
         d_col1, d_col2 = st.columns(2)
         start_date = d_col1.date_input("Start date:", datetime.date.today())
         end_date   = d_col2.date_input("End date:",   datetime.date.today() + datetime.timedelta(days=6))
 
-        if st.button("📤 Generate Multi-Day PDF", key="generate_multi_day_pdf_button"):
+        if st.button("📤 Generate Combined PDF", key="generate_multi_day_pdf_button"):
             if start_date > end_date:
                 st.error("Start date cannot be after end date.")
             else:
-                jobs_in_range = [j for j in ecm.SCHEDULED_JOBS 
-                                 if j.scheduled_start_datetime 
-                                 and start_date <= j.scheduled_start_datetime.date() <= end_date]
-                if not jobs_in_range:
-                    st.warning("No jobs scheduled in that date range.")
-                else:
-                    multi_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
+                with st.spinner("Generating your report... This may take a moment."):
+                    jobs_in_range = [j for j in ecm.SCHEDULED_JOBS 
+                                     if j.scheduled_start_datetime 
+                                     and start_date <= j.scheduled_start_datetime.date() <= end_date]
+                    
+                    # This function now generates the progress report and combines it with the planners.
+                    combined_pdf = generate_multi_day_planner_pdf(start_date, end_date, jobs_in_range)
+                    
+                    if not jobs_in_range:
+                         st.warning("No jobs were found in the selected date range. The PDF contains the progress report only.")
+
                     st.download_button(
-                        label="📥 Download Multi-Day Planner", 
-                        data=multi_pdf.getvalue(), 
-                        file_name=f"Multi_Day_Planner_{start_date}_to_{end_date}.pdf", 
+                        label="📥 Download Combined Report", 
+                        data=combined_pdf.getvalue(), 
+                        file_name=f"ECM_Report_and_Planner_{start_date}_to_{end_date}.pdf", 
                         mime="application/pdf", 
                         key="download_multi_day_planner_button"
                     )
