@@ -729,14 +729,13 @@ def _route_distance_minutes(a_latlon, b_latlon):
 
 def _score_candidate(slot, compiled_schedule, daily_last_locations, after_threshold=False, prime_days=None):
     """
-    Larger is better. Uses DYNAMIC scoring: lenient early on, strict when busy.
+    Larger is better. Uses DYNAMIC scoring and a new rule to fill "tide poor" days.
     """
-    # ---- HARD LIMIT: Max distance between storage -> pickup ramp ----
+    # ... (Hard limit distance check remains the same) ...
     try:
         limit = float(slot.get("max_distance_miles", DEFAULT_MAX_JOB_DISTANCE_MILES))
     except Exception:
         limit = float(DEFAULT_MAX_JOB_DISTANCE_MILES)
-
     try:
         est_miles = _estimate_trip_miles_for_job(slot.get("boat_id"), slot.get("ramp_id"))
         if est_miles is not None and float(est_miles) > limit:
@@ -754,36 +753,42 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
     ramp_id = str(slot.get("ramp_id"))
     boat = get_boat_details(slot.get("boat_id"))
 
-    todays = [iv for iv in compiled_schedule.get(truck_id, [])
-              if iv and hasattr(iv[0], "date") and iv[0].date() == date]
+    # --- NEW STRATEGY: Identify "tide poor" days ---
+    is_tide_poor_day = False
+    tides_today = fetch_noaa_tides_for_range(get_ramp_details(ramp_id).noaa_station_id, date, date) or {}
+    high_tides = [t["time"] for t in tides_today.get(date, []) if t.get("type") == "H"]
+    if high_tides and all(t.hour < 8 or t.hour > 15 for t in high_tides):
+        is_tide_poor_day = True
+
+    # If it's a tough day, give a huge bonus to easy boats at easy ramps to fill the schedule.
+    if is_tide_poor_day:
+        boat_type = getattr(boat, "boat_type", "")
+        draft = float(getattr(boat, "draft_ft", 99))
+        ramp = get_ramp_details(ramp_id)
+        is_any_tide_ramp = getattr(ramp, "tide_calculation_method", "") in ("AnyTide", "AnyTideWithDraftRule")
+        if "Powerboat" in boat_type and draft <= 5.0 and is_any_tide_ramp:
+            score += 15.0  # Bonus for being an "easy job" on a "hard day"
+    # --- END NEW STRATEGY ---
+
+    todays = [iv for iv in compiled_schedule.get(truck_id, []) if iv and hasattr(iv[0], "date") and iv[0].date() == date]
     n = len(todays)
 
-    # --- THIS IS THE FIX: Dynamic scoring based on schedule density ---
+    # Dynamic scoring based on schedule density
     if after_threshold:
-        # LATER in the season (schedule is busy): Be VERY STRICT.
-        # Heavily penalize starting a new truck's day to force consolidation.
-        if n == 0:
-            score -= 50.0  # High cost to open a new truck
-        elif n == 1:
-            score += 20.0  # High reward for creating an efficient 2-job day
-        elif n == 2:
-            score += 10.0
-        elif n >= 3:
-            score += 5.0
+        if n == 0: score -= 50.0
+        elif n == 1: score += 20.0
+        elif n == 2: score += 10.0
+        elif n >= 3: score += 5.0
     else:
-        # EARLY in the season (schedule is sparse): Be lenient.
-        # It's okay to have single-job days, but still encourage packing.
         if n == 0: score += 2.0
         if n == 1: score += 6.0
         if n == 2: score += 10.0
         if n >= 3: score += 8.0
-    # --- END FIX ---
 
     if slot.get("is_piggyback"):
         score += 8.0
 
-    # --- Scoring for geographic proximity ---
-    ramp_details = None
+    # ... (Proximity and Prime Day scoring remain the same) ...
     try:
         ramp_details = get_ramp_details(ramp_id)
         if boat and ramp_details and hasattr(boat, 'storage_address'):
@@ -796,7 +801,6 @@ def _score_candidate(slot, compiled_schedule, daily_last_locations, after_thresh
     except Exception as e:
         _log_debug(f"Could not calculate proximity score: {e}")
 
-    # --- Scoring for prime days (existing logic) ---
     if after_threshold and date in prime_days:
         tide_method = getattr(ramp_details, "tide_calculation_method", "AnyTide") if ramp_details else "AnyTide"
         boat_type = getattr(boat, "boat_type", "") if boat else ""
